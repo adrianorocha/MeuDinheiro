@@ -34,6 +34,7 @@ fun MainScreen(
             item{HeaderSection()}
             item{CardSection { onCardClick }}
             item { ActionButtonRow() }
+            //item{DespesasScreen(despesas)}
             items( despesas) { item -> DespesasItem(item = item) }
         }
         NavigationSection(
