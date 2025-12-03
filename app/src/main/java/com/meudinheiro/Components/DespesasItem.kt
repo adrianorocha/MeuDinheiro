@@ -109,7 +109,7 @@ fun PreviewDespesasItem(){
                 val despesa = DespesasDomain(
                     title = "Aluguel",
                     value = 1200.0,
-                    date = "2024-06-01",
+                    date = "01/12/2025",
                     pic = "restaurant"
 
                 )
