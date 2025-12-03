@@ -49,11 +49,11 @@ fun MainScreen(
 
 fun MainScreenPreview() {
     val despesas = listOf(
-        DespesasDomain("lunch", "Lanche", 25.35,"2024-06-01"),
-        DespesasDomain("transport", "Condução", 150.72,"2024-06-02"),
-        DespesasDomain("restaurant", "Almoço", 40.11,"2024-06-02"),
-        DespesasDomain("drink", "Bar", 50.11,"2024-06-02"),
-        DespesasDomain("health", "Remedios", 150.11,"2024-06-02")
+        DespesasDomain("lunch", "Lanche", 25.35,"01/12/2025"),
+        DespesasDomain("transport", "Condução", 150.72,"01/12/2025"),
+        DespesasDomain("restaurant", "Almoço", 40.11,"01/12/2025"),
+        DespesasDomain("drink", "Bar", 50.11,"01/12/2025"),
+        DespesasDomain("health", "Remedios", 150.11,"01/12/2025")
 
     )
     MainScreen(despesas = despesas)

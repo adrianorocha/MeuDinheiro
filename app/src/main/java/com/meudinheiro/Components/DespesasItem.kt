@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,6 +92,23 @@ fun DespesasItem(item: DespesasDomain){
 @Composable
 @Preview(showBackground = true)
 fun PreviewDespesasItem(){
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {Text(text = "")}
+            )
+        },
+        content = {innerPadding ->
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+            ) {
+                // Conteúdo principal aqui
+            }
+        }
+    ) {
+
+    }
     val despesa = DespesasDomain(
         title = "Aluguel",
         value = 1200.0,
