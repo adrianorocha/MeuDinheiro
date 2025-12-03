@@ -15,7 +15,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -34,7 +33,7 @@ fun CardSection(onClick: () -> Unit ={}) {
             .clickable{onClick()}
     ) {
         Image(
-            painter = painterResource(id = R.drawable.ic_launcher_background),
+            painter = painterResource(id = R.drawable.card_tecno),
             contentDescription = null, 
             modifier = Modifier
                 .matchParentSize(),
@@ -50,6 +49,13 @@ fun CardSection(onClick: () -> Unit ={}) {
                 .padding(start = 16.dp, bottom = 16.dp)
         )
 
+        Image(
+            painter = painterResource(id = R.drawable.sim_chip_2),
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top=25.dp,start = 315.dp)
+        )
         Text(
             text = "Agência : 00001 - C/C : 00000000000",
             color = Color.White,
