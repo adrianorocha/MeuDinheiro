@@ -1,9 +1,26 @@
 package com.meudinheiro.Repository
 
+import com.meudinheiro.DAO.CategoriaDomain
 import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.DAO.OrcamentoDomain
 
 class MainRepository {
+    val categorias=mutableListOf(
+        CategoriaDomain(pic = "fuel", title = "Combustível"),
+        CategoriaDomain(pic = "restaurant", title = "Alimentação"),
+        CategoriaDomain(pic = "transport", title = "Transporte"),
+        CategoriaDomain(pic = "shopping", title = "Compras"),
+        CategoriaDomain(pic = "cinema", title = "Cinema"),
+        CategoriaDomain(pic = "health", title = "Saúde"),
+        CategoriaDomain(pic = "education", title = "Educação"),
+        CategoriaDomain(pic = "salary", title = "Salário"),
+        CategoriaDomain(pic = "repair_car", title = "Oficina"),
+        CategoriaDomain(pic = "supermarket", title = "Supermercado"),
+        CategoriaDomain(pic = "gym", title = "Academia"),
+        CategoriaDomain(pic = "games", title = "Jogos"),
+        CategoriaDomain(pic = "drink", title = "Bebidas"),
+        CategoriaDomain(pic = "lunch", title = "Lanche")
+    )
     val items=mutableListOf(
         DespesasDomain(pic = "ic_food", title = "Alimentação", value = 250.00, date = "10/06/2024"),
         DespesasDomain(pic = "ic_transport", title = "Transporte", value = 120.00, date = "11/06/2024"),
