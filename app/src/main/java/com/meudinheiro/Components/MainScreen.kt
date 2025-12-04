@@ -3,6 +3,7 @@ package com.meudinheiro.Components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,16 +26,21 @@ fun MainScreen(
             .fillMaxSize()
             .background(color = Color.White)
     ) {
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = 70.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item{HeaderSection()}
-            item{CardSection { onCardClick }}
-            item { ActionButtonRow() }
-            items( despesas) { item -> DespesasItem(item = item) }
+            HeaderSection()
+            CardSection { onCardClick }
+            ActionButtonRow()
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+            ) {
+                items(despesas) { item -> DespesasItem(item = item) }
+            }
         }
         NavigationSection(
             onItemSelected = { 0 },
