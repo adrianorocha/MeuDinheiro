@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -29,24 +31,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color.Companion.LightGray
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.meudinheiro.DAO.CategoriaDomain
 import com.meudinheiro.R
-import java.nio.file.Files.list
+import com.meudinheiro.Repository.MainRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 @Preview(showBackground = true)
 fun ActionButtonRow() {
+    val repository = MainRepository()
     val exibirFormulario = remember { mutableStateOf(false) }
-    val categorias = list<CategoriaDomain>()
-    var categoriaSelecionada by remember { String? }
+    val categorias = repository.categorias.map { it.title }
+    var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -64,7 +65,6 @@ fun ActionButtonRow() {
             "Adicionar",
             onClick = { exibirFormulario.value = true}
         )
-
         ActionButton(
             R.drawable.sim_chip,
             "Configurações",
@@ -84,7 +84,7 @@ fun ActionButtonRow() {
                     .padding(16.dp)
                     .height(400.dp),
                 shape = RoundedCornerShape(16.dp),
-                color = colorResource(R.color.white),
+                color = Color.White,
                 shadowElevation = 8.dp
             ) {
                 Column(
@@ -134,10 +134,35 @@ fun ActionButtonRow() {
                             .padding(top = 8.dp)
                     ) {
                         ExposedDropdownMenuBox(
-                            expanded = false,
-                            onExpandedChange = { }
-                        ) { }
-
+                            expanded = expandido,
+                            onExpandedChange = { expandido = !expandido }
+                        ) {
+                            TextField(
+                               value = categoriaSelecionada ?: "Categoria",
+                                 onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Categoria") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .menuAnchor()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expandido,
+                                onDismissRequest = { expandido = false }
+                            ) {
+                                categorias.forEach { categoria ->
+                                    DropdownMenuItem(
+                                        text = { Text(categoria) },
+                                        onClick = {
+                                            categoriaSelecionada = categoria
+                                            expandido = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                     Row(
                         modifier = Modifier
@@ -186,14 +211,13 @@ fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {
         )
         Text(
             text = text,
-            color = colorResource(R.color.blue_dark),
+            color = Color.Blue,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
-
         )
     }
 }
