@@ -183,7 +183,8 @@ fun ActionButtonRow() {
                                     descricao = descricao,
                                     valor = valorDouble,
                                     data = data,
-                                    categoria = categoriaSelecionada ?: "Sem Categoria"
+                                    categoria = categoriaSelecionada ?: "Sem Categoria",
+                                    pic = repository.getPicCategoria(categoriaSelecionada ?:"")
                                 )
                                 repository.insereDespesa(novaDespesa)
                                 // Opcional: limpar campos ou mostrar mensagem

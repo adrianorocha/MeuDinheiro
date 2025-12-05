@@ -27,6 +27,12 @@ class MainRepository(val context: Context) {
         }
     }
 
+    fun getDespesas() = despesaDao.getDespesas()
+
+    fun getPicCategoria(titulo: String): String {
+        return MainRepository(context).getPicCategoria(titulo)
+    }
+
     val categorias=mutableListOf(
         CategoriaDomain(pic = "fuel", title = "Combustível"),
         CategoriaDomain(pic = "restaurant", title = "Alimentação"),

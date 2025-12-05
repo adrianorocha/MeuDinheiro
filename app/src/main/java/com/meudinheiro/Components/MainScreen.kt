@@ -1,6 +1,5 @@
 package com.meudinheiro.Components
 
-import android.R.attr.fontWeight
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,6 +22,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.DAO.DespesasDomain
+import com.meudinheiro.ViewModel.DespesasViewModel
+import kotlinx.coroutines.flow.asFlow
 
 @Composable
 fun MainScreen(
@@ -59,7 +62,8 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp)
             ) {
-                items( despesas) { item -> DespesasItem(item = item) }
+                ListaDespesas(DespesasViewModel())
+                //items( despesas) { item -> DespesasItem(item = item) }
             }
         }
         NavigationSection(
@@ -70,6 +74,18 @@ fun MainScreen(
     }
 }
 
+@Composable
+fun ListaDespesas(viewModel: DespesasViewModel) {
+    val listadespesas by viewModel.despesas.observeAsState(emptyList())
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 80.dp)
+    ) {
+        items(listadespesas) { item -> DespesasItem(item = item) }
+    }
+}
 @Composable
 @Preview(showBackground = true)
 

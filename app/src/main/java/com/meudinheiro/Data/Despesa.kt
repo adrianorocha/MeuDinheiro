@@ -9,5 +9,6 @@ data class Despesa(
     val descricao: String,
     val valor: Double,
     val data: String, // Pode usar Date se preferir
-    val categoria: String
+    val categoria: String,
+    val pic: String
 )
