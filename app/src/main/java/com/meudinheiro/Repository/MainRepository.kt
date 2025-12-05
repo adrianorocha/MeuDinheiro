@@ -1,10 +1,32 @@
 package com.meudinheiro.Repository
 
+import android.content.Context
+import androidx.room.Room
 import com.meudinheiro.DAO.CategoriaDomain
 import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.DAO.OrcamentoDomain
+import com.meudinheiro.Data.AppDatabase
+import com.meudinheiro.Data.Despesa
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
-class MainRepository {
+class MainRepository(val context: Context) {
+
+    private val db = Room.databaseBuilder(
+        context.applicationContext,
+        AppDatabase::class.java,
+        "financas-db"
+    ).build()
+
+    private val despesaDao = db.despesaDao()
+
+    fun insereDespesa(despesa: Despesa) {
+        CoroutineScope(Dispatchers.IO).launch {
+            suspend fun inserirDespesa(despesa: Despesa) {}
+        }
+    }
+
     val categorias=mutableListOf(
         CategoriaDomain(pic = "fuel", title = "Combustível"),
         CategoriaDomain(pic = "restaurant", title = "Alimentação"),
@@ -34,4 +56,6 @@ class MainRepository {
         OrcamentoDomain(title = "Salário", value = 3000.00, date = "05/06/2024"),
         OrcamentoDomain(title = "Financiamento", value = 800.00, date = "10/06/2024")
     )
+
 }
+

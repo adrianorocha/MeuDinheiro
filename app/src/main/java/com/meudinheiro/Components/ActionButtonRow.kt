@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,12 +32,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color.Companion.LightGray
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meudinheiro.Data.Despesa
 import com.meudinheiro.R
 import com.meudinheiro.Repository.MainRepository
 
@@ -44,7 +48,8 @@ import com.meudinheiro.Repository.MainRepository
 @Composable
 @Preview(showBackground = true)
 fun ActionButtonRow() {
-    val repository = MainRepository() //Cerrega as Informações do Repository
+    val context = LocalContext.current
+    val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
     val exibirFormulario = remember { mutableStateOf(false) }
     val categorias = repository.categorias.map { it.title }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
@@ -113,6 +118,7 @@ fun ActionButtonRow() {
                     TextField(
                         value = valor,
                         onValueChange = { valor = it },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         label = { Text("Valor") },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -171,7 +177,22 @@ fun ActionButtonRow() {
                         horizontalArrangement = Arrangement.End
                     ) {
                         Button(
-                            onClick = { },
+                            onClick = {
+                                val valorDouble = valor.toDoubleOrNull() ?: 0.0
+                                val novaDespesa = Despesa(
+                                    descricao = descricao,
+                                    valor = valorDouble,
+                                    data = data,
+                                    categoria = categoriaSelecionada ?: "Sem Categoria"
+                                )
+                                repository.insereDespesa(novaDespesa)
+                                // Opcional: limpar campos ou mostrar mensagem
+                                descricao = ""
+                                valor = ""
+                                data = ""
+                                categoriaSelecionada = null
+                                exibirFormulario.value = false
+                            },
                             modifier = Modifier
                                 .padding(start = 8.dp)
                                 .clip(RoundedCornerShape(10.dp))
@@ -192,6 +213,8 @@ fun ActionButtonRow() {
         }
     }
 }
+
+
 @Composable
 fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {
     Column(

@@ -1,10 +1,12 @@
 package com.meudinheiro.ViewModel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import com.meudinheiro.Repository.MainRepository
 
-class MainViewModel (val repository: MainRepository) : ViewModel() {
-    constructor() : this(MainRepository())
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = MainRepository(application)
 
     fun loadOrcamento() = repository.orcamento
     fun loadDespesas() = repository.items
