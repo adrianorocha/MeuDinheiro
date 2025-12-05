@@ -1,8 +1,8 @@
 package com.meudinheiro.Components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,17 +25,22 @@ fun MainScreen(
             .fillMaxSize()
             .background(color = Color.White)
     ) {
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 70.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+
         ) {
-            item{HeaderSection()}
-            item{CardSection { onCardClick }}
-            item { ActionButtonRow() }
-            //item{DespesasScreen(despesas)}
-            items( despesas) { item -> DespesasItem(item = item) }
+            HeaderSection()
+            CardSection { onCardClick }
+            ActionButtonRow()
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 80.dp)
+            ) {
+                items( despesas) { item -> DespesasItem(item = item) }
+            }
         }
         NavigationSection(
             onItemSelected = { 0 },
@@ -53,9 +58,11 @@ fun MainScreenPreview() {
         DespesasDomain("lunch", "Lanche", 25.35,"01/12/2025"),
         DespesasDomain("transport", "Condução", 150.72,"01/12/2025"),
         DespesasDomain("restaurant", "Almoço", 40.11,"01/12/2025"),
-        DespesasDomain("drink", "Bar", 50.11,"01/12/2025"),
-        DespesasDomain("health", "Remedios", 150.11,"01/12/2025")
-
+        DespesasDomain("drink", "Bar", 178.11,"01/12/2025"),
+        DespesasDomain("health", "Remedios", 150.11,"01/12/2025"),
+        DespesasDomain("cinema", "Filmes", 50.00,"01/12/2025"),
+        DespesasDomain("shopping", "Compras", 400.00,"01/12/2025"),
+        DespesasDomain("fuel", "Combustível", 250.00,"01/12/2025")
     )
     MainScreen(despesas = despesas)
 }
