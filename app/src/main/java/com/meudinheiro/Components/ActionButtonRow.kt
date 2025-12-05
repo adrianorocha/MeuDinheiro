@@ -4,14 +4,19 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -22,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color.Companion.LightGray
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -30,12 +36,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meudinheiro.DAO.CategoriaDomain
 import com.meudinheiro.R
+import java.nio.file.Files.list
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 @Preview(showBackground = true)
 fun ActionButtonRow() {
     val exibirFormulario = remember { mutableStateOf(false) }
+    val categorias = list<CategoriaDomain>()
+    var categoriaSelecionada by remember { String? }
+    var expandido by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -44,89 +56,116 @@ fun ActionButtonRow() {
     ) {
         ActionButton(
             R.drawable.deposit,
-             "Depositar",
+            "Depositar",
             onClick = { /* Ação ao clicar no botão Adicionar */ }
         )
         ActionButton(
-             R.drawable.add,
-             "Adicionar",
+            R.drawable.add,
+            "Adicionar",
             onClick = { exibirFormulario.value = true}
         )
 
         ActionButton(
-             R.drawable.sim_chip,
-             "Configurações",
+            R.drawable.sim_chip,
+            "Configurações",
             onClick = { /* Ação ao clicar no botão Configurações */ }
         )
     }
     if(exibirFormulario.value) {
         /* Adicionar Despesas */
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text(
-                text = "Novas Despesas",
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
-            )
-            var descricao by remember { mutableStateOf("") }
-            var valor by remember { mutableStateOf("") }
-            var data by remember { mutableStateOf("") }
-            TextField(
-                value = descricao,
-                onValueChange = {},
-                label = { Text("Descrição") },
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+        ){
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
-            )
-            TextField(
-                value = valor,
-                onValueChange = {},
-                label = { Text("Valor") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
-            )
-            TextField(
-                value = data,
-                onValueChange = {},
-                label = { Text("Data") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
-            )
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            Button(
-                onClick = { },
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .padding(16.dp)
+                    .height(400.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = colorResource(R.color.white),
+                shadowElevation = 8.dp
             ) {
-                Text("Adicionar")
-            }
-            Button(
-                onClick = { },
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
-            ) {
-                Text("Cancelar")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Novas Despesas",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                    var descricao by remember { mutableStateOf("") }
+                    var valor by remember { mutableStateOf("") }
+                    var categoria by remember { mutableStateOf("") }
+                    var data by remember { mutableStateOf("") }
+                    TextField(
+                        value = descricao,
+                        onValueChange = { descricao = it },
+                        label = { Text("Descrição") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    TextField(
+                        value = valor,
+                        onValueChange = { valor = it },
+                        label = { Text("Valor") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    TextField(
+                        value = data,
+                        onValueChange = { data = it },
+                        label = { Text("Data") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        ExposedDropdownMenuBox(
+                            expanded = false,
+                            onExpandedChange = { }
+                        ) { }
+
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = { },
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        ) {
+                            Text("Adicionar")
+                        }
+                        Button(
+                            onClick = { exibirFormulario.value = false },
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        ) {
+                            Text("Cancelar")
+                        }
+                    }
+                }
             }
         }
     }
-
 }
 @Composable
 fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {

@@ -1,9 +1,16 @@
 package com.meudinheiro.Repository
 
+import com.meudinheiro.DAO.CategoriaDomain
 import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.DAO.OrcamentoDomain
 
 class MainRepository {
+    val categoria=mutableListOf(
+        CategoriaDomain(pic = "ic_food", title = "Alimentação"),
+        CategoriaDomain(pic = "ic_transport", title = "Transporte"),
+        CategoriaDomain(pic = "ic_shopping", title = "Compras")
+    )
+
     val items=mutableListOf(
         DespesasDomain(pic = "ic_food", title = "Alimentação", value = 250.00, date = "10/06/2024"),
         DespesasDomain(pic = "ic_transport", title = "Transporte", value = 120.00, date = "11/06/2024"),
