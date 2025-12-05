@@ -44,7 +44,7 @@ import com.meudinheiro.Repository.MainRepository
 @Composable
 @Preview(showBackground = true)
 fun ActionButtonRow() {
-    val repository = MainRepository()
+    val repository = MainRepository() //Cerrega as Informações do Repository
     val exibirFormulario = remember { mutableStateOf(false) }
     val categorias = repository.categorias.map { it.title }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
@@ -58,7 +58,7 @@ fun ActionButtonRow() {
         ActionButton(
             R.drawable.deposit,
             "Depositar",
-            onClick = { /* Ação ao clicar no botão Adicionar */ }
+            onClick = { /* Ação ao clicar no botão Depositar */ }
         )
         ActionButton(
             R.drawable.add,
