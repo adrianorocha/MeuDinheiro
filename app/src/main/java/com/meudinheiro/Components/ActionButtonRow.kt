@@ -70,7 +70,7 @@ fun exibeFormulario(exibe: Boolean) {
         ) {
             Text(text = "Novas Despesas",
                 fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
+                fontSize = 22.sp
             )
             var descricao by remember { mutableStateOf("") }
             var valor by remember { mutableStateOf("") }
