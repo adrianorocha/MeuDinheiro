@@ -3,11 +3,8 @@ package com.meudinheiro.ViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.Data.Despesa
 import com.meudinheiro.Repository.MainRepository
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
