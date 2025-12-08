@@ -33,6 +33,10 @@ fun MainScreen(
     onCardClick: () -> Unit = {},
     despesas : List<DespesasDomain>
 ) {
+    val context = LocalContext.current
+    val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
+    val viewModel = DespesasViewModel(repository)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -65,7 +69,7 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp)
             ) {
-                items( despesas) { item -> DespesasItem(item = item) }
+                items( despesas) { item -> DespesasItem(item = item, onRemover = { id -> viewModel.removerDespesa(id)} ) }
             }
         }
         NavigationSection(
@@ -83,6 +87,6 @@ fun MainScreenPreview() {
     val context = LocalContext.current
     val repository =  remember {MainRepository(context)}
     val viewModel = DespesasViewModel(repository)
-    val despesas by viewModel.despesa.collectAsState(initial = emptyList())
+    val despesas by viewModel.despesa.collectAsState().
     MainScreen(despesas = despesas)
 }

@@ -3,9 +3,11 @@ package com.meudinheiro.ViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.Data.Despesa
 import com.meudinheiro.Repository.MainRepository
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
@@ -22,14 +24,14 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     fun adicionarDespesa(despesa: Despesa) {
         viewModelScope.launch {
             repository.inserirDespesa(despesa)
-            carregarDespesas()
+            //carregarDespesas()
         }
     }
 
     fun removerDespesa(id: Int) {
         viewModelScope.launch {
             repository.excluirDespesa(id)
-            carregarDespesas()
+            //carregarDespesas()
         }
     }
 }

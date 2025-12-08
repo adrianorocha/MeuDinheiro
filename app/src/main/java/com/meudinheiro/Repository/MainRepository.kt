@@ -53,11 +53,11 @@ class MainRepository(val context: Context) {
         CategoriaDomain(pic = "lunch", title = "Lanche")
     )
     val items=mutableListOf(
-        DespesasDomain(pic = "ic_food", descricao = "Alimentação", valor = 250.00, data = "10/06/2024"),
-        DespesasDomain(pic = "ic_transport", descricao = "Transporte", valor = 120.00, data = "11/06/2024"),
-        DespesasDomain(pic = "ic_shopping", descricao = "Compras", valor = 300.00, data = "12/06/2024"),
-        DespesasDomain(pic = "ic_entertainment", descricao = "Entretenimento", valor = 150.00, data = "13/06/2024"),
-        DespesasDomain(pic = "ic_health", descricao = "Saúde", valor = 200.00, data = "14/06/2024")
+        DespesasDomain(id = 1, pic = "ic_food", descricao = "Alimentação", valor = 250.00, data = "10/06/2024"),
+        DespesasDomain(id = 2, pic = "ic_transport", descricao = "Transporte", valor = 120.00, data = "11/06/2024"),
+        DespesasDomain(id = 3 , pic = "ic_shopping", descricao = "Compras", valor = 300.00, data = "12/06/2024"),
+        DespesasDomain(id = 4, pic = "ic_entertainment", descricao = "Entretenimento", valor = 150.00, data = "13/06/2024"),
+        DespesasDomain(id = 5, pic = "ic_health", descricao = "Saúde", valor = 200.00, data = "14/06/2024")
     )
 
     val orcamento=mutableListOf(

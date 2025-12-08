@@ -108,34 +108,6 @@ fun ActionButtonRow() {
                     var descricao by remember { mutableStateOf("") }
                     var valor by remember { mutableStateOf("") }
                     var data by remember { mutableStateOf("") }
-                    TextField(
-                        value = descricao,
-                        onValueChange = { descricao = it },
-                        label = { Text("Descrição") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                    TextField(
-                        value = valor,
-                        onValueChange = { valor = it },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        label = { Text("Valor") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                    TextField(
-                        value = data,
-                        onValueChange = { data = it },
-                        label = { Text("Data") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -172,6 +144,36 @@ fun ActionButtonRow() {
                             }
                         }
                     }
+
+
+                    TextField(
+                        value = descricao,
+                        onValueChange = { descricao = it },
+                        label = { Text("Descrição") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    TextField(
+                        value = valor,
+                        onValueChange = { valor = it },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        label = { Text("Valor") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    TextField(
+                        value = data,
+                        onValueChange = { data = it },
+                        label = { Text("Data") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
