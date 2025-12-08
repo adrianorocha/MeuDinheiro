@@ -74,20 +74,20 @@ fun DespesasItem(item: DespesasDomain){
                 .padding(start = 16.dp)
         ) {
             Text(
-                text = item.title,
+                text = item.descricao,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.Black
             )
             Text(
-                text = item.date,
+                text = item.data,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.Black
             )
         }
         Text(
-            text = "R$ ${item.value}",
+            text = "R$ ${item.valor}",
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             color = Color.Gray,
@@ -138,14 +138,12 @@ fun PreviewDespesasItem(){
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val despesa = DespesasDomain(
-                    title = "Aluguel",
-                    value = 1200.0,
-                    date = "01/12/2025",
+                    descricao = "Aluguel",
+                    valor = 1200.0,
+                    data = "01/12/2025",
                     pic = "restaurant"
-
                 )
                     DespesasItem(item = despesa)
-
             }
         }
     )

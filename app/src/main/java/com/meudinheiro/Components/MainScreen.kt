@@ -22,8 +22,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.DAO.DespesasDomain
+import com.meudinheiro.Data.Despesa
 import com.meudinheiro.ViewModel.DespesasViewModel
-import kotlinx.coroutines.flow.asFlow
 
 @Composable
 fun MainScreen(
@@ -62,8 +62,7 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp)
             ) {
-                ListaDespesas(DespesasViewModel())
-                //items( despesas) { item -> DespesasItem(item = item) }
+                items( despesas) { item -> DespesasItem(item = item) }
             }
         }
         NavigationSection(
@@ -74,18 +73,14 @@ fun MainScreen(
     }
 }
 
-@Composable
+/*@Composable
 fun ListaDespesas(viewModel: DespesasViewModel) {
-    val listadespesas by viewModel.despesas.observeAsState(emptyList())
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = 80.dp)
-    ) {
-        items(listadespesas) { item -> DespesasItem(item = item) }
+    val despesas by viewModel.despesas.observeAsState(emptyList())
+    LazyColumn {
+        items(despesas) { item -> DespesasItem(item = item) }
     }
-}
+}*/
+
 @Composable
 @Preview(showBackground = true)
 

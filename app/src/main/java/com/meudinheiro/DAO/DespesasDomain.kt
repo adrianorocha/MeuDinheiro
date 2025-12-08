@@ -2,7 +2,7 @@ package com.meudinheiro.DAO
 
 data class DespesasDomain(
     val pic: String,
-    val title: String,
-    val value: Double,
-    val date: String
+    val descricao: String,
+    val valor: Double,
+    val data: String
 )
