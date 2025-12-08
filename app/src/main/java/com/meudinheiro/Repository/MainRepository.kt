@@ -21,16 +21,17 @@ class MainRepository(val context: Context) {
 
     private val despesaDao = db.despesaDao()
 
-    fun insereDespesa(despesa: Despesa) {
+    fun inserirDespesa(despesa: Despesa) {
         CoroutineScope(Dispatchers.IO).launch {
-            suspend fun inserirDespesa(despesa: Despesa) {}
+            despesaDao.inserirDespesa(despesa)
         }
     }
 
     fun getDespesas() = despesaDao.getDespesas()
 
     fun getPicCategoria(titulo: String): String {
-        return MainRepository(context).getPicCategoria(titulo)
+        val categoria = categorias.find { it.title == titulo }
+        return categoria?.pic ?: "default_pic"
     }
 
     val categorias=mutableListOf(
