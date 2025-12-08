@@ -12,18 +12,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.DAO.DespesasDomain
-import com.meudinheiro.Data.Despesa
+import com.meudinheiro.Repository.MainRepository
 import com.meudinheiro.ViewModel.DespesasViewModel
+import kotlin.collections.emptyList
 
 @Composable
 fun MainScreen(
@@ -73,27 +76,14 @@ fun MainScreen(
     }
 }
 
-/*@Composable
-fun ListaDespesas(viewModel: DespesasViewModel) {
-    val despesas by viewModel.despesas.observeAsState(emptyList())
-    LazyColumn {
-        items(despesas) { item -> DespesasItem(item = item) }
-    }
-}*/
-
 @Composable
 @Preview(showBackground = true)
 
 fun MainScreenPreview() {
-    val despesas = listOf(
-        DespesasDomain("lunch", "Lanche", 25.35,"01/12/2025"),
-        DespesasDomain("transport", "Condução", 150.72,"01/12/2025"),
-        DespesasDomain("restaurant", "Almoço", 40.11,"01/12/2025"),
-        DespesasDomain("drink", "Bar", 178.11,"01/12/2025"),
-        DespesasDomain("health", "Remedios", 150.11,"01/12/2025"),
-        DespesasDomain("cinema", "Filmes", 50.00,"01/12/2025"),
-        DespesasDomain("shopping", "Compras", 400.00,"01/12/2025"),
-        DespesasDomain("fuel", "Combustível", 250.00,"01/12/2025")
-    )
+    val context = LocalContext.current
+    val repository =  remember {MainRepository(context)}
+    val viewModel = DespesasViewModel(repository)
+    val despesas by viewModel.despesa.collectAsState(initial = emptyList())
+
     MainScreen(despesas = despesas)
 }

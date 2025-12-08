@@ -40,9 +40,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewModelScope
 import com.meudinheiro.Data.Despesa
 import com.meudinheiro.R
 import com.meudinheiro.Repository.MainRepository
+import com.meudinheiro.ViewModel.DespesasViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,7 +107,6 @@ fun ActionButtonRow() {
                     )
                     var descricao by remember { mutableStateOf("") }
                     var valor by remember { mutableStateOf("") }
-                    var categoria by remember { mutableStateOf("") }
                     var data by remember { mutableStateOf("") }
                     TextField(
                         value = descricao,
@@ -144,8 +146,8 @@ fun ActionButtonRow() {
                             onExpandedChange = { expandido = !expandido }
                         ) {
                             TextField(
-                               value = categoriaSelecionada ?: "Categoria",
-                                 onValueChange = {},
+                                value = categoriaSelecionada ?: "Categoria",
+                                onValueChange = {},
                                 readOnly = true,
                                 label = { Text("Categoria") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
@@ -186,8 +188,11 @@ fun ActionButtonRow() {
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
                                     pic = repository.getPicCategoria(categoriaSelecionada ?:"")
                                 )
-                                repository.inserirDespesa(novaDespesa)
-                                // Opcional: limpar campos ou mostrar mensagem
+                                val viewModel = DespesasViewModel(repository)
+                                viewModel.viewModelScope.launch {
+                                    viewModel.adicionarDespesa(novaDespesa)
+                                }
+                                // Limpa os campos
                                 descricao = ""
                                 valor = ""
                                 data = ""

@@ -7,9 +7,7 @@ import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.DAO.OrcamentoDomain
 import com.meudinheiro.Data.AppDatabase
 import com.meudinheiro.Data.Despesa
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
 
 class MainRepository(val context: Context) {
 
@@ -21,13 +19,17 @@ class MainRepository(val context: Context) {
 
     private val despesaDao = db.despesaDao()
 
-    fun inserirDespesa(despesa: Despesa) {
-        CoroutineScope(Dispatchers.IO).launch {
-            despesaDao.inserirDespesa(despesa)
-        }
+    suspend fun inserirDespesa(despesa: Despesa) {
+        despesaDao.inserirDespesa(despesa)
     }
 
-    fun getDespesas() = despesaDao.getDespesas()
+    fun obterDespesas(): Flow<List<DespesasDomain>> {
+        return despesaDao.obterDespesas()
+    }
+
+    suspend fun excluirDespesa(id: Int) {
+        despesaDao.excluirDespesa(id)
+    }
 
     fun getPicCategoria(titulo: String): String {
         val categoria = categorias.find { it.title == titulo }
