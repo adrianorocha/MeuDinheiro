@@ -1,12 +1,11 @@
 package com.meudinheiro.ViewModel
 
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.Data.Despesa
 import com.meudinheiro.Repository.MainRepository
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 class DespesasViewModel(private val repository: MainRepository) : ViewModel() {

@@ -84,6 +84,5 @@ fun MainScreenPreview() {
     val repository =  remember {MainRepository(context)}
     val viewModel = DespesasViewModel(repository)
     val despesas by viewModel.despesa.collectAsState(initial = emptyList())
-
     MainScreen(despesas = despesas)
 }
