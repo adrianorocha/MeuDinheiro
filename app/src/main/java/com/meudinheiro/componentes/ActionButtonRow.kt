@@ -187,7 +187,8 @@ fun ActionButtonRow(
                                     valor = valorDouble,
                                     data = data,
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
-                                    pic = getPicCategoria(categoriaSelecionada ?:"")
+                                    pic = getPicCategoria(categoriaSelecionada ?:""),
+                                    conta = "Nubank"
                                 )
 
                                 onAddDespesa(novaDespesa)

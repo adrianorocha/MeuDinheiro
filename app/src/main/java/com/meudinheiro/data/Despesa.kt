@@ -8,7 +8,8 @@ data class Despesa(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val descricao: String,
     val valor: Double,
-    val data: String, // Pode usar Date se preferir
+    val data: String,
     val categoria: String,
+    val conta: String,
     val pic: String
 )

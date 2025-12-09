@@ -14,7 +14,7 @@ interface ContaSaldoDao {
     suspend fun inserirContaSaldo(contaSaldo: ContaSaldo)
 
     @Query("SELECT * FROM contasaldo ORDER BY banco DESC")
-    suspend fun obterContaSaldo(): Flow<List<ContaSaldoDomain>>
+    fun obterContaSaldo(): Flow<List<ContaSaldoDomain>>
 
     @Query("DELETE FROM contasaldo WHERE id = :id")
     suspend fun excluirConta(id: Int): ContaSaldo?

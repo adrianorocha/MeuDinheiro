@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+//noinspection SuspiciousImport
 import android.R
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background

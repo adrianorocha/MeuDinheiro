@@ -1,0 +1,29 @@
+package com.meudinheiro.viewModel
+
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asLiveData
+import androidx.lifecycle.viewModelScope
+import com.meudinheiro.data.ContaSaldo
+import com.meudinheiro.data.ContaSaldoDomain
+import com.meudinheiro.repository.MainRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
+    val contaSaldo : LiveData<List<ContaSaldoDomain>> = repository.obterContaSaldo().asLiveData(
+        viewModelScope.coroutineContext
+    )
+
+    fun adicionarContaSaldo(contaSaldo: ContaSaldo) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.inserirContaSaldo(contaSaldo)
+        }
+    }
+
+    fun removerContaSaldo(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.excluirConta(id)
+        }
+    }
+}

@@ -25,19 +25,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.repository.MainRepository
+import com.meudinheiro.viewModel.ContaSaldoViewModel
+import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import com.meudinheiro.viewModel.DespesasViewModel
 import com.meudinheiro.viewModel.DespesasViewModelFactory
 
 @Composable
 fun MainScreen(
     onCardClick: () -> Unit = {}
-    //despesas : List<DespesasDomain>
 ) {
     val context = LocalContext.current
     val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
     val viewModel : DespesasViewModel = viewModel( factory = DespesasViewModelFactory(repository))
+    val viewModelS : ContaSaldoViewModel = viewModel( factory = ContaSaldoViewModelFactory(
+        repository
+    )
+    )
 
     val despesas by viewModel.despesa.observeAsState(emptyList())
+    val saldo by viewModelS.contaSaldo.observeAsState(emptyList())
+
 
     Box(
         modifier = Modifier
@@ -52,13 +59,14 @@ fun MainScreen(
             HeaderSection()
             CardSection { onCardClick }
             ActionButtonRow(
-                categorias      = repository.categorias.map { it.title },
-                onAddDespesa = {
-                        nova -> viewModel.adicionarDespesa(nova)
-
+                categorias   = repository.categorias.map {
+                    it.title
                 },
-                getPicCategoria = {
-                        nome -> repository.getPicCategoria(nome)
+                onAddDespesa = { nova ->
+                    viewModel.adicionarDespesa(nova)
+                },
+                getPicCategoria = {nome ->
+                    repository.getPicCategoria(nome)
                 },
             )
             Row(
@@ -80,7 +88,11 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp)
             ) {
-                items( despesas) { item -> DespesasItem(item = item, onRemover = { id -> viewModel.removerDespesa(id)} ) }
+                items( despesas) { item ->
+                    DespesasItem(item = item, onRemover = { id ->
+                        viewModel.removerDespesa(id)
+                    } )
+                }
             }
         }
         NavigationSection(

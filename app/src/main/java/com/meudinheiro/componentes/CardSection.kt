@@ -20,10 +20,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
+import com.meudinheiro.data.ContaSaldo
 
 @Composable
 @Preview(showBackground = true)
-fun CardSection(onClick: () -> Unit ={}) {
+fun CardSection(
+    onClick: () -> Unit ={}
+) {
     Box(
         modifier = Modifier
             .padding(horizontal = 16.dp)
@@ -63,6 +66,16 @@ fun CardSection(onClick: () -> Unit ={}) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .align(Alignment.TopEnd)
+                .padding(start = 12.dp, bottom = 18.dp, end = 8.dp)
+        )
+
+        Text(
+            text = "Saldo R$ 1.000,00",
+            color = Color.Yellow,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
                 .padding(start = 12.dp, bottom = 18.dp, end = 8.dp)
         )
     }
