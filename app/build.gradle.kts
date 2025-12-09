@@ -58,6 +58,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
 
     ksp("androidx.room:room-compiler:2.6.1")
     testImplementation(libs.junit)

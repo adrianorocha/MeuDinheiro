@@ -32,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color.Companion.LightGray
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -40,21 +39,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewModelScope
 import com.meudinheiro.Data.Despesa
 import com.meudinheiro.R
-import com.meudinheiro.Repository.MainRepository
-import com.meudinheiro.ViewModel.DespesasViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 @Preview(showBackground = true)
-fun ActionButtonRow() {
-    val context = LocalContext.current
-    val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
+fun ActionButtonRow(
+    categorias :List<String>,
+    onAddDespesa: (Despesa) -> Unit,
+    getPicCategoria: (String) -> String
+) {
+    //val context = LocalContext.current
+   // val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
     val exibirFormulario = remember { mutableStateOf(false) }
-    val categorias = repository.categorias.map { it.title }
+    //val categorias = repository.categorias.map { it.title }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
     Row(
@@ -188,12 +187,13 @@ fun ActionButtonRow() {
                                     valor = valorDouble,
                                     data = data,
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
-                                    pic = repository.getPicCategoria(categoriaSelecionada ?:"")
+                                    pic = getPicCategoria(categoriaSelecionada ?:"")
                                 )
-                                val viewModel = DespesasViewModel(repository)
-                                viewModel.viewModelScope.launch {
-                                    viewModel.adicionarDespesa(novaDespesa)
-                                }
+                                //val viewModel = DespesasViewModel(repository)
+                                //viewModel.viewModelScope.launch {
+                                //    viewModel.adicionarDespesa(novaDespesa)
+                                //}
+                                onAddDespesa(novaDespesa)
                                 // Limpa os campos
                                 descricao = ""
                                 valor = ""
@@ -221,7 +221,6 @@ fun ActionButtonRow() {
         }
     }
 }
-
 
 @Composable
 fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {

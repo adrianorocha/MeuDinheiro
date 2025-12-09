@@ -12,8 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,19 +23,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.meudinheiro.DAO.DespesasDomain
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.Repository.MainRepository
 import com.meudinheiro.ViewModel.DespesasViewModel
-import kotlin.collections.emptyList
+import com.meudinheiro.ViewModel.DespesasViewModelFactory
 
 @Composable
 fun MainScreen(
-    onCardClick: () -> Unit = {},
-    despesas : List<DespesasDomain>
+    onCardClick: () -> Unit = {}
+    //despesas : List<DespesasDomain>
 ) {
     val context = LocalContext.current
     val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
-    val viewModel = DespesasViewModel(repository)
+    val viewModel : DespesasViewModel = viewModel( factory = DespesasViewModelFactory(repository))
+
+    val despesas by viewModel.despesa.observeAsState(emptyList())
 
     Box(
         modifier = Modifier
@@ -49,7 +51,16 @@ fun MainScreen(
         ) {
             HeaderSection()
             CardSection { onCardClick }
-            ActionButtonRow()
+            ActionButtonRow(
+                categorias      = repository.categorias.map { it.title },
+                onAddDespesa = {
+                        nova -> viewModel.adicionarDespesa(nova)
+
+                },
+                getPicCategoria = {
+                        nome -> repository.getPicCategoria(nome)
+                },
+            )
             Row(
                 modifier = Modifier
                     .padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
@@ -82,11 +93,6 @@ fun MainScreen(
 
 @Composable
 @Preview(showBackground = true)
-
 fun MainScreenPreview() {
-    val context = LocalContext.current
-    val repository =  remember {MainRepository(context)}
-    val viewModel = DespesasViewModel(repository)
-    val despesas by viewModel.despesa.collectAsState(initial = emptyList())
-    MainScreen(despesas = despesas)
+    MainScreen()
 }

@@ -1,35 +1,31 @@
 package com.meudinheiro.ViewModel
 
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.Data.Despesa
 import com.meudinheiro.Repository.MainRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
-    private val _despesas = MutableLiveData<List<Despesa>>(emptyList())
+//    private val _despesas = MutableLiveData<List<Despesa>>(emptyList())
 
-    val despesa = repository.obterDespesas()
-
-    fun carregarDespesas() {
-        viewModelScope.launch {
-            _despesas.value = repository.obterDespesas() as List<Despesa>?
-        }
-    }
+    val despesa : LiveData<List<DespesasDomain>> = repository.obterDespesas().asLiveData(
+        viewModelScope.coroutineContext
+    )
 
     fun adicionarDespesa(despesa: Despesa) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.inserirDespesa(despesa)
-            //carregarDespesas()
         }
     }
 
     fun removerDespesa(id: Int) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.excluirDespesa(id)
-            //carregarDespesas()
         }
     }
 }
-

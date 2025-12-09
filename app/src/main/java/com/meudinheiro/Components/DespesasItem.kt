@@ -32,8 +32,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.DAO.DespesasDomain
-import com.meudinheiro.Repository.MainRepository
-import com.meudinheiro.ViewModel.DespesasViewModel
 
 @Composable
 @Preview(showBackground = true)
@@ -42,9 +40,6 @@ fun DespesasItem(
     onRemover : (Int) -> Unit
 ){
     var showDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
-    val viewModel = DespesasViewModel(repository)
 
     if(showDialog){
         AlertDialog(

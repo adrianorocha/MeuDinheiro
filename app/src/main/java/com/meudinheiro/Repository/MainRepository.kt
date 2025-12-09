@@ -10,12 +10,12 @@ import com.meudinheiro.Data.Despesa
 import kotlinx.coroutines.flow.Flow
 
 class MainRepository(val context: Context) {
-
-    private val db = Room.databaseBuilder(
+    private val db = AppDatabase.getInstance(context)
+    /*private val db = Room.databaseBuilder(
         context.applicationContext,
         AppDatabase::class.java,
         "financas-db"
-    ).build()
+    ).build()*/
 
     private val despesaDao = db.despesaDao()
 
@@ -67,4 +67,3 @@ class MainRepository(val context: Context) {
     )
 
 }
-
