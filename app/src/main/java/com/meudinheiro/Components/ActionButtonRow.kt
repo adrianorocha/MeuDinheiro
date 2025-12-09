@@ -50,12 +50,10 @@ fun ActionButtonRow(
     onAddDespesa: (Despesa) -> Unit,
     getPicCategoria: (String) -> String
 ) {
-    //val context = LocalContext.current
-   // val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
     val exibirFormulario = remember { mutableStateOf(false) }
-    //val categorias = repository.categorias.map { it.title }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -104,9 +102,11 @@ fun ActionButtonRow(
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
+
                     var descricao by remember { mutableStateOf("") }
                     var valor by remember { mutableStateOf("") }
                     var data by remember { mutableStateOf("") }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -143,8 +143,7 @@ fun ActionButtonRow(
                             }
                         }
                     }
-
-
+                    //Descrição
                     TextField(
                         value = descricao,
                         onValueChange = { descricao = it },
@@ -154,6 +153,7 @@ fun ActionButtonRow(
                             .padding(top = 8.dp)
                             .clip(RoundedCornerShape(10.dp))
                     )
+                    //Valor
                     TextField(
                         value = valor,
                         onValueChange = { valor = it },
@@ -189,11 +189,9 @@ fun ActionButtonRow(
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
                                     pic = getPicCategoria(categoriaSelecionada ?:"")
                                 )
-                                //val viewModel = DespesasViewModel(repository)
-                                //viewModel.viewModelScope.launch {
-                                //    viewModel.adicionarDespesa(novaDespesa)
-                                //}
+
                                 onAddDespesa(novaDespesa)
+
                                 // Limpa os campos
                                 descricao = ""
                                 valor = ""

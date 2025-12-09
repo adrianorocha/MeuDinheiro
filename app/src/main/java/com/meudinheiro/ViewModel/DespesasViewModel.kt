@@ -11,7 +11,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
-//    private val _despesas = MutableLiveData<List<Despesa>>(emptyList())
 
     val despesa : LiveData<List<DespesasDomain>> = repository.obterDespesas().asLiveData(
         viewModelScope.coroutineContext

@@ -1,7 +1,6 @@
 package com.meudinheiro.Repository
 
 import android.content.Context
-import androidx.room.Room
 import com.meudinheiro.DAO.CategoriaDomain
 import com.meudinheiro.DAO.DespesasDomain
 import com.meudinheiro.DAO.OrcamentoDomain
@@ -11,11 +10,6 @@ import kotlinx.coroutines.flow.Flow
 
 class MainRepository(val context: Context) {
     private val db = AppDatabase.getInstance(context)
-    /*private val db = Room.databaseBuilder(
-        context.applicationContext,
-        AppDatabase::class.java,
-        "financas-db"
-    ).build()*/
 
     private val despesaDao = db.despesaDao()
 
