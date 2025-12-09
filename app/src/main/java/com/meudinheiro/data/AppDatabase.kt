@@ -1,4 +1,4 @@
-package com.meudinheiro.Data
+package com.meudinheiro.data
 
 import android.content.Context
 import androidx.room.Database

@@ -1,12 +1,12 @@
-package com.meudinheiro.ViewModel
+package com.meudinheiro.viewModel
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
-import com.meudinheiro.DAO.DespesasDomain
-import com.meudinheiro.Data.Despesa
-import com.meudinheiro.Repository.MainRepository
+import com.meudinheiro.dao.DespesasDomain
+import com.meudinheiro.data.Despesa
+import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 

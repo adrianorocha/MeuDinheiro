@@ -1,11 +1,11 @@
-package com.meudinheiro.Repository
+package com.meudinheiro.repository
 
 import android.content.Context
-import com.meudinheiro.DAO.CategoriaDomain
-import com.meudinheiro.DAO.DespesasDomain
-import com.meudinheiro.DAO.OrcamentoDomain
-import com.meudinheiro.Data.AppDatabase
-import com.meudinheiro.Data.Despesa
+import com.meudinheiro.dao.CategoriaDomain
+import com.meudinheiro.dao.DespesasDomain
+import com.meudinheiro.dao.OrcamentoDomain
+import com.meudinheiro.data.AppDatabase
+import com.meudinheiro.data.Despesa
 import kotlinx.coroutines.flow.Flow
 
 class MainRepository(val context: Context) {

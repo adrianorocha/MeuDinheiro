@@ -1,10 +1,10 @@
-package com.meudinheiro.Data
+package com.meudinheiro.data
 
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.meudinheiro.DAO.DespesasDomain
+import com.meudinheiro.dao.DespesasDomain
 import kotlinx.coroutines.flow.Flow
 
 @Dao

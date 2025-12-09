@@ -1,4 +1,4 @@
-package com.meudinheiro.Components
+package com.meudinheiro.componentes
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height

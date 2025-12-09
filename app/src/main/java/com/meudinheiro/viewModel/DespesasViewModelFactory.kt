@@ -1,8 +1,8 @@
-package com.meudinheiro.ViewModel
+package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.meudinheiro.Repository.MainRepository
+import com.meudinheiro.repository.MainRepository
 
 class DespesasViewModelFactory(
     private val repository: MainRepository

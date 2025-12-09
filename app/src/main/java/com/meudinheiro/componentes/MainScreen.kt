@@ -1,4 +1,4 @@
-package com.meudinheiro.Components
+package com.meudinheiro.componentes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -24,9 +24,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.meudinheiro.Repository.MainRepository
-import com.meudinheiro.ViewModel.DespesasViewModel
-import com.meudinheiro.ViewModel.DespesasViewModelFactory
+import com.meudinheiro.repository.MainRepository
+import com.meudinheiro.viewModel.DespesasViewModel
+import com.meudinheiro.viewModel.DespesasViewModelFactory
 
 @Composable
 fun MainScreen(
