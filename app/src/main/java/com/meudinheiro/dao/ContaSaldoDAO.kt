@@ -1,10 +1,11 @@
-package com.meudinheiro.data
+package com.meudinheiro.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.meudinheiro.dao.ContaSaldoDomain
+import com.meudinheiro.data.ContaSaldo
+import com.meudinheiro.data.ContaSaldoDomain
 import kotlinx.coroutines.flow.Flow
 
 @Dao

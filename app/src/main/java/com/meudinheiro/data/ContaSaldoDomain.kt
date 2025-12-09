@@ -1,4 +1,4 @@
-package com.meudinheiro.dao
+package com.meudinheiro.data
 
 data class ContaSaldoDomain(
     val id: Int,

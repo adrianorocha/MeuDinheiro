@@ -1,9 +1,9 @@
 package com.meudinheiro.repository
 
 import android.content.Context
-import com.meudinheiro.dao.CategoriaDomain
-import com.meudinheiro.dao.DespesasDomain
-import com.meudinheiro.dao.OrcamentoDomain
+import com.meudinheiro.data.CategoriaDomain
+import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.OrcamentoDomain
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.Despesa
 import kotlinx.coroutines.flow.Flow

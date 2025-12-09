@@ -4,7 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
-import com.meudinheiro.dao.DespesasDomain
+import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
