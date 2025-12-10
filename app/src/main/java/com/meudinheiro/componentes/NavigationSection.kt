@@ -20,7 +20,6 @@ import com.meudinheiro.R
 fun NavigationSection(
     onItemSelected: (Int) -> Unit,
     modifier: Modifier
-
 ) {
     NavigationBar(
         containerColor = colorResource(R.color.white),
@@ -38,7 +37,7 @@ fun NavigationSection(
         )
         NavigationBarItem(
             selected = false,
-            onClick = {onItemSelected(0) },
+            onClick = {onItemSelected(1) },
             icon = {
                 Icon(painterResource(R.drawable.bank), contentDescription = "Conta")
             },

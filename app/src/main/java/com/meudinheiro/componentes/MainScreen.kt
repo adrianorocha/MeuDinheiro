@@ -14,12 +14,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,17 +37,22 @@ import com.meudinheiro.viewModel.DespesasViewModelFactory
 fun MainScreen(
     onCardClick: () -> Unit = {}
 ) {
+    var selectedIndex by remember { mutableStateOf(0) }
+
+    fun onItemSelected(index: Int) {
+        selectedIndex = index
+    }
+
     val context = LocalContext.current
     val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
     val viewModel : DespesasViewModel = viewModel( factory = DespesasViewModelFactory(repository))
     val viewModelS : ContaSaldoViewModel = viewModel( factory = ContaSaldoViewModelFactory(
-        repository
-    )
-    )
+        repository ) )
 
     val despesas by viewModel.despesa.observeAsState(emptyList())
-    val saldo by viewModelS.contaSaldo.observeAsState(emptyList())
+    val conta by viewModelS.contaSaldo.observeAsState(emptyList())
 
+    var contaPrincipal = conta.firstOrNull()
 
     Box(
         modifier = Modifier
@@ -54,10 +62,25 @@ fun MainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-
         ) {
             HeaderSection()
-            CardSection { onCardClick }
+            if(contaPrincipal != null && contaPrincipal.saldo <= 0.0){
+                CardSection(
+                    conta = contaPrincipal,
+                    viewModelFactory = ContaSaldoViewModelFactory(repository)
+                )
+            } else {
+                Text(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    textAlign = TextAlign.Center,
+
+                    text = "Nenhuma Conta Cadastrada")
+            }
             ActionButtonRow(
                 categorias   = repository.categorias.map {
                     it.title
@@ -75,12 +98,22 @@ fun MainScreen(
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center
             ){
-                Text(
-                    text = "Despesas Recentes",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
+                when(selectedIndex) {
+                    0 -> Carteira(
+                        viewModelFactory = ContaSaldoViewModelFactory(repository)
+                    )
+                    1 -> ContaBancaria(
+                        viewModelFactory = ContaSaldoViewModelFactory(repository)
+                    )
+                    else -> {
+                        Text(
+                            text = "Despesas Recentes",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    }
+                }
             }
 
             LazyColumn(
@@ -96,7 +129,7 @@ fun MainScreen(
             }
         }
         NavigationSection(
-            onItemSelected = { 0 },
+            onItemSelected = ::onItemSelected,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
         )
