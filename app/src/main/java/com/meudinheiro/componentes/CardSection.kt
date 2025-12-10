@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,7 +34,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
-import java.math.BigDecimal
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +50,7 @@ fun CardSection(
     ) {
         items(contas, key = { it.id }) { conta ->
             ContaSaldoCard(
-                conta = conta,
+                conta = conta.banco,
                 onSalvar = { novoSaldo ->
                     viewModel.atualizarSaldo(conta, novoSaldo)
                 }
@@ -63,7 +63,7 @@ fun CardSection(
 @Composable
 fun ContaSaldoCard(
     conta: ContaSaldoDomain,
-    onSalvar: (BigDecimal) -> Unit
+    onSalvar: (Double) -> Unit
 ) {
     var textoSaldo by remember(conta) { mutableStateOf(conta.saldo.toString()) }
     var editando by remember { mutableStateOf(false) }
@@ -94,8 +94,8 @@ fun ContaSaldoCard(
                     trailingIcon = {
                         IconButton(onClick = {
                             editando = false
-                            val novo = textoSaldo.toBigDecimalOrNull() ?: BigDecimal.ZERO
-                            onSalvar(novo)
+                            val novo = textoSaldo.toDoubleOrNull() ?: Double
+                            onSalvar(novo as Double)
                         }) {
                             Icon(Icons.Default.Check, contentDescription = "Salvar")
                         }

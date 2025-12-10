@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.meudinheiro"
-        minSdk = 24
+        minSdk = 25
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"

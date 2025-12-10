@@ -6,5 +6,6 @@ data class DespesasDomain(
     val descricao: String,
     val valor: Double,
     val data: String,
-    val conta: String
+    val conta: String,
+    val categoria: String
 )

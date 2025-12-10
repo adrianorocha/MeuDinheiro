@@ -59,7 +59,11 @@ class MainRepository(val context: Context) {
         contaSaldoDao.inserirContaSaldo(contaSaldo)
     }
 
-    suspend fun excluirConta(id: Int): ContaSaldo? {
+    suspend fun excluirConta(id: Int) {
         return contaSaldoDao.excluirConta(id)
+    }
+
+    suspend fun atualizarSaldo(conta: String, novoSaldo: Double) {
+        contaSaldoDao.atualizarSaldo(conta, novoSaldo)
     }
 }

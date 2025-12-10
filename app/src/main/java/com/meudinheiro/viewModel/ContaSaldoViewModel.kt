@@ -26,4 +26,11 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
             repository.excluirConta(id)
         }
     }
+
+    fun atualizarSaldo(conta: String, novoSaldo: Double) {
+        viewModelScope.launch( Dispatchers.IO){
+            repository.atualizarSaldo(conta, novoSaldo)
+        }
+
+    }
 }

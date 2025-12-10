@@ -17,5 +17,9 @@ interface ContaSaldoDao {
     fun obterContaSaldo(): Flow<List<ContaSaldoDomain>>
 
     @Query("DELETE FROM contasaldo WHERE id = :id")
-    suspend fun excluirConta(id: Int): ContaSaldo?
+    suspend fun excluirConta(id: Int)
+
+    @Query("UPDATE contasaldo SET saldo = :novoSaldo WHERE conta = :conta")
+    suspend fun atualizarSaldo(conta: String, novoSaldo: Double)
+
 }

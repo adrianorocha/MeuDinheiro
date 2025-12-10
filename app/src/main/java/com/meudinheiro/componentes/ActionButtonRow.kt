@@ -73,7 +73,7 @@ fun ActionButtonRow(
         ActionButton(
             R.drawable.sim_chip,
             "Configurações",
-            onClick = { /* Ação ao clicar no botão Configurações */ }
+            onClick = {  }
         )
     }
     if(exibirFormulario.value) {
