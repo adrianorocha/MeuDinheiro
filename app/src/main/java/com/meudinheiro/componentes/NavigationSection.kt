@@ -29,16 +29,8 @@ fun NavigationSection(
             .height(80.dp)
     ) {
         NavigationBarItem(
-            selected = selectedIndex == 0,
-            onClick = {onItemSelected(0) },
-            icon = {
-                Icon(painterResource(R.drawable.wallet), contentDescription = "Dinheiro")
-            },
-            label={Text(text="Carteira")}
-        )
-        NavigationBarItem(
-            selected = selectedIndex == 1 ,
-            onClick = {onItemSelected(1) },
+            selected = selectedIndex == 0 ,
+            onClick = { onItemSelected(0) },
             icon = {
                 Icon(painterResource(R.drawable.bank), contentDescription = "Conta")
             },

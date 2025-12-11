@@ -2,6 +2,7 @@ package com.meudinheiro.repository
 
 import android.content.Context
 import com.meudinheiro.data.AppDatabase
+import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.CategoriaDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
@@ -32,7 +33,7 @@ class MainRepository(val context: Context) {
         return categoria?.pic ?: "default_pic"
     }
 
-    val categorias=mutableListOf(
+    val categorias = mutableListOf(
         CategoriaDomain(pic = "fuel", title = "Combustível"),
         CategoriaDomain(pic = "restaurant", title = "Alimentação"),
         CategoriaDomain(pic = "transport", title = "Transporte"),
@@ -48,6 +49,26 @@ class MainRepository(val context: Context) {
         CategoriaDomain(pic = "drink", title = "Bebidas"),
         CategoriaDomain(pic = "lunch", title = "Lanche")
     )
+
+    val bancos = mutableListOf(
+        BancoDomain(id = 1, nome = "Banco do Brasil"),
+        BancoDomain(id = 2, nome = "Bradesco"),
+        BancoDomain(id = 3, nome = "Santander"),
+        BancoDomain(id = 4, nome = "Caixa Econômica"),
+        BancoDomain(id = 5, nome = "Itaú"),
+        BancoDomain(id = 6, nome = "HSBC"),
+        BancoDomain(id = 7, nome = "Nubank"),
+        BancoDomain(id = 8, nome = "C6"),
+        BancoDomain(id = 9, nome = "MercadoPago"),
+        BancoDomain(id = 10, nome = "Sicoob"),
+        BancoDomain(id = 11, nome = "Banco Original"),
+        BancoDomain(id = 12, nome = "Banco Pan"),
+        BancoDomain(id = 13, nome = "Banco do Nordeste"),
+        BancoDomain(id = 14, nome = "Banco Inter"),
+        BancoDomain(id = 15, nome = "Banco Itaú BBA"),
+        BancoDomain(id = 16, nome = "Banco BMG")
+    )
+
     //Saldo Conta
     private val contaSaldoDao = db.contaSaldoDao()
 

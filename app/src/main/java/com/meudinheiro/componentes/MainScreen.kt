@@ -36,7 +36,7 @@ import com.meudinheiro.viewModel.DespesasViewModelFactory
 fun MainScreen(
     onCardClick: () -> Unit = {}
 ) {
-    var selectedIndex by remember { mutableStateOf(0) }
+    var selectedIndex by remember { mutableStateOf(-1) }
 
     fun onItemSelected(index: Int) {
         selectedIndex = index
@@ -95,17 +95,12 @@ fun MainScreen(
                     repository.getPicCategoria(nome)
                 },
             )
-            when (selectedIndex) {
-                0 -> Carteira(
-                    viewModelFactory = ContaSaldoViewModelFactory(repository)
-                )
 
-                1 -> ContaBancaria(
-                    viewModelFactory = ContaSaldoViewModelFactory(repository)
+            if (selectedIndex == 0) {
+                ContaBancaria(
+                    viewModelFactory = ContaSaldoViewModelFactory(repository),
+                    onClose = { selectedIndex = -1 }
                 )
-
-                else -> {
-                }
             }
             Row(
                 modifier = Modifier

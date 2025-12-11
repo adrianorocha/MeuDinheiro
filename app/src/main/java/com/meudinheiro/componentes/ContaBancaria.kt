@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,74 +12,105 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.ContaSaldo
+import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 
 @Composable
 fun ContaBancaria(
-    viewModelFactory: ContaSaldoViewModelFactory
-){
+    viewModelFactory: ContaSaldoViewModelFactory,
+    onClose: () -> Unit
+) {
     val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
+    val contasExistentes by viewModel.contaSaldo.observeAsState(emptyList())
+    val context = LocalContext.current
+    val repository = remember { MainRepository(context) }
     var exibirFormulario by remember { mutableStateOf(true) }
 
-    if(exibirFormulario) {
+    if (exibirFormulario) {
         ContaBancariaForm(
-            onAdicionar = {
-                banco,
-                agencia,
-                contaCorrente ->
-                val novaconta = ContaSaldo(
-                    banco = banco,
-                    agencia = agencia,
-                    conta = contaCorrente,
-                    id = 0,
-                    saldo = 0.00,
-                    titular = ""
-                )
-                viewModel.adicionarContaSaldo(novaconta)
+            repository.bancos.map {
+                it.nome
             },
-            onCancelar = { exibirFormulario = false }
+            onAdicionar = { banco,
+                            agencia,
+                            contaCorrente ->
+                val exists = contasExistentes.any { domain ->
+                    domain.banco.equals(banco.trim(), true) &&
+                            domain.agencia.equals(agencia.trim(), true) &&
+                            domain.conta.equals(contaCorrente.trim(), true)
+                }
+                if (exists) {
+                    Toast.makeText(context, "Esa conta já foi cadastrada", Toast.LENGTH_SHORT)
+                        .show()
+                } else {
+                    val novaconta = ContaSaldo(
+                        banco = banco,
+                        agencia = agencia,
+                        conta = contaCorrente,
+                        id = 0,
+                        saldo = 0.00,
+                        titular = ""
+                    )
+                    viewModel.adicionarContaSaldo(novaconta)
+                    exibirFormulario = false
+                    onClose()
+                }
+            },
+            onCancelar = {
+                exibirFormulario = false
+                onClose()
+            }
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContaBancariaForm(
+    bancos: List<String>,
     onAdicionar: (
-            banco: String,
-            agencia: String,
-            contaCorrente: String
-            ) -> Unit,
+        banco: String,
+        agencia: String,
+        contaCorrente: String
+    ) -> Unit,
     onCancelar: () -> Unit
-){
-    var banco by remember { mutableStateOf("") }
+) {
     var agencia by remember { mutableStateOf("") }
+    var bancoSelecionado by remember { mutableStateOf("") }
     var contaCorrente by remember { mutableStateOf("") }
+    var expandido by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-    ){
+    ) {
         Surface(
             color = Color.LightGray,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(400.dp)
+                .height(330.dp)
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
             shadowElevation = 8.dp
@@ -96,15 +128,37 @@ fun ContaBancariaForm(
                         .padding(16.dp)
                 ) {
                     //Descrição
-                    TextField(
-                        value = banco,
-                        onValueChange = { banco = it },
-                        label = { Text("Banco") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
+                    ExposedDropdownMenuBox(
+                        expanded = expandido,
+                        onExpandedChange = { expandido != expandido }
+                    ) {
+                        TextField(
+                            value = bancoSelecionado ?: "Banco",
+                            onValueChange = { },
+                            label = { Text("Banco") },
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expandido,
+                            onDismissRequest = { expandido = false }
+                        ) {
+                            bancos.forEach { nomeBanco ->
+                                DropdownMenuItem(
+                                    text = { Text(nomeBanco) },
+                                    onClick = {
+                                        bancoSelecionado = nomeBanco
+                                        expandido = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -139,20 +193,20 @@ fun ContaBancariaForm(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
-                    ){
+                    ) {
                         Button(
                             onClick = {
                                 onAdicionar(
-                                    banco,
+                                    bancoSelecionado,
                                     agencia,
                                     contaCorrente
                                 )
-                                banco = ""
+                                bancoSelecionado = ""
                                 agencia = ""
-                                contaCorrente=""
+                                contaCorrente = ""
                             }
                         ) {
-                            Text( text = "Adicionar")
+                            Text(text = "Adicionar")
                         }
                         Button(
                             onClick = onCancelar,
@@ -160,7 +214,7 @@ fun ContaBancariaForm(
                                 .padding(start = 8.dp)
                                 .clip(RoundedCornerShape(10.dp))
                         ) {
-                            Text( text = "Cancelar")
+                            Text(text = "Cancelar")
                         }
                     }
                 }
