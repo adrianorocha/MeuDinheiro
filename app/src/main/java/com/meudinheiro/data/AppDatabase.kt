@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.dao.DespesaDao
 
-@Database(entities = [Despesa::class, ContaSaldo::class], version = 2)
+@Database(entities = [Despesa::class, ContaSaldo::class], version = 1)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun despesaDao(): DespesaDao
     abstract fun contaSaldoDao(): ContaSaldoDao

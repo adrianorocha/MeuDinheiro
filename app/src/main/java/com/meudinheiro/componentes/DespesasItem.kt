@@ -33,6 +33,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.DespesasDomain
+import java.util.Locale
 
 @Composable
 @Preview(showBackground = true)
@@ -120,7 +121,7 @@ fun DespesasItem(
             )
         }
         Text(
-            text = "R$ ${item.valor}",
+            text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", item.valor)}",
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             color = Color.Gray,

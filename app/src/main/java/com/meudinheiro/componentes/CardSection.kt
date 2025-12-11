@@ -23,6 +23,7 @@ import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
+import java.util.Locale
 
 /*@OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,7 +154,8 @@ fun CardSection(
                 .padding(top=25.dp,start = 315.dp)
         )
         Text(
-            text = "Agência : 00001 - C/C : 00000000000",
+            text = "Agência : " + conta.agencia + " - C/C : " + conta.conta,
+//            text = "Agência : 00001 - C/C : 00000000000",
             color = Color.White,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
@@ -163,7 +165,7 @@ fun CardSection(
         )
 
         Text(
-            text = "R$ ${conta.saldo}",
+            text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", conta.saldo)}",
             color = Color.Yellow,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
