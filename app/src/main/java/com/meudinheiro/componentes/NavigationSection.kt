@@ -18,6 +18,7 @@ import com.meudinheiro.R
 @Preview(showBackground = true)
 
 fun NavigationSection(
+    selectedIndex: Int,
     onItemSelected: (Int) -> Unit,
     modifier: Modifier
 ) {
@@ -28,7 +29,7 @@ fun NavigationSection(
             .height(80.dp)
     ) {
         NavigationBarItem(
-            selected = false,
+            selected = selectedIndex == 0,
             onClick = {onItemSelected(0) },
             icon = {
                 Icon(painterResource(R.drawable.wallet), contentDescription = "Dinheiro")
@@ -36,7 +37,7 @@ fun NavigationSection(
             label={Text(text="Carteira")}
         )
         NavigationBarItem(
-            selected = false,
+            selected = selectedIndex == 1 ,
             onClick = {onItemSelected(1) },
             icon = {
                 Icon(painterResource(R.drawable.bank), contentDescription = "Conta")

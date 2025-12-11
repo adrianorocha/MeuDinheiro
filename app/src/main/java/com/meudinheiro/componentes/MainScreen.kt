@@ -1,7 +1,6 @@
 package com.meudinheiro.componentes
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,10 +43,13 @@ fun MainScreen(
     }
 
     val context = LocalContext.current
-    val repository =  remember {MainRepository(context)} //Carrega as Informações do Repository
-    val viewModel : DespesasViewModel = viewModel( factory = DespesasViewModelFactory(repository))
-    val viewModelS : ContaSaldoViewModel = viewModel( factory = ContaSaldoViewModelFactory(
-        repository ) )
+    val repository = remember { MainRepository(context) } //Carrega as Informações do Repository
+    val viewModel: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
+    val viewModelS: ContaSaldoViewModel = viewModel(
+        factory = ContaSaldoViewModelFactory(
+            repository
+        )
+    )
 
     val despesas by viewModel.despesa.observeAsState(emptyList())
     val conta by viewModelS.contaSaldo.observeAsState(emptyList())
@@ -64,7 +66,7 @@ fun MainScreen(
                 .fillMaxSize()
         ) {
             HeaderSection()
-            if(contaPrincipal != null && contaPrincipal.saldo <= 0.0){
+            if (contaPrincipal != null && contaPrincipal.saldo <= 0.0) {
                 CardSection(
                     conta = contaPrincipal,
                     viewModelFactory = ContaSaldoViewModelFactory(repository)
@@ -79,41 +81,45 @@ fun MainScreen(
                     color = Color.Black,
                     textAlign = TextAlign.Center,
 
-                    text = "Nenhuma Conta Cadastrada")
+                    text = "Nenhuma Conta Cadastrada"
+                )
             }
             ActionButtonRow(
-                categorias   = repository.categorias.map {
+                categorias = repository.categorias.map {
                     it.title
                 },
                 onAddDespesa = { nova ->
                     viewModel.adicionarDespesa(nova)
                 },
-                getPicCategoria = {nome ->
+                getPicCategoria = { nome ->
                     repository.getPicCategoria(nome)
                 },
             )
+            when (selectedIndex) {
+                0 -> Carteira(
+                    viewModelFactory = ContaSaldoViewModelFactory(repository)
+                )
+
+                1 -> ContaBancaria(
+                    viewModelFactory = ContaSaldoViewModelFactory(repository)
+                )
+
+                else -> {
+                }
+            }
             Row(
                 modifier = Modifier
-                    .padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ){
-                when(selectedIndex) {
-                    0 -> Carteira(
-                        viewModelFactory = ContaSaldoViewModelFactory(repository)
-                    )
-                    1 -> ContaBancaria(
-                        viewModelFactory = ContaSaldoViewModelFactory(repository)
-                    )
-                    else -> {
-                        Text(
-                            text = "Despesas Recentes",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
-                        )
-                    }
-                }
+                    .padding(16.dp)
+                    .fillMaxWidth()
+                    .align(Alignment.CenterHorizontally)
+            ) {
+                Text(
+                    text = "Despesas Recentes",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    textAlign = TextAlign.Center
+                )
             }
 
             LazyColumn(
@@ -121,14 +127,16 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp)
             ) {
-                items( despesas) { item ->
+                items(despesas) { item ->
                     DespesasItem(item = item, onRemover = { id ->
                         viewModel.removerDespesa(id)
-                    } )
+                    })
                 }
             }
+
         }
         NavigationSection(
+            selectedIndex = selectedIndex,
             onItemSelected = ::onItemSelected,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
