@@ -7,9 +7,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,6 +131,33 @@ fun CardSection(
 ) {
     val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
     val coroutineScope = rememberCoroutineScope()
+    val showDialog = remember { mutableStateOf(false) }
+
+    if(showDialog.value){
+        AlertDialog(
+            onDismissRequest = { showDialog.value = false},
+            title = { Text(text = "Excluir Conta")},
+            text = { Text(text = "Deseja excluir esta conta?")},
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onExcluir()
+                        showDialog.value = false
+                    }
+                ) {
+                    Text(text = "Sim")
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { showDialog.value = false}
+                ) {
+                    Text(text = "Não")
+                }
+            }
+        )
+    }
+
     //val contas by viewModel.contaSaldo.observeAsState(emptyList())
 
     Box(
@@ -136,6 +171,7 @@ fun CardSection(
                 onLongClick = {
                     coroutineScope.launch {
                         onExcluir()
+                        showDialog.value = true
                     }
                 }
             )
@@ -166,7 +202,6 @@ fun CardSection(
         )
         Text(
             text = "Agência : " + conta.agencia + " - C/C : " + conta.conta,
-//            text = "Agência : 00001 - C/C : 00000000000",
             color = Color.White,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,

@@ -41,18 +41,18 @@ fun DespesasItem(
     item: DespesasDomain,
     onRemover : (Int) -> Unit
 ){
-    var showDialog by remember { mutableStateOf(false) }
+    val showDialog = remember { mutableStateOf(false) }
 
-    if(showDialog){
+    if(showDialog.value){
         AlertDialog(
-            onDismissRequest = { showDialog = false},
+            onDismissRequest = { showDialog.value = false},
             title = { Text(text = "Remover Despesa")},
             text = { Text(text = "Deseja remover esta despesa?")},
             confirmButton = {
                 Button(
                     onClick = {
                         onRemover(item.id)
-                        showDialog = false
+                        showDialog.value = false
                     }
                 ) {
                     Text(text = "Sim")
@@ -60,7 +60,7 @@ fun DespesasItem(
             },
             dismissButton = {
                 Button(
-                    onClick = { showDialog = false}
+                    onClick = { showDialog.value = false}
                 ) {
                     Text(text = "Não")
                 }
@@ -82,7 +82,7 @@ fun DespesasItem(
             ).combinedClickable(
                 onClick = {
                 },
-                onLongClick = {showDialog = true}
+                onLongClick = {showDialog.value = true}
             ),
 
         verticalAlignment = Alignment.CenterVertically

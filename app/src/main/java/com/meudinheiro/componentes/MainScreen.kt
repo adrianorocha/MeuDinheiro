@@ -129,7 +129,6 @@ fun MainScreen(
                     })
                 }
             }
-
         }
         NavigationSection(
             selectedIndex = selectedIndex,
