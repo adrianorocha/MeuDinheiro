@@ -2,18 +2,27 @@ package com.meudinheiro.componentes
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -120,99 +129,123 @@ fun ContaSaldoCard(
 @Composable
 //@Preview(showBackground = true)
 fun CardSection(
-    conta: ContaSaldoDomain,
+    //conta: ContaSaldoDomain,
+    contas: List<ContaSaldoDomain>,
     viewModelFactory: ContaSaldoViewModelFactory,
-    onExcluir: () -> Unit
+    onExcluir: (ContaSaldoDomain) -> Unit,
+//    onExcluir: () -> Unit,
+    onAtualizar: (ContaSaldoDomain) -> Unit
 ) {
     val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
     val coroutineScope = rememberCoroutineScope()
     val showDialog = remember { mutableStateOf(false) }
-
-    if(showDialog.value){
-        AlertDialog(
-            onDismissRequest = { showDialog.value = false},
-            title = { Text(text = "Excluir Conta")},
-            text = { Text(text = "Deseja excluir esta conta?")},
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onExcluir()
-                        showDialog.value = false
-                    }
-                ) {
-                    Text(text = "Sim")
-                }
-            },
-            dismissButton = {
-                Button(
-                    onClick = { showDialog.value = false}
-                ) {
-                    Text(text = "Não")
-                }
-            }
-        )
-    }
+    var contaSelecionada by remember { mutableStateOf<ContaSaldoDomain?>(null) }
 
     //val contas by viewModel.contaSaldo.observeAsState(emptyList())
 
-    Box(
+    LazyRow(
         modifier = Modifier
-            .padding(horizontal = 16.dp)
-            .height(230.dp)
-            .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(
-                onClick = {},
-                onLongClick = {
-                    coroutineScope.launch {
-                        onExcluir()
-                        showDialog.value = true
+            .padding(16.dp)
+            .height(230.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(contas) { conta ->
+            Card(
+                modifier = Modifier
+                    .width(385.dp)
+                    .height(210.dp),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .height(230.dp)
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(16.dp))
+                        .combinedClickable(
+                            onClick = {
+                                contaSelecionada = conta
+                                onAtualizar(conta)
+                            },
+                            onLongClick = {
+                                coroutineScope.launch {
+                                    onExcluir(conta)
+                                    showDialog.value = true
+                                }
+                            }
+                        )
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.card_tecno),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .matchParentSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    Text(
+                        text = conta.banco,
+                        color = Color.Yellow,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp, bottom = 16.dp)
+                    )
+
+                    Image(
+                        painter = painterResource(id = R.drawable.sim_chip_2),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(top = 25.dp, start = 315.dp)
+                    )
+                    Text(
+                        text = "Agência : " + conta.agencia + " - C/C : " + conta.conta,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(start = 12.dp, bottom = 18.dp, end = 8.dp)
+                    )
+
+                    Text(
+                        text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", conta.saldo)}",
+                        color = Color.Yellow,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 12.dp, bottom = 18.dp, end = 8.dp)
+                    )
+                    if(showDialog.value){
+                        AlertDialog(
+                            onDismissRequest = { showDialog.value = false},
+                            title = { Text(text = "Excluir Conta")},
+                            text = { Text(text = "Deseja excluir esta conta?")},
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        onExcluir(conta)
+                                        showDialog.value = false
+                                    }
+                                ) {
+                                    Text(text = "Sim")
+                                }
+                            },
+                            dismissButton = {
+                                Button(
+                                    onClick = { showDialog.value = false}
+                                ) {
+                                    Text(text = "Não")
+                                }
+                            }
+                        )
                     }
                 }
-            )
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.card_tecno),
-            contentDescription = null,
-            modifier = Modifier
-                .matchParentSize(),
-            contentScale = ContentScale.Crop
-        )
-        Text(
-            text = conta.banco,
-            color = Color.Yellow,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 16.dp, bottom = 16.dp)
-        )
-
-        Image(
-            painter = painterResource(id = R.drawable.sim_chip_2),
-            contentDescription = null,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top=25.dp,start = 315.dp)
-        )
-        Text(
-            text = "Agência : " + conta.agencia + " - C/C : " + conta.conta,
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(start = 12.dp, bottom = 18.dp, end = 8.dp)
-        )
-
-        Text(
-            text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", conta.saldo)}",
-            color = Color.Yellow,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 12.dp, bottom = 18.dp, end = 8.dp)
-        )
+            }
+        }
     }
 }
+

@@ -26,6 +26,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
@@ -37,6 +38,8 @@ fun MainScreen(
     onCardClick: () -> Unit = {}
 ) {
     var selectedIndex by remember { mutableStateOf(-1) }
+    var contaSelecionada by remember { mutableStateOf<ContaSaldoDomain?>(null) }
+
 
     fun onItemSelected(index: Int) {
         selectedIndex = index
@@ -51,10 +54,14 @@ fun MainScreen(
         )
     )
 
-    val despesas by viewModel.despesa.observeAsState(emptyList())
-    val conta by viewModelS.contaSaldo.observeAsState(emptyList())
+    fun atualizarDespesas(conta: ContaSaldoDomain) {
+        contaSelecionada = conta
+    }
 
-    var contaPrincipal = conta.firstOrNull()
+    val despesas by viewModel.despesa.observeAsState(emptyList())
+    val contas by viewModelS.contaSaldo.observeAsState(emptyList())
+
+    var contaPrincipal = contas.firstOrNull()
 
     Box(
         modifier = Modifier
@@ -68,9 +75,14 @@ fun MainScreen(
             HeaderSection()
             if (contaPrincipal != null && contaPrincipal.saldo <= 0.0) {
                 CardSection(
-                    conta = contaPrincipal,
+                    contas = contas,
                     viewModelFactory = ContaSaldoViewModelFactory(repository),
-                    onExcluir = { viewModelS.removerContaSaldo(contaPrincipal.id.toInt()) }
+                    onExcluir = { conta ->
+                        viewModelS.removerContaSaldo(conta.id)
+                    },
+                    onAtualizar = { conta ->
+                        atualizarDespesas(conta)
+                    }
                 )
             } else {
                 Text(
