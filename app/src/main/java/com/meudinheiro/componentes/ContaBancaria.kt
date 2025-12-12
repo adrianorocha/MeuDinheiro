@@ -44,14 +44,13 @@ fun ContaBancaria(
     val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
     val contasExistentes by viewModel.contaSaldo.observeAsState(emptyList())
     val context = LocalContext.current
-    val repository = remember { MainRepository(context) }
     var exibirFormulario by remember { mutableStateOf(true) }
+
+    val bancos = viewModel.bancos.value.map { it.nome }
 
     if (exibirFormulario) {
         ContaBancariaForm(
-            repository.bancos.map {
-                it.nome
-            },
+            bancos = bancos,
             onAdicionar = { banco,
                             agencia,
                             contaCorrente ->

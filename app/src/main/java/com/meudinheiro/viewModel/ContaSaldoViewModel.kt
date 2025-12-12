@@ -1,9 +1,11 @@
 package com.meudinheiro.viewModel
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.repository.MainRepository
@@ -11,6 +13,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
+
+    val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
+
+    init {
+        // Carregue os bancos do repositório
+        bancos.value = repository.bancos
+    }
     val contaSaldo : LiveData<List<ContaSaldoDomain>> = repository.obterContaSaldo().asLiveData(
         viewModelScope.coroutineContext
     )

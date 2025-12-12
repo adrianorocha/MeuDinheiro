@@ -15,7 +15,6 @@ class MainRepository(val context: Context) {
 
     //Despesas
     private val despesaDao = db.despesaDao()
-
     suspend fun inserirDespesa(despesa: Despesa) {
         despesaDao.inserirDespesa(despesa)
     }
