@@ -2,6 +2,7 @@ package com.meudinheiro.componentes
 
 import android.widget.Toast
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -29,10 +31,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontVariation.weight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.ContaSaldo
-import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 
@@ -46,11 +48,12 @@ fun ContaBancaria(
     val context = LocalContext.current
     var exibirFormulario by remember { mutableStateOf(true) }
 
-    val bancos = viewModel.bancos.value.map { it.nome }
+    val bancoList = viewModel.bancos.value
+    val bancosNomes = bancoList.map { it.nome }
 
     if (exibirFormulario) {
         ContaBancariaForm(
-            bancos = bancos,
+            bancos = bancosNomes,
             onAdicionar = { banco,
                             agencia,
                             contaCorrente ->
@@ -60,7 +63,7 @@ fun ContaBancaria(
                             domain.conta.equals(contaCorrente.trim(), true)
                 }
                 if (exists) {
-                    Toast.makeText(context, "Esa conta já foi cadastrada", Toast.LENGTH_SHORT)
+                    Toast.makeText(context, "Essa conta já foi cadastrada", Toast.LENGTH_SHORT)
                         .show()
                 } else {
                     val novaconta = ContaSaldo(
@@ -109,7 +112,7 @@ fun ContaBancariaForm(
             color = Color.LightGray,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(330.dp)
+                .height(250.dp)
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
             shadowElevation = 8.dp
@@ -117,7 +120,7 @@ fun ContaBancariaForm(
             Box(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
-                    .height(230.dp)
+                    .height(150.dp)
                     .fillMaxSize()
                     .clip(RoundedCornerShape(16.dp))
                     .clickable {}
@@ -129,18 +132,18 @@ fun ContaBancariaForm(
                     //Descrição
                     ExposedDropdownMenuBox(
                         expanded = expandido,
-                        onExpandedChange = { expandido != expandido }
+                        onExpandedChange = { expandido = !expandido }
                     ) {
                         TextField(
-                            value = bancoSelecionado ?: "Banco",
-                            onValueChange = { },
-                            label = { Text("Banco") },
+                            value = bancoSelecionado?: "Banco",
+                            onValueChange = {},
                             readOnly = true,
+                            label = { Text("Banco") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp)
                                 .clip(RoundedCornerShape(10.dp))
+                                .menuAnchor()
                         )
                         ExposedDropdownMenu(
                             expanded = expandido,
@@ -157,37 +160,40 @@ fun ContaBancariaForm(
                             }
                         }
                     }
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ){
+                        //Agência
+                        TextField(
+                            value = agencia,
+                            onValueChange = { agencia = it },
+                            label = { Text("Agência") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .width(1.dp)
+                                .padding(top = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                            )
+                        //Conta Corrente
+                        TextField(
+                            value = contaCorrente,
+                            onValueChange = { contaCorrente = it },
+                            label = { Text("Conta") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .width(18.dp)
+                                .padding(top = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
 
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    )
-                    //Agência
-                    TextField(
-                        value = agencia,
-                        onValueChange = { agencia = it },
-                        label = { Text("Agência") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    )
-                    //Conta Corrente
-                    TextField(
-                        value = contaCorrente,
-                        onValueChange = { contaCorrente = it },
-                        label = { Text("Conta Corrente") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

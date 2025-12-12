@@ -1,7 +1,7 @@
 package com.meudinheiro.componentes
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +24,8 @@ import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 /*@OptIn(ExperimentalMaterial3Api::class)
@@ -115,10 +118,11 @@ fun ContaSaldoCard(
 //@Preview(showBackground = true)
 fun CardSection(
     conta: ContaSaldoDomain,
-    viewModelFactory: ContaSaldoViewModelFactory/*,
-    onSalvar: (Double) -> Unit*/
+    viewModelFactory: ContaSaldoViewModelFactory,
+    onExcluir: () -> Unit
 ) {
     val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
+    val coroutineScope = rememberCoroutineScope()
     //val contas by viewModel.contaSaldo.observeAsState(emptyList())
 
     Box(
@@ -127,11 +131,18 @@ fun CardSection(
             .height(230.dp)
             .fillMaxSize()
             .clip(RoundedCornerShape(16.dp))
-            .clickable{}
+            .combinedClickable(
+                onClick = {},
+                onLongClick = {
+                    coroutineScope.launch {
+                        onExcluir()
+                    }
+                }
+            )
     ) {
         Image(
             painter = painterResource(id = R.drawable.card_tecno),
-            contentDescription = null, 
+            contentDescription = null,
             modifier = Modifier
                 .matchParentSize(),
             contentScale = ContentScale.Crop

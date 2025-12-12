@@ -69,7 +69,8 @@ fun MainScreen(
             if (contaPrincipal != null && contaPrincipal.saldo <= 0.0) {
                 CardSection(
                     conta = contaPrincipal,
-                    viewModelFactory = ContaSaldoViewModelFactory(repository)
+                    viewModelFactory = ContaSaldoViewModelFactory(repository),
+                    onExcluir = { viewModelS.removerContaSaldo(contaPrincipal.id.toInt()) }
                 )
             } else {
                 Text(
