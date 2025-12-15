@@ -39,7 +39,7 @@ fun MainScreen(
 ) {
     var selectedIndex by remember { mutableStateOf(-1) }
     var contaSelecionada by remember { mutableStateOf<ContaSaldoDomain?>(null) }
-
+    var bancoSelecionado by remember { mutableStateOf("") }
 
     fun onItemSelected(index: Int) {
         selectedIndex = index
@@ -56,6 +56,7 @@ fun MainScreen(
 
     fun atualizarDespesas(conta: ContaSaldoDomain) {
         contaSelecionada = conta
+        bancoSelecionado = conta.banco
     }
 
     val despesas by viewModel.despesa.observeAsState(emptyList())
@@ -81,7 +82,8 @@ fun MainScreen(
                         viewModelS.removerContaSaldo(conta.id)
                     },
                     onAtualizar = { conta ->
-                        atualizarDespesas(conta)
+                        viewModel.carregarDespesasPorConta(conta.id)
+                        contaSelecionada = conta
                     }
                 )
             } else {
@@ -97,16 +99,18 @@ fun MainScreen(
                     text = "Nenhuma Conta Cadastrada"
                 )
             }
+            atualizarDespesas(contaPrincipal ?: return)
             ActionButtonRow(
                 categorias = repository.categorias.map {
                     it.title
                 },
                 onAddDespesa = { nova ->
-                    viewModel.adicionarDespesa(nova)
+                    viewModel.adicionarDespesa(nova.copy(conta = bancoSelecionado))
                 },
                 getPicCategoria = { nome ->
                     repository.getPicCategoria(nome)
                 },
+                bancoSelecionado = bancoSelecionado
             )
 
             if (selectedIndex == 0) {

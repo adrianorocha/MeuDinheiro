@@ -17,6 +17,9 @@ interface DespesaDao {
     @Query("SELECT * FROM despesas ORDER BY data DESC")
     fun obterDespesas(): Flow<List<DespesasDomain>>
 
+    @Query("SELECT * FROM despesas WHERE Id = :contaId")
+    suspend fun obterDespesasPorConta(contaId: Int): List<DespesasDomain>
+
     @Query("DELETE FROM despesas WHERE id = :id")
     suspend fun excluirDespesa(id: Int)
 }

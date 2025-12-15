@@ -62,7 +62,7 @@ fun ContaBancaria(
                             domain.conta.equals(contaCorrente.trim(), true)
                 }
                 if (exists) {
-                    Toast.makeText(context, "Essa conta já foi cadastrada", Toast.LENGTH_SHORT)
+                    Toast.makeText(context, "Essa conta já foi cadastrada. Por favor, verifique os dados.", Toast.LENGTH_SHORT)
                         .show()
                 } else {
                     val novaconta = ContaSaldo(

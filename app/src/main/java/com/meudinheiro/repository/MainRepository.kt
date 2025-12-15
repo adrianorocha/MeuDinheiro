@@ -23,6 +23,10 @@ class MainRepository(val context: Context) {
         return despesaDao.obterDespesas()
     }
 
+    suspend fun obterDespesasPorConta(contaId: Int): List<DespesasDomain> {
+        return despesaDao.obterDespesasPorConta(contaId)
+    }
+
     suspend fun excluirDespesa(id: Int) {
         despesaDao.excluirDespesa(id)
     }

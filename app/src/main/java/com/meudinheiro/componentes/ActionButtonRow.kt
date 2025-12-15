@@ -48,7 +48,8 @@ import com.meudinheiro.R
 fun ActionButtonRow(
     categorias :List<String>,
     onAddDespesa: (Despesa) -> Unit,
-    getPicCategoria: (String) -> String
+    getPicCategoria: (String) -> String,
+    bancoSelecionado: String // novo parâmetro
 ) {
     val exibirFormulario = remember { mutableStateOf(false) }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
@@ -188,7 +189,7 @@ fun ActionButtonRow(
                                     data = data,
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
                                     pic = getPicCategoria(categoriaSelecionada ?:""),
-                                    conta = "Nubank"
+                                    conta = bancoSelecionado
                                 )
 
                                 onAddDespesa(novaDespesa)
