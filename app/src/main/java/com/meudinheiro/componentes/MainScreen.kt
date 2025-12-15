@@ -55,6 +55,7 @@ fun MainScreen(
     )
 
     fun atualizarDespesas(conta: ContaSaldoDomain) {
+//        viewModel.carregarDespesasPorConta(conta.id)
         contaSelecionada = conta
         bancoSelecionado = conta.banco
     }
@@ -75,6 +76,7 @@ fun MainScreen(
         ) {
             HeaderSection()
             if (contaPrincipal != null && contaPrincipal.saldo <= 0.0) {
+                atualizarDespesas(contaPrincipal ?: return)
                 CardSection(
                     contas = contas,
                     viewModelFactory = ContaSaldoViewModelFactory(repository),
@@ -99,7 +101,6 @@ fun MainScreen(
                     text = "Nenhuma Conta Cadastrada"
                 )
             }
-            atualizarDespesas(contaPrincipal ?: return)
             ActionButtonRow(
                 categorias = repository.categorias.map {
                     it.title
