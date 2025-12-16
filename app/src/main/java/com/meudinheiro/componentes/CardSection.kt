@@ -1,6 +1,7 @@
 package com.meudinheiro.componentes
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -130,8 +131,10 @@ fun ContaSaldoCard(
 fun CardSection(
     //conta: ContaSaldoDomain,
     contas: List<ContaSaldoDomain>,
+    contasSelecionadaId: String?,
     viewModelFactory: ContaSaldoViewModelFactory,
     onExcluir: (ContaSaldoDomain) -> Unit,
+    onContaSelecionada: (String) ->Unit,
 //    onExcluir: () -> Unit,
     onAtualizar: (ContaSaldoDomain) -> Unit
 ) {
@@ -149,12 +152,17 @@ fun CardSection(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(contas) { conta ->
+            val isSelected = conta.banco == contasSelecionadaId
+
             Card(
                 modifier = Modifier
                     .width(385.dp)
+                    .clickable {
+                        onContaSelecionada(conta.banco)
+                    }
                     .height(210.dp),
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
             ) {
                 Box(
                     modifier = Modifier

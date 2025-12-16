@@ -53,6 +53,7 @@ fun MainScreen(
             repository
         )
     )
+    val contaSelecionadaId by viewModelS.contaSelecionadaId.observeAsState()
 
     fun atualizarDespesas(conta: ContaSaldoDomain) {
 //        viewModel.carregarDespesasPorConta(conta.id)
@@ -83,6 +84,7 @@ fun MainScreen(
                     onExcluir = { conta ->
                         viewModelS.removerContaSaldo(conta.id)
                     },
+                    contasSelecionadaId = contaSelecionadaId,
                     onAtualizar = { conta ->
                         viewModel.carregarDespesasPorConta(conta.id)
                         contaSelecionada = conta

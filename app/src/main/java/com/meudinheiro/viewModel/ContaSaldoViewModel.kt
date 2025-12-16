@@ -2,6 +2,7 @@ package com.meudinheiro.viewModel
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
@@ -23,6 +24,12 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
     val contaSaldo : LiveData<List<ContaSaldoDomain>> = repository.obterContaSaldo().asLiveData(
         viewModelScope.coroutineContext
     )
+    private val _contaSelecionadaId = MutableLiveData<String?>(null)
+    val contaSelecionadaId: LiveData<String?> = _contaSelecionadaId
+
+    fun selecionarConta(contaId: String) {
+        _contaSelecionadaId.value = contaId
+    }
 
     fun adicionarContaSaldo(contaSaldo: ContaSaldo) {
         viewModelScope.launch(Dispatchers.IO) {

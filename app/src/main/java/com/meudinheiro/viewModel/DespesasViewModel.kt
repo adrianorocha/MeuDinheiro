@@ -18,7 +18,6 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     val despesa : LiveData<List<DespesasDomain>> = repository.obterDespesas().asLiveData(
         viewModelScope.coroutineContext
     )
-
     fun carregarDespesas() {
         viewModelScope.launch {
             _despesas.postValue(repository.obterDespesas() as List<DespesasDomain>?)

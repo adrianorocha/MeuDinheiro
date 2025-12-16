@@ -4,6 +4,10 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "despesas")
+enum class TipoDespesa {
+    DEBITO,
+    CREDITO
+}
 data class Despesa(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val descricao: String,
@@ -11,5 +15,6 @@ data class Despesa(
     val data: String,
     val categoria: String,
     val conta: String,
-    val pic: String
+    val pic: String,
+    val tipo: TipoDespesa
 )
