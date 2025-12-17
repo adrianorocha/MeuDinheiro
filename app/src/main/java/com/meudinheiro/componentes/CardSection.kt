@@ -141,9 +141,13 @@ fun CardSection(
     val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
     val coroutineScope = rememberCoroutineScope()
     val showDialog = remember { mutableStateOf(false) }
-    var contaSelecionada by remember { mutableStateOf<ContaSaldoDomain?>(null) }
+    var contaSelecionada: String? by remember { mutableStateOf(null) }
 
     //val contas by viewModel.contaSaldo.observeAsState(emptyList())
+
+    fun onContaSelecionada(contaId: String) {
+        contaSelecionada = contaId
+    }
 
     LazyRow(
         modifier = Modifier
@@ -172,7 +176,7 @@ fun CardSection(
                         .clip(RoundedCornerShape(16.dp))
                         .combinedClickable(
                             onClick = {
-                                contaSelecionada = conta
+                                onContaSelecionada(conta.banco)
                                 onAtualizar(conta)
                             },
                             onLongClick = {
@@ -255,4 +259,3 @@ fun CardSection(
         }
     }
 }
-

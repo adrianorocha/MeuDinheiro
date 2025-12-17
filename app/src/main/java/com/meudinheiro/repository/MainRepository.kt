@@ -23,7 +23,7 @@ class MainRepository(val context: Context) {
         return despesaDao.obterDespesas()
     }
 
-    suspend fun obterDespesasPorConta(contaId: Int): List<DespesasDomain> {
+    suspend fun obterDespesasPorConta(contaId: String): List<DespesasDomain> {
         return despesaDao.obterDespesasPorConta(contaId)
     }
 

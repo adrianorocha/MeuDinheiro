@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -35,10 +37,11 @@ import com.meudinheiro.viewModel.DespesasViewModelFactory
 
 @Composable
 fun MainScreen(
-    onCardClick: () -> Unit = {}
+    //onCardClick: () -> Unit = {}
+    onContaSelecionada: (ContaSaldoDomain) -> Unit = {}
 ) {
     var selectedIndex by remember { mutableStateOf(-1) }
-    var contaSelecionada by remember { mutableStateOf<ContaSaldoDomain?>(null) }
+    var contaSelecionada by remember { mutableStateOf("") }
     var bancoSelecionado by remember { mutableStateOf("") }
 
     fun onItemSelected(index: Int) {
@@ -57,15 +60,15 @@ fun MainScreen(
 
     fun atualizarDespesas(conta: ContaSaldoDomain) {
 //        viewModel.carregarDespesasPorConta(conta.id)
-        contaSelecionada = conta
+        contaSelecionada = conta.banco
         bancoSelecionado = conta.banco
     }
 
-    val despesas by viewModel.despesa.observeAsState(emptyList())
+    val despesas by viewModel.despesasLiveData.observeAsState(emptyList())
     val contas by viewModelS.contaSaldo.observeAsState(emptyList())
-
     var contaPrincipal = contas.firstOrNull()
 
+    //onContaSelecionada(contaPrincipal ?: return)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -84,10 +87,13 @@ fun MainScreen(
                     onExcluir = { conta ->
                         viewModelS.removerContaSaldo(conta.id)
                     },
-                    contasSelecionadaId = contaSelecionadaId,
+                    contasSelecionadaId = contaSelecionada,
                     onAtualizar = { conta ->
-                        viewModel.carregarDespesasPorConta(conta.id)
-                        contaSelecionada = conta
+                        viewModel.carregarDespesasPorConta(conta.conta)
+                        atualizarDespesas(conta)
+                    },
+                    onContaSelecionada = { banco ->
+                        viewModelS.atualizarSaldo(banco, 0.0)
                     }
                 )
             } else {

@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,16 +13,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.R
+import com.meudinheiro.data.TipoDespesa
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +60,9 @@ fun ActionButtonRow(
     val exibirFormulario = remember { mutableStateOf(false) }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
+    var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) }
+    var openDatePicker by remember { mutableStateOf(false) }
+
 
     Row(
         modifier = Modifier
@@ -106,7 +115,39 @@ fun ActionButtonRow(
 
                     var descricao by remember { mutableStateOf("") }
                     var valor by remember { mutableStateOf("") }
-                    var data by remember { mutableStateOf("") }
+                    var data = rememberDatePickerState(initialSelectedDateMillis = null)
+                    AnimatedVisibility(openDatePicker) {
+                        DatePickerDialog(onDismissRequest = {
+                            openDatePicker = false
+                            }, confirmButton = {
+                                Button(onClick ={
+                                    openDatePicker = false
+                                }
+                            ) { Text("Confirmar") }}
+                            dismissButton = { Button(onClick =
+                                { openDatePicker = false }) { Text("Cancelar") } }
+                        )
+
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ){
+                        RadioButton(
+                            selected = tipo == TipoDespesa.DEBITO,
+                            onClick = { tipo = TipoDespesa.DEBITO },
+                        )
+                        Text( modifier = Modifier.padding(start = 3.dp,top = 18.dp),
+                            text = "Débito")
+                        RadioButton(
+                            selected = tipo == TipoDespesa.CREDITO,
+                            onClick = { tipo = TipoDespesa.CREDITO }
+                        )
+                        Text( modifier = Modifier.padding(start = 3.dp,top = 18.dp),
+                            text = "Crédito")
+                    }
 
                     Row(
                         modifier = Modifier
@@ -154,26 +195,32 @@ fun ActionButtonRow(
                             .padding(top = 8.dp)
                             .clip(RoundedCornerShape(10.dp))
                     )
-                    //Valor
-                    TextField(
-                        value = valor,
-                        onValueChange = { valor = it },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        label = { Text("Valor") },
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                    TextField(
-                        value = data,
-                        onValueChange = { data = it },
-                        label = { Text("Data") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
+                    ) {
+                        //Valor
+                        TextField(
+                            value = valor,
+                            onValueChange = { valor = it },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            label = { Text("Valor") },
+                            modifier = Modifier
+                                .width(200.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                        TextField(
+                            value = data,
+                            onValueChange = { data = it },
+                            label = { Text("Data") },
+                            modifier = Modifier
+                                .width(200.dp)
+                                .padding(start = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -189,7 +236,8 @@ fun ActionButtonRow(
                                     data = data,
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
                                     pic = getPicCategoria(categoriaSelecionada ?:""),
-                                    conta = bancoSelecionado
+                                    conta = bancoSelecionado,
+                                    tipo = tipo
                                 )
 
                                 onAddDespesa(novaDespesa)
