@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.dao.DespesaDao
 
 @Database(entities = [Despesa::class, ContaSaldo::class], version = 1)
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun despesaDao(): DespesaDao
     abstract fun contaSaldoDao(): ContaSaldoDao

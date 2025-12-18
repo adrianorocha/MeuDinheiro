@@ -1,6 +1,5 @@
 package com.meudinheiro.componentes
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,9 +13,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,9 +46,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.meudinheiro.data.Despesa
 import com.meudinheiro.R
+import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,8 +64,31 @@ fun ActionButtonRow(
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
     var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) }
-    var openDatePicker by remember { mutableStateOf(false) }
+    val openDatePicker = remember { mutableStateOf(false) }
 
+    var data = rememberDatePickerState(initialSelectedDateMillis = null)
+    if (openDatePicker.value) {
+        DatePickerDialog(
+            onDismissRequest = {
+                openDatePicker.value = false
+            },
+            confirmButton = {
+                data.selectedDateMillis?.let { selectedDateMillis ->
+                    data = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
+                    openDatePicker.value = false
+                }
+            },
+            dismissButton = {
+                openDatePicker.value = false
+            },
+        ){
+            DatePicker(
+                state = data,
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+            )
+        }
+    }
 
     Row(
         modifier = Modifier
@@ -73,7 +99,7 @@ fun ActionButtonRow(
         ActionButton(
             R.drawable.deposit,
             "Depositar",
-            onClick = { /* Ação ao clicar no botão Depositar */ }
+            onClick = {}
         )
         ActionButton(
             R.drawable.add,
@@ -83,7 +109,7 @@ fun ActionButtonRow(
         ActionButton(
             R.drawable.sim_chip,
             "Configurações",
-            onClick = {  }
+            onClick = {}
         )
     }
     if(exibirFormulario.value) {
@@ -112,23 +138,8 @@ fun ActionButtonRow(
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
-
                     var descricao by remember { mutableStateOf("") }
                     var valor by remember { mutableStateOf("") }
-                    var data = rememberDatePickerState(initialSelectedDateMillis = null)
-                    AnimatedVisibility(openDatePicker) {
-                        DatePickerDialog(onDismissRequest = {
-                            openDatePicker = false
-                            }, confirmButton = {
-                                Button(onClick ={
-                                    openDatePicker = false
-                                }
-                            ) { Text("Confirmar") }}
-                            dismissButton = { Button(onClick =
-                                { openDatePicker = false }) { Text("Cancelar") } }
-                        )
-
-                    }
 
                     Row(
                         modifier = Modifier
@@ -211,13 +222,14 @@ fun ActionButtonRow(
                                 .clip(RoundedCornerShape(10.dp))
                         )
                         TextField(
-                            value = data,
-                            onValueChange = { data = it },
+                            value = data.selectedDateMillis?.let { Date(it).toString() } ?: "",
+                            onValueChange = {},
                             label = { Text("Data") },
                             modifier = Modifier
                                 .width(200.dp)
                                 .padding(start = 8.dp)
                                 .clip(RoundedCornerShape(10.dp))
+                                .clickable { openDatePicker.value = true }
                         )
 
                     }
@@ -233,7 +245,7 @@ fun ActionButtonRow(
                                 val novaDespesa = Despesa(
                                     descricao = descricao,
                                     valor = valorDouble,
-                                    data = data,
+                                    data = data.selectedDateMillis?.let { Date(it) } ?: Date(),
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
                                     pic = getPicCategoria(categoriaSelecionada ?:""),
                                     conta = bancoSelecionado,
@@ -245,7 +257,7 @@ fun ActionButtonRow(
                                 // Limpa os campos
                                 descricao = ""
                                 valor = ""
-                                data = ""
+                                openDatePicker.value = false
                                 categoriaSelecionada = null
                                 exibirFormulario.value = false
                             },
@@ -278,7 +290,7 @@ fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {
             .height(78.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(color = LightGray)
-            .clickable{ onClick() }
+            .clickable { onClick() }
             .padding(8.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,

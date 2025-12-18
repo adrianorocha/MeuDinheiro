@@ -112,7 +112,7 @@ fun DespesasItem(
                 color = Color.Black
             )
             Text(
-                text = item.data,
+                text = item.data.toString(),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.Black
