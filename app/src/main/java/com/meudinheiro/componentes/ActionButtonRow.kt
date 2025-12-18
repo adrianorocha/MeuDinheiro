@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,13 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -28,7 +25,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,28 +62,16 @@ fun ActionButtonRow(
     var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) }
     val openDatePicker = remember { mutableStateOf(false) }
 
-    var data = rememberDatePickerState(initialSelectedDateMillis = null)
+    val data = remember { mutableStateOf<Long?>(null) }
+
     if (openDatePicker.value) {
-        DatePickerDialog(
-            onDismissRequest = {
+        CustomCalendarDialog(
+            onDismiss = { openDatePicker.value = false },
+            onDateSelected = { ano, mes, dia ->
+                data.value = "${dia}/${mes + 1}/$ano".toLong()
                 openDatePicker.value = false
-            },
-            confirmButton = {
-                data.selectedDateMillis?.let { selectedDateMillis ->
-                    data = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
-                    openDatePicker.value = false
-                }
-            },
-            dismissButton = {
-                openDatePicker.value = false
-            },
-        ){
-            DatePicker(
-                state = data,
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-            )
-        }
+            }
+        )
     }
 
     Row(
@@ -221,17 +205,26 @@ fun ActionButtonRow(
                                 .width(200.dp)
                                 .clip(RoundedCornerShape(10.dp))
                         )
-                        TextField(
-                            value = data.selectedDateMillis?.let { Date(it).toString() } ?: "",
-                            onValueChange = {},
-                            label = { Text("Data") },
+                        Box(
                             modifier = Modifier
-                                .width(200.dp)
                                 .padding(start = 8.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .clickable { openDatePicker.value = true }
-                        )
+                                .clickable {
+                                    Log.d("ActionButtonRow", "Data clicada")
+                                    openDatePicker.value = true
+                                }
+                        ){
+                            TextField(
+                                value = data.value?.let { Date(it).toString() } ?: "",
+                                onValueChange = {},
+                                label = { Text("Data") },
+                                modifier = Modifier
+                                    .width(200.dp)
+                                    .padding(start = 8.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                            )
 
+                        }
                     }
                     Row(
                         modifier = Modifier
@@ -245,7 +238,7 @@ fun ActionButtonRow(
                                 val novaDespesa = Despesa(
                                     descricao = descricao,
                                     valor = valorDouble,
-                                    data = data.selectedDateMillis?.let { Date(it) } ?: Date(),
+                                    data = data.value?.let { Date(it) } ?: Date(),
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
                                     pic = getPicCategoria(categoriaSelecionada ?:""),
                                     conta = bancoSelecionado,
