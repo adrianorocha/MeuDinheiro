@@ -47,7 +47,9 @@ import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -207,32 +209,25 @@ fun ActionButtonRow(
                                 .width(200.dp)
                                 .clip(RoundedCornerShape(10.dp))
                         )
-//                        Box(
-//                            modifier = Modifier
-//                                .padding(start = 8.dp)
-//                                .clip(RoundedCornerShape(10.dp))
-//                                .clickable {
-//                                    Log.d("ActionButtonRow", "Data clicada")
-//                                    mostrarCalendario.value = true
-//                                }
-
-//                        ){
-                            BasicTextField(
-                                value = data.value?.let { Date(it).toString() } ?: "",
-                                readOnly = true,
-                                onValueChange = {},
-                                interactionSource = remember { MutableInteractionSource() },
-                                modifier = Modifier
-                                    .width(200.dp)
-                                    .padding(start = 8.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        Log.d("ActionButtonRow", "Data clicada")
-                                        mostrarCalendario.value = true
-                                    }
-                            )
-                        }
-  //                  }
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    Log.d("ActionButtonRow", "Data clicada")
+                                    mostrarCalendario.value = true
+                                }
+                        ){
+                            val dateText = data.value?.let {
+                                val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                                sdf.format(Date(it))
+                            } ?: "Selecionar Data"
+                            Text(
+                                text = dateText,
+                                fontSize = 16.sp,
+                                color = Color.Black
+                            )                        }
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
