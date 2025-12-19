@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -60,16 +62,16 @@ fun ActionButtonRow(
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
     var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) }
-    val openDatePicker = remember { mutableStateOf(false) }
+    val mostrarCalendario = remember { mutableStateOf(false) }
 
     val data = remember { mutableStateOf<Long?>(null) }
 
-    if (openDatePicker.value) {
+    if (mostrarCalendario.value) {
         CustomCalendarDialog(
-            onDismiss = { openDatePicker.value = false },
+            onDismiss = { mostrarCalendario.value = false },
             onDateSelected = { ano, mes, dia ->
                 data.value = "${dia}/${mes + 1}/$ano".toLong()
-                openDatePicker.value = false
+                mostrarCalendario.value = false
             }
         )
     }
@@ -111,7 +113,7 @@ fun ActionButtonRow(
                 shape = RoundedCornerShape(16.dp),
                 color = Color.White,
                 shadowElevation = 8.dp
-            ) {
+            )  {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -205,27 +207,32 @@ fun ActionButtonRow(
                                 .width(200.dp)
                                 .clip(RoundedCornerShape(10.dp))
                         )
-                        Box(
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    Log.d("ActionButtonRow", "Data clicada")
-                                    openDatePicker.value = true
-                                }
-                        ){
-                            TextField(
+//                        Box(
+//                            modifier = Modifier
+//                                .padding(start = 8.dp)
+//                                .clip(RoundedCornerShape(10.dp))
+//                                .clickable {
+//                                    Log.d("ActionButtonRow", "Data clicada")
+//                                    mostrarCalendario.value = true
+//                                }
+
+//                        ){
+                            BasicTextField(
                                 value = data.value?.let { Date(it).toString() } ?: "",
+                                readOnly = true,
                                 onValueChange = {},
-                                label = { Text("Data") },
+                                interactionSource = remember { MutableInteractionSource() },
                                 modifier = Modifier
                                     .width(200.dp)
                                     .padding(start = 8.dp)
                                     .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        Log.d("ActionButtonRow", "Data clicada")
+                                        mostrarCalendario.value = true
+                                    }
                             )
-
                         }
-                    }
+  //                  }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -250,7 +257,7 @@ fun ActionButtonRow(
                                 // Limpa os campos
                                 descricao = ""
                                 valor = ""
-                                openDatePicker.value = false
+                                mostrarCalendario.value = false
                                 categoriaSelecionada = null
                                 exibirFormulario.value = false
                             },
