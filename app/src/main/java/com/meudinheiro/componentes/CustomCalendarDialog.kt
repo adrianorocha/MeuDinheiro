@@ -40,18 +40,18 @@ fun CustomCalendarDialog(
         cal.get(Calendar.DAY_OF_WEEK) // 1=Domingo, 7=Sábado
     }
 
-    // Gera uma lista de dias para o calendário
+    // Criação da lista de dias para o calendário
     val days = remember(daysInMonth, firstDayOfWeek) {
-        val list = mutableListOf<Int?>()
-        // Adiciona dias vazios antes do primeiro dia
-        for (i in 1 until firstDayOfWeek) {
-            list.add(null)
+        mutableListOf<Int?>().apply {
+            // Adiciona dias vazios antes do primeiro dia
+            for (i in 1 until firstDayOfWeek) {
+                add(null)
+            }
+            // Adiciona os dias do mês
+            for (day in 1..daysInMonth) {
+                add(day)
+            }
         }
-        // Adiciona os dias do mês
-        for (day in 1..daysInMonth) {
-            list.add(day)
-        }
-        list
     }
 
     AlertDialog(
@@ -60,10 +60,17 @@ fun CustomCalendarDialog(
             TextButton(
                 onClick = {
                     selectedDay?.let { day ->
-                        val cal = Calendar.getInstance()
-                        cal.set(displayedYear, displayedMonth, day, 0, 0, 0)
-                        cal.set(Calendar.MILLISECOND, 0)
-                        onDateSelected(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH))
+                        // Configura o Calendar com a data selecionada
+                        val selectedCalendar = Calendar.getInstance()
+                        selectedCalendar.set(displayedYear, displayedMonth, day, 0, 0, 0)
+                        selectedCalendar.set(Calendar.MILLISECOND, 0)
+
+                        // Passa os valores da data selecionada
+                        onDateSelected(
+                            selectedCalendar.get(Calendar.YEAR),
+                            selectedCalendar.get(Calendar.MONTH),
+                            selectedCalendar.get(Calendar.DAY_OF_MONTH)
+                        )
                     }
                 }
             ) {
@@ -151,7 +158,7 @@ fun CustomCalendarDialog(
                                 )
                                 .clickable {
                                     if (day != null) {
-                                        selectedDay = day
+                                        selectedDay = day // Atualiza o dia selecionado
                                     }
                                 },
                             contentAlignment = Alignment.Center

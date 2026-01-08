@@ -48,6 +48,7 @@ import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -72,12 +73,15 @@ fun ActionButtonRow(
         CustomCalendarDialog(
             onDismiss = { mostrarCalendario.value = false },
             onDateSelected = { ano, mes, dia ->
-                data.value = "${dia}/${mes + 1}/$ano".toLong()
+                // Usando Calendar para criar um timestamp
+                val selectedCalendar = Calendar.getInstance()
+                selectedCalendar.set(ano, mes, dia, 0, 0, 0)
+                selectedCalendar.set(Calendar.MILLISECOND, 0)
+                data.value = selectedCalendar.timeInMillis // Armazena o timestamp
                 mostrarCalendario.value = false
             }
         )
     }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -255,6 +259,7 @@ fun ActionButtonRow(
                                 mostrarCalendario.value = false
                                 categoriaSelecionada = null
                                 exibirFormulario.value = false
+                                data.value = null
                             },
                             modifier = Modifier
                                 .padding(start = 8.dp)
