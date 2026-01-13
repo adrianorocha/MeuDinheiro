@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
+import androidx.compose.remote.creation.first
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,12 +38,9 @@ import com.meudinheiro.viewModel.DespesasViewModelFactory
 
 @Composable
 fun MainScreen(
-    onCardClick: () -> Unit = {},
-    onContaSelecionada: (ContaSaldoDomain) -> Unit = {}
 ) {
     var selectedIndex by remember { mutableStateOf(-1) }
     var contaSelecionada by remember { mutableStateOf("") }
-    var bancoSelecionado by remember { mutableStateOf("") }
 
     fun onItemSelected(index: Int) {
         selectedIndex = index
@@ -56,17 +54,20 @@ fun MainScreen(
             repository
         )
     )
-    val contaSelecionadaId by viewModelS.contaSelecionadaId.observeAsState()
 
-    fun atualizarDespesas(conta: ContaSaldoDomain) {
-//        viewModel.carregarDespesasPorConta(conta.id)
-        contaSelecionada = conta.banco
-        bancoSelecionado = conta.banco
-    }
+    var despesasCarregadas by remember { mutableStateOf(false) }
 
     val despesas by viewModel.despesasLiveData.observeAsState(emptyList())
     val contas by viewModelS.contaSaldo.observeAsState(emptyList())
     var contaPrincipal = contas.firstOrNull()
+
+    fun atualizarDespesas(conta: ContaSaldoDomain) {
+        contaSelecionada = contas.first().conta
+        if (contaSelecionada.isNotEmpty() && !despesasCarregadas) {
+            viewModel.carregarDespesasPorConta(contaSelecionada)
+            despesasCarregadas = true
+        }
+    }
 
     //onContaSelecionada(contaPrincipal ?: return)
     Box(
@@ -89,11 +90,11 @@ fun MainScreen(
                     },
                     contasSelecionadaId = contaSelecionada,
                     onAtualizar = { conta ->
-                        viewModel.carregarDespesasPorConta(conta.conta)
                         atualizarDespesas(conta)
+                        viewModel.carregarDespesasPorConta(conta.conta)
                     },
                     onContaSelecionada = { banco ->
-                        viewModelS.atualizarSaldo(banco, 0.0)
+                        viewModelS.atualizarSaldo(banco, 1200.0)
                     }
                 )
             } else {
@@ -114,12 +115,12 @@ fun MainScreen(
                     it.title
                 },
                 onAddDespesa = { nova ->
-                    viewModel.adicionarDespesa(nova.copy(conta = bancoSelecionado))
+                    viewModel.adicionarDespesa(nova.copy(conta = contaSelecionada))
                 },
                 getPicCategoria = { nome ->
                     repository.getPicCategoria(nome)
                 },
-                bancoSelecionado = bancoSelecionado
+                contaSelecionada = contaSelecionada
             )
 
             if (selectedIndex == 0) {
@@ -142,16 +143,26 @@ fun MainScreen(
                     textAlign = TextAlign.Center
                 )
             }
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 80.dp)
-            ) {
-                items(despesas) { item ->
-                    DespesasItem(item = item, onRemover = { id ->
-                        viewModel.removerDespesa(id)
-                    })
+            if (despesas.isEmpty()) {
+                Text(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Red, // Opcional: destaque para dizer que não há despesas
+                    textAlign = TextAlign.Center,
+                    text = "Nenhuma despesa encontrada para esta conta."
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 80.dp)
+                ) {
+                    items(despesas) { item ->
+                        DespesasItem(item = item, onRemover = { id ->
+                            viewModel.removerDespesa(id)
+                        })
+                    }
                 }
             }
         }
@@ -163,7 +174,6 @@ fun MainScreen(
         )
     }
 }
-
 @Composable
 @Preview(showBackground = true)
 fun MainScreenPreview() {

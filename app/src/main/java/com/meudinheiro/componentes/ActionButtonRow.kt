@@ -57,7 +57,7 @@ fun ActionButtonRow(
     categorias :List<String>,
     onAddDespesa: (Despesa) -> Unit,
     getPicCategoria: (String) -> String,
-    bancoSelecionado: String // novo parâmetro
+    contaSelecionada: String // novo parâmetro
 ) {
     val exibirFormulario = remember { mutableStateOf(false) }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
@@ -245,7 +245,7 @@ fun ActionButtonRow(
                                     data = data.value?.let { Date(it) } ?: Date(),
                                     categoria = categoriaSelecionada ?: "Sem Categoria",
                                     pic = getPicCategoria(categoriaSelecionada ?:""),
-                                    conta = bancoSelecionado,
+                                    conta = contaSelecionada.trim(),
                                     tipo = tipo
                                 )
 

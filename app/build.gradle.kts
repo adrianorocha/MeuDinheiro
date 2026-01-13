@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.compose.foundation.layout)
+    implementation(libs.androidx.compose.remote.creation.core)
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)

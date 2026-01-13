@@ -1,6 +1,7 @@
 package com.meudinheiro.repository
 
 import android.content.Context
+import android.util.Log
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.CategoriaDomain
