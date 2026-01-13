@@ -37,7 +37,7 @@ import com.meudinheiro.viewModel.DespesasViewModelFactory
 
 @Composable
 fun MainScreen(
-    //onCardClick: () -> Unit = {}
+    onCardClick: () -> Unit = {},
     onContaSelecionada: (ContaSaldoDomain) -> Unit = {}
 ) {
     var selectedIndex by remember { mutableStateOf(-1) }
