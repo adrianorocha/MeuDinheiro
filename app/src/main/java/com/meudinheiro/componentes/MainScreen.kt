@@ -148,7 +148,7 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Red, // Opcional: destaque para dizer que não há despesas
+                    color = Color.Red, 
                     textAlign = TextAlign.Center,
                     text = "Nenhuma despesa encontrada para esta conta."
                 )
@@ -160,7 +160,7 @@ fun MainScreen(
                 ) {
                     items(despesas) { item ->
                         DespesasItem(item = item, onRemover = { id ->
-                            viewModel.removerDespesa(id)
+                            viewModel.removerDespesa(id, contaSelecionada)
                         })
                     }
                 }

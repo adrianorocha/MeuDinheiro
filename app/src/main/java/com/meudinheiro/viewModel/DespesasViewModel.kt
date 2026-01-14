@@ -14,6 +14,7 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     private val _despesas = MutableLiveData<List<DespesasDomain>>()
 
     val despesasLiveData: LiveData<List<DespesasDomain>> get() = _despesas
+
     fun carregarDespesasPorConta(contaId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val despesasFiltradas = repository.obterDespesasPorConta(contaId)
@@ -28,7 +29,7 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         }
     }
 
-    fun removerDespesa(id: Int) {
+    fun removerDespesa(id: Int, contaSelecionada: String) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.excluirDespesa(id)
             carregarDespesasPorConta(contaSelecionada)

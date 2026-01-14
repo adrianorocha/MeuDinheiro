@@ -162,7 +162,7 @@ fun CardSection(
                 modifier = Modifier
                     .width(385.dp)
                     .clickable {
-                        onContaSelecionada(conta.banco)
+                        onContaSelecionada(conta.conta)
                     }
                     .height(210.dp),
                 shape = RoundedCornerShape(16.dp),
@@ -176,7 +176,7 @@ fun CardSection(
                         .clip(RoundedCornerShape(16.dp))
                         .combinedClickable(
                             onClick = {
-                                onContaSelecionada(conta.banco)
+                                onContaSelecionada(conta.conta)
                                 onAtualizar(conta)
                             },
                             onLongClick = {
