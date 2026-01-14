@@ -19,6 +19,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -143,8 +144,6 @@ fun CardSection(
     val showDialog = remember { mutableStateOf(false) }
     var contaSelecionada: String? by remember { mutableStateOf(null) }
 
-    //val contas by viewModel.contaSaldo.observeAsState(emptyList())
-
     fun onContaSelecionada(contaId: String) {
         contaSelecionada = contaId
     }
@@ -163,6 +162,7 @@ fun CardSection(
                     .width(385.dp)
                     .clickable {
                         onContaSelecionada(conta.conta)
+                        viewModel.selecionarConta(conta.conta)
                     }
                     .height(210.dp),
                 shape = RoundedCornerShape(16.dp),
