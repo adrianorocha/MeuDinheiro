@@ -18,12 +18,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +37,7 @@ import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import kotlinx.coroutines.launch
 import java.util.Locale
+
 
 /*@OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,23 +128,15 @@ fun ContaSaldoCard(
 @Composable
 //@Preview(showBackground = true)
 fun CardSection(
-    //conta: ContaSaldoDomain,
     contas: List<ContaSaldoDomain>,
     contasSelecionadaId: String?,
     viewModelFactory: ContaSaldoViewModelFactory,
     onExcluir: (ContaSaldoDomain) -> Unit,
-    onContaSelecionada: (String) ->Unit,
-//    onExcluir: () -> Unit,
+    onContaSelecionada: (String) -> Unit,
     onAtualizar: (ContaSaldoDomain) -> Unit
 ) {
-    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
     val coroutineScope = rememberCoroutineScope()
     val showDialog = remember { mutableStateOf(false) }
-    var contaSelecionada: String? by remember { mutableStateOf(null) }
-
-    fun onContaSelecionada(contaId: String) {
-        contaSelecionada = contaId
-    }
 
     LazyRow(
         modifier = Modifier
@@ -154,15 +144,13 @@ fun CardSection(
             .height(230.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(contas) { conta ->
-            val isSelected = conta.banco == contasSelecionadaId
-
+        items(contas, key = {it.conta}) { conta ->
             Card(
                 modifier = Modifier
                     .width(385.dp)
                     .clickable {
                         onContaSelecionada(conta.conta)
-                        viewModel.selecionarConta(conta.conta)
+                        onAtualizar(conta)
                     }
                     .height(210.dp),
                 shape = RoundedCornerShape(16.dp),
@@ -176,7 +164,6 @@ fun CardSection(
                         .clip(RoundedCornerShape(16.dp))
                         .combinedClickable(
                             onClick = {
-                                onContaSelecionada(conta.conta)
                                 onAtualizar(conta)
                             },
                             onLongClick = {
@@ -212,7 +199,7 @@ fun CardSection(
                             .padding(top = 25.dp, start = 315.dp)
                     )
                     Text(
-                        text = "Agência : " + conta.agencia + " - C/C : " + conta.conta,
+                        text = "Agência :  ${conta.agencia} - C/C : ${conta.conta}",
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
@@ -230,11 +217,11 @@ fun CardSection(
                             .align(Alignment.BottomStart)
                             .padding(start = 12.dp, bottom = 18.dp, end = 8.dp)
                     )
-                    if(showDialog.value){
+                    if (showDialog.value) {
                         AlertDialog(
-                            onDismissRequest = { showDialog.value = false},
-                            title = { Text(text = "Excluir Conta")},
-                            text = { Text(text = "Deseja excluir esta conta?")},
+                            onDismissRequest = { showDialog.value = false },
+                            title = { Text(text = "Excluir Conta") },
+                            text = { Text(text = "Deseja excluir esta conta?") },
                             confirmButton = {
                                 Button(
                                     onClick = {
@@ -247,7 +234,7 @@ fun CardSection(
                             },
                             dismissButton = {
                                 Button(
-                                    onClick = { showDialog.value = false}
+                                    onClick = { showDialog.value = false }
                                 ) {
                                     Text(text = "Não")
                                 }

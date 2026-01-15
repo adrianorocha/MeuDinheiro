@@ -78,8 +78,7 @@ fun DespesasItem(
                 color = Color.LightGray,
                 shape = RoundedCornerShape(12.dp)
             ).combinedClickable(
-                onClick = {
-                },
+                onClick = {},
                 onLongClick = {showDialog.value = true}
             ),
 

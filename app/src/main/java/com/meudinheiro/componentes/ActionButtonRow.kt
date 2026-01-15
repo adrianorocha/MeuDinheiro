@@ -58,7 +58,7 @@ fun ActionButtonRow(
     categorias :List<String>,
     onAddDespesa: (Despesa) -> Unit,
     getPicCategoria: (String) -> String,
-    contaSelecionada: String // novo parâmetro
+    contaSelecionada: String
 ) {
     val exibirFormulario = remember { mutableStateOf(false) }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }

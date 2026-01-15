@@ -4,19 +4,24 @@
       <w>agencia</w>
       <w>atualizar</w>
       <w>bancaria</w>
+      <w>categorias</w>
       <w>conta</w>
       <w>contas</w>
       <w>contasaldo</w>
       <w>corrente</w>
       <w>crédito</w>
+      <w>despesa</w>
       <w>despesas</w>
       <w>débito</w>
+      <w>editando</w>
       <w>excluir</w>
       <w>exibir</w>
       <w>existentes</w>
+      <w>expandido</w>
       <w>formulario</w>
       <w>novaconta</w>
       <w>saldo</w>
+      <w>selecionada</w>
     </words>
   </dictionary>
 </component>

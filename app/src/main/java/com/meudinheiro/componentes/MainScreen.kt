@@ -48,8 +48,8 @@ fun MainScreen(
 
     val context = LocalContext.current
     val repository = remember { MainRepository(context) } //Carrega as Informações do Repository
-    val viewModel: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
-    val viewModelS: ContaSaldoViewModel = viewModel(
+    val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
+    val contaVM: ContaSaldoViewModel = viewModel(
         factory = ContaSaldoViewModelFactory(
             repository
         )
@@ -57,19 +57,33 @@ fun MainScreen(
 
     var despesasCarregadas by remember { mutableStateOf(false) }
 
-    val despesas by viewModel.despesasLiveData.observeAsState(emptyList())
-    val contas by viewModelS.contaSaldo.observeAsState(emptyList())
+    val contas by contaVM.contaSaldo.observeAsState(emptyList())
     var contaPrincipal = contas.firstOrNull()
 
     fun atualizarDespesas(conta: ContaSaldoDomain) {
         contaSelecionada = contas.first().conta
         if (contaSelecionada.isNotEmpty() && !despesasCarregadas) {
-            viewModel.carregarDespesasPorConta(contaSelecionada)
+            despVM.carregarDespesasPorConta(contaSelecionada)
             despesasCarregadas = true
         }
     }
 
-    //onContaSelecionada(contaPrincipal ?: return)
+    LaunchedEffect(contaSelecionada) {
+        contas.firstOrNull()?.conta?.let { primeira ->
+            contaSelecionada = primeira
+            despVM.carregarDespesasPorConta(primeira)
+            contaVM.selecionarConta(primeira)
+        }
+    }
+
+    LaunchedEffect(contaSelecionada) {
+        contaSelecionada?.let { id ->
+            despVM.carregarDespesasPorConta(id)
+        }
+    }
+
+    val despesas by despVM.despesasLiveData.observeAsState(emptyList())
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -80,21 +94,22 @@ fun MainScreen(
                 .fillMaxSize()
         ) {
             HeaderSection()
-            if (contaPrincipal != null && contaPrincipal.saldo <= 0.0) {
-                atualizarDespesas(contaPrincipal ?: return)
+            if (contas.isNotEmpty()) {
                 CardSection(
                     contas = contas,
                     viewModelFactory = ContaSaldoViewModelFactory(repository),
                     onExcluir = { conta ->
-                        viewModelS.removerContaSaldo(conta.id)
+                        contaVM.removerContaSaldo(conta.id)
                     },
                     contasSelecionadaId = contaSelecionada,
                     onAtualizar = { conta ->
                         atualizarDespesas(conta)
-                        viewModel.carregarDespesasPorConta(conta.conta)
+                        despVM.carregarDespesasPorConta(conta.conta)
                     },
-                    onContaSelecionada = { banco ->
-                        viewModelS.atualizarSaldo(banco, 1200.0)
+                    onContaSelecionada = { novaConta ->
+                        contaSelecionada = novaConta
+                        despVM.carregarDespesasPorConta(novaConta)
+                        contaVM.selecionarConta(novaConta)
                     }
                 )
             } else {
@@ -115,12 +130,14 @@ fun MainScreen(
                     it.title
                 },
                 onAddDespesa = { nova ->
-                    viewModel.adicionarDespesa(nova.copy(conta = contaSelecionada))
+                    contaSelecionada?.let {
+                        despVM.adicionarDespesa(nova.copy(conta = it))
+                    }
                 },
                 getPicCategoria = { nome ->
                     repository.getPicCategoria(nome)
                 },
-                contaSelecionada = contaSelecionada
+                contaSelecionada = contaSelecionada.orEmpty()
             )
 
             if (selectedIndex == 0) {
@@ -148,7 +165,7 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Red, 
+                    color = Color.Red,
                     textAlign = TextAlign.Center,
                     text = "Nenhuma despesa encontrada para esta conta."
                 )
@@ -159,9 +176,11 @@ fun MainScreen(
                         .padding(bottom = 80.dp)
                 ) {
                     items(despesas) { item ->
-                        DespesasItem(item = item, onRemover = { id ->
-                            viewModel.removerDespesa(id, contaSelecionada)
-                        })
+                        DespesasItem(item = item,
+                            onRemover = { id ->
+                                despVM.removerDespesa(id, contaSelecionada)
+                            }
+                        )
                     }
                 }
             }
