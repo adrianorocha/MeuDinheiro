@@ -68,11 +68,12 @@ fun MainScreen(
         }
     }
 
-    LaunchedEffect(contaSelecionada) {
+
+    LaunchedEffect(contas) {
         contas.firstOrNull()?.conta?.let { primeira ->
             contaSelecionada = primeira
-            despVM.carregarDespesasPorConta(primeira)
             contaVM.selecionarConta(primeira)
+            despVM.carregarDespesasPorConta(primeira)
         }
     }
 
@@ -81,6 +82,7 @@ fun MainScreen(
             despVM.carregarDespesasPorConta(id)
         }
     }
+
 
     val despesas by despVM.despesasLiveData.observeAsState(emptyList())
 
