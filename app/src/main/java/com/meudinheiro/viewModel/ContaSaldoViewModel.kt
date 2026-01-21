@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
 
     val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
+    private var _saldo = mutableStateOf(0.0)
+    val saldo: State<Double> get() = _saldo
 
     init {
         // Carregue os bancos do repositório
@@ -33,13 +35,13 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
     fun adicionarDespesa(despesa: Despesa) {
         when (despesa.tipo) {
             TipoDespesa.DEBITO -> {
-                saldo -= despesa.valor
+                _saldo.value -= despesa.valor // Subtrai do saldo
             }
             TipoDespesa.CREDITO -> {
-                saldo += despesa.valor
+                _saldo.value += despesa.valor // Soma ao saldo
             }
         }
-        atualizarSaldo()
+        // Atualize o banco de dados ou outras lógicas aqui, se necessário
     }
     fun selecionarConta(contaId: String) {
         _contaSelecionadaId.value = contaId
