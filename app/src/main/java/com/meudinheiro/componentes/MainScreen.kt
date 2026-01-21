@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
-import androidx.compose.remote.creation.first
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +59,12 @@ fun MainScreen(
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
     var contaPrincipal = contas.firstOrNull()
 
+
+    fun onContaSelecionada(novaConta: String) {
+        contaSelecionada = novaConta
+        despVM.carregarDespesasPorConta(novaConta)
+        Log.d("MainScreen", "Conta selecionada: $contaSelecionada")
+    }
     fun atualizarDespesas(conta: ContaSaldoDomain) {
         contaSelecionada = contas.first().conta
         if (contaSelecionada.isNotEmpty() && !despesasCarregadas) {
@@ -68,21 +73,20 @@ fun MainScreen(
         }
     }
 
-
     LaunchedEffect(contas) {
-        contas.firstOrNull()?.conta?.let { primeira ->
-            contaSelecionada = primeira
-            contaVM.selecionarConta(primeira)
-            despVM.carregarDespesasPorConta(primeira)
+        if (contas.isNotEmpty()) {
+            if (contaSelecionada.isEmpty()) {  // Somente se não estiver selecionada
+                contaSelecionada = contas.first().conta
+                despVM.carregarDespesasPorConta(contaSelecionada)
+                Log.d("MainScreen", "Conta selecionada na inicialização: $contaSelecionada")
+            }
         }
     }
-
     LaunchedEffect(contaSelecionada) {
         contaSelecionada?.let { id ->
             despVM.carregarDespesasPorConta(id)
         }
     }
-
 
     val despesas by despVM.despesasLiveData.observeAsState(emptyList())
 
@@ -109,7 +113,7 @@ fun MainScreen(
                         despVM.carregarDespesasPorConta(conta.conta)
                     },
                     onContaSelecionada = { novaConta ->
-                        contaSelecionada = novaConta
+                        onContaSelecionada(novaConta)
                         despVM.carregarDespesasPorConta(novaConta)
                         contaVM.selecionarConta(novaConta)
                     }
@@ -132,10 +136,9 @@ fun MainScreen(
                     it.title
                 },
                 onAddDespesa = { nova ->
-                    contaSelecionada?.let {
-                        despVM.adicionarDespesa(nova.copy(conta = it))
-                    }
-                },
+                    contaSelecionada.takeIf { it.isNotEmpty() }?.let {conta ->
+                    despVM.adicionarDespesa( nova.copy(conta = conta))
+                }},
                 getPicCategoria = { nome ->
                     repository.getPicCategoria(nome)
                 },

@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
+import com.meudinheiro.data.Despesa
+import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,6 +29,18 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
     private val _contaSelecionadaId = MutableLiveData<String?>(null)
     val contaSelecionadaId: LiveData<String?> = _contaSelecionadaId
 
+    // Função para adicionar despesas e atualizar o saldo
+    fun adicionarDespesa(despesa: Despesa) {
+        when (despesa.tipo) {
+            TipoDespesa.DEBITO -> {
+                saldo -= despesa.valor
+            }
+            TipoDespesa.CREDITO -> {
+                saldo += despesa.valor
+            }
+        }
+        atualizarSaldo()
+    }
     fun selecionarConta(contaId: String) {
         _contaSelecionadaId.value = contaId
     }

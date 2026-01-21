@@ -3,14 +3,18 @@ package com.meudinheiro.componentes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -30,10 +34,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
-import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -137,17 +139,20 @@ fun CardSection(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val showDialog = remember { mutableStateOf(false) }
+    val lazyListState = rememberLazyListState()
 
     LazyRow(
+        state = lazyListState,
         modifier = Modifier
             .padding(16.dp)
-            .height(230.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .height(210.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                flingBehavior = rememberSnapFlingBehavior(lazyListState)
     ) {
         items(contas, key = {it.conta}) { conta ->
             Card(
                 modifier = Modifier
-                    .width(385.dp)
+                    .fillMaxWidth(0.8f)//Usa 80% da Largura da Tela
                     .clickable {
                         onContaSelecionada(conta.conta)
                         onAtualizar(conta)
@@ -155,6 +160,17 @@ fun CardSection(
                     .height(210.dp),
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(
+                    if (conta.conta == contasSelecionadaId) {
+                        Color.Green // A conta selecionada pode ter uma cor diferente
+                    } else {
+                        onContaSelecionada(conta.conta)
+                        contasSelecionadaId.takeIf { it == conta.conta }?.let {
+                            onAtualizar(conta)
+                        }
+                        Color.White
+                    }
+                )
             ) {
                 Box(
                     modifier = Modifier
