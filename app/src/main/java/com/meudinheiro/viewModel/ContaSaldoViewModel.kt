@@ -14,6 +14,7 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.State
 
 class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
 
