@@ -142,7 +142,8 @@ fun MainScreen(
                 getPicCategoria = { nome ->
                     repository.getPicCategoria(nome)
                 },
-                contaSelecionada = contaSelecionada.orEmpty()
+                contaSelecionada = contaSelecionada.orEmpty(),
+                viewModelFactory = ContaSaldoViewModelFactory(repository)
             )
 
             if (selectedIndex == 0) {

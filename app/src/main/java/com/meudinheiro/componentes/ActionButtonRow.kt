@@ -43,9 +43,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.viewModel.ContaSaldoViewModel
+import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
+import com.meudinheiro.viewModel.DespesasViewModelFactory
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -58,13 +63,15 @@ fun ActionButtonRow(
     categorias :List<String>,
     onAddDespesa: (Despesa) -> Unit,
     getPicCategoria: (String) -> String,
-    contaSelecionada: String
+    contaSelecionada: String,
+    viewModelFactory: ContaSaldoViewModelFactory
 ) {
     val exibirFormulario = remember { mutableStateOf(false) }
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
     var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) }
     val mostrarCalendario = remember { mutableStateOf(false) }
+    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
 
     val data = remember { mutableStateOf<Long?>(null) }
 
@@ -251,6 +258,7 @@ fun ActionButtonRow(
                                 )
 
                                 onAddDespesa(novaDespesa)
+                                viewModel.adicionarDespesa(novaDespesa)
 
                                 // Limpa os campos
                                 descricao = ""

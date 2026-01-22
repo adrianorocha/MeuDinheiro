@@ -42,7 +42,8 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
                 _saldo.value += despesa.valor // Soma ao saldo
             }
         }
-        // Atualize o banco de dados ou outras lógicas aqui, se necessário
+        //Atualiza saldo
+        atualizarSaldo(despesa.conta, _saldo.value)
     }
     fun selecionarConta(contaId: String) {
         _contaSelecionadaId.value = contaId
