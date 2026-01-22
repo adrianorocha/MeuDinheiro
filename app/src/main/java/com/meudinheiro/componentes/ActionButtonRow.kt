@@ -75,6 +75,8 @@ fun ActionButtonRow(
 
     val data = remember { mutableStateOf<Long?>(null) }
 
+    var numeroParcelas by remember { mutableStateOf("") }
+
     if (mostrarCalendario.value) {
         CustomCalendarDialog(
             onDismiss = { mostrarCalendario.value = false },
@@ -219,6 +221,14 @@ fun ActionButtonRow(
                                 .width(200.dp)
                                 .clip(RoundedCornerShape(10.dp))
                         )
+                        //Numero de Parcelas
+                        TextField(
+                            value = numeroParcelas,
+                            onValueChange = { numeroParcelas = it },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            label = { Text("Parcelas") },
+                            modifier = Modifier.width(100.dp).clip(RoundedCornerShape(10.dp)).padding(start = 8.dp)
+                        )
                         Box(
                             modifier = Modifier
                                 .padding(start = 8.dp)
@@ -247,6 +257,7 @@ fun ActionButtonRow(
                         Button(
                             onClick = {
                                 val valorDouble = valor.toDoubleOrNull() ?: 0.0
+                                val parcelasInt = numeroParcelas.toIntOrNull() ?: 1
                                 val novaDespesa = Despesa(
                                     descricao = descricao,
                                     valor = valorDouble,

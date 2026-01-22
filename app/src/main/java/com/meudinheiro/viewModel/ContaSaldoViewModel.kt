@@ -48,6 +48,33 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
         atualizarSaldo(despesa.conta, _saldo.value)
     }
 
+
+    fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int) {
+        selecionarConta(despesa.conta)
+
+        // Calcular o valor da parcela
+        val valorParcela = despesa.valor / numeroParcelas
+
+        for (i in 1..numeroParcelas) {
+            // Ajustar o saldo e persistir a nova despesa com suas informações
+            when (despesa.tipo) {
+                TipoDespesa.DEBITO -> {
+                    _saldo.value -= valorParcela
+                }
+                TipoDespesa.CREDITO -> {
+                    _saldo.value += valorParcela
+                }
+            }
+
+            // Aqui você pode persistir ou processar cada parcela
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.inserirDespesaParcelada(despesa.copy(valor = valorParcela, parcela = i, totalParcelas = numeroParcelas))
+            }
+        }
+
+        // Atualizar o saldo no banco
+        atualizarSaldo(despesa.conta, _saldo.value)
+    }
     fun selecionarConta(contaId: String) {
         _contaSelecionadaId.value = contaId
     }
