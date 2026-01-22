@@ -91,16 +91,6 @@ class MainRepository(val context: Context) {
     suspend fun atualizarSaldo(conta: String, novoSaldo: Double) {
         contaSaldoDao.atualizarSaldo(conta, novoSaldo)
     }
+}
 
-    suspend fun inserirDespesaParcelada(despesa: Despesa, numeroParcelas: Int) {
-        // Calcular o valor da parcela
-        val valorParcela = despesa.valor / numeroParcelas
 
-        for (i in 1..numeroParcelas) {
-            val despesaParcelada =
-                despesa.copy(valor = valorParcela, parcela = i, totalParcelas = numeroParcelas)
-
-            // Insira a parcela no banco de dados
-            despesaDao.inserirDespesa(despesaParcelada)
-        }
-    }}

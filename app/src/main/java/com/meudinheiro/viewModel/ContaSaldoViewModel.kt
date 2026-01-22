@@ -15,11 +15,13 @@ import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.State
+import java.util.Calendar
 
 class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
 
     val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
     private var _saldo = mutableStateOf(0.0)
+    private var _descricao = mutableStateOf("")
     val saldo: State<Double> get() = _saldo
 
     init {
@@ -36,6 +38,7 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
     fun adicionarDespesa(despesa: Despesa) {
         selecionarConta(despesa.conta)
         _saldo.value = contaSaldo.value?.find { it.conta == despesa.conta }?.saldo ?: 0.0
+
         when (despesa.tipo) {
             TipoDespesa.DEBITO -> {
                 _saldo.value -= despesa.valor // Subtrai do saldo
@@ -45,18 +48,24 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
             }
         }
         //Atualiza saldo
-        atualizarSaldo(despesa.conta, _saldo.value)
-    }
+        atualizarSaldo(despesa.conta, _saldo.value)    }
 
 
-    fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int) {
+    fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
+
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = dataSelecionada // Data inicial recebida
+        }
         selecionarConta(despesa.conta)
+        _saldo.value = contaSaldo.value?.find { it.conta == despesa.conta }?.saldo ?: 0.0
+        _descricao.value = despesa.descricao
 
         // Calcular o valor da parcela
         val valorParcela = despesa.valor / numeroParcelas
 
         for (i in 1..numeroParcelas) {
             // Ajustar o saldo e persistir a nova despesa com suas informações
+            _descricao.value = "${despesa.descricao} - $i de ${numeroParcelas}"
             when (despesa.tipo) {
                 TipoDespesa.DEBITO -> {
                     _saldo.value -= valorParcela
@@ -68,7 +77,7 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
 
             // Aqui você pode persistir ou processar cada parcela
             viewModelScope.launch(Dispatchers.IO) {
-                repository.inserirDespesaParcelada(despesa.copy(valor = valorParcela, parcela = i, totalParcelas = numeroParcelas))
+                repository.inserirDespesa(despesa)
             }
         }
 

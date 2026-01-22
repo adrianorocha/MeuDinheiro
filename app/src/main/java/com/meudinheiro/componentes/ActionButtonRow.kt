@@ -267,13 +267,17 @@ fun ActionButtonRow(
                                     conta = contaSelecionada.trim(),
                                     tipo = tipo
                                 )
-
                                 onAddDespesa(novaDespesa)
-                                viewModel.adicionarDespesa(novaDespesa)
+                                if (parcelasInt > 1) {
+                                    viewModel.adicionarDespesaParcelada(novaDespesa, parcelasInt)
+                                } else {
+                                    viewModel.adicionarDespesa(novaDespesa)
+                                }
 
                                 // Limpa os campos
                                 descricao = ""
                                 valor = ""
+                                numeroParcelas = ""
                                 mostrarCalendario.value = false
                                 categoriaSelecionada = null
                                 exibirFormulario.value = false
