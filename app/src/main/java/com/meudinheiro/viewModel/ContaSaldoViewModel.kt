@@ -16,12 +16,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.State
 import java.util.Calendar
+import java.util.Date
 
 class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
 
     val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
     private var _saldo = mutableStateOf(0.0)
     private var _descricao = mutableStateOf("")
+
+    private val _data = MutableLiveData<Long?>(null)
+    val data: LiveData<Long?> = _data
+
+
     val saldo: State<Double> get() = _saldo
 
     init {
@@ -59,11 +65,14 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
         selecionarConta(despesa.conta)
         _saldo.value = contaSaldo.value?.find { it.conta == despesa.conta }?.saldo ?: 0.0
         _descricao.value = despesa.descricao
-
+        _data.value = dataSelecionada
         // Calcular o valor da parcela
         val valorParcela = despesa.valor / numeroParcelas
 
         for (i in 1..numeroParcelas) {
+            calendar.add(Calendar.DAY_OF_MONTH, 30 * (i - 1)) // Adiciona 30 dias para cada parcela
+            _data.value = calendar.time.time
+
             // Ajustar o saldo e persistir a nova despesa com suas informações
             _descricao.value = "${despesa.descricao} - $i de ${numeroParcelas}"
             when (despesa.tipo) {

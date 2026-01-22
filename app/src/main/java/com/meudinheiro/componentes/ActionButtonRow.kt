@@ -269,7 +269,7 @@ fun ActionButtonRow(
                                 )
                                 onAddDespesa(novaDespesa)
                                 if (parcelasInt > 1) {
-                                    viewModel.adicionarDespesaParcelada(novaDespesa, parcelasInt)
+                                    viewModel.adicionarDespesaParcelada(novaDespesa, parcelasInt, data.value!!)
                                 } else {
                                     viewModel.adicionarDespesa(novaDespesa)
                                 }
