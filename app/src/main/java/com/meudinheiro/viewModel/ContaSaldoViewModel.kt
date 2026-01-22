@@ -34,6 +34,8 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
 
     // Função para adicionar despesas e atualizar o saldo
     fun adicionarDespesa(despesa: Despesa) {
+        selecionarConta(despesa.conta)
+        _saldo.value = contaSaldo.value?.find { it.conta == despesa.conta }?.saldo ?: 0.0
         when (despesa.tipo) {
             TipoDespesa.DEBITO -> {
                 _saldo.value -= despesa.valor // Subtrai do saldo
@@ -45,6 +47,7 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
         //Atualiza saldo
         atualizarSaldo(despesa.conta, _saldo.value)
     }
+
     fun selecionarConta(contaId: String) {
         _contaSelecionadaId.value = contaId
     }
