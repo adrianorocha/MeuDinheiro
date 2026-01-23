@@ -72,6 +72,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.2.2")
     implementation(libs.androidx.foundation.layout)
     implementation("androidx.compose.material:material-icons-extended:1.4.3")
+    implementation("androidx.biometric:biometric:1.2.0-alpha04")
 
 
     ksp("androidx.room:room-compiler:2.8.4")

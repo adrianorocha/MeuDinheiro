@@ -52,13 +52,13 @@ class AuthViewModel(private val prefs: UserPreferences) : ViewModel() {
 
     // agora recebe uma FragmentActivity de verdade
     fun promptBiometric(
-        activity: FragmentActivity,
+        context: Context,
         onAuthenticated: ()->Unit,
         onError: (String)->Unit
     ) {
-        val executor = ContextCompat.getMainExecutor(activity)
+        val executor = ContextCompat.getMainExecutor(context)
         val prompt = BiometricPrompt(
-            activity,
+            context,
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
