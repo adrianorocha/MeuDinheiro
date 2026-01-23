@@ -8,6 +8,7 @@ import java.util.Locale
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -33,22 +34,48 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class UserPreferences(private val context: Context) {
 
     companion object {
-        // Chave para salvar o nome do usuário
-        private val USER_NAME_KEY = stringPreferencesKey("user_name")
+        // só as chaves aqui
+        private val KEY_USER_NAME     = stringPreferencesKey("user_name")
+        private val KEY_USER_PASS     = stringPreferencesKey("user_pass")
+        private val KEY_USER_PHOTO    = stringPreferencesKey("user_photo_uri")
+        private val KEY_BIOMETRIC     = booleanPreferencesKey("biometric_enabled")
     }
 
-    // Flow que emite o nome salvo, ou string vazia se não tiver nada
-    val userNameFlow: Flow<String> = context
-        .dataStore
-        .data
-        .map { prefs ->
-            prefs[USER_NAME_KEY] ?: ""
-        }
+    // 2) flows que usam o context da instância
+    val userNameFlow: Flow<String> = context.dataStore.data
+        .map { prefs -> prefs[KEY_USER_NAME].orEmpty() }
 
-    // Salva o nome do usuário
+    val userPassFlow: Flow<String> = context.dataStore.data
+        .map { prefs -> prefs[KEY_USER_PASS].orEmpty() }
+
+    val userPhotoFlow: Flow<String> = context.dataStore.data
+        .map { prefs -> prefs[KEY_USER_PHOTO].orEmpty() }
+
+    val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data
+        .map { prefs -> prefs[KEY_BIOMETRIC] ?: false }
+
+    // 3) métodos de gravação que usam o context
     suspend fun saveUserName(name: String) {
         context.dataStore.edit { prefs ->
-            prefs[USER_NAME_KEY] = name
+            prefs[KEY_USER_NAME] = name
+        }
+    }
+
+    suspend fun saveUserPass(pass: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_USER_PASS] = pass
+        }
+    }
+
+    suspend fun saveUserPhoto(uri: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_USER_PHOTO] = uri
+        }
+    }
+
+    suspend fun saveBiometricEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BIOMETRIC] = enabled
         }
     }
 }

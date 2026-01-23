@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -57,8 +56,8 @@ fun MainScreen(userPrefs: UserPreferences) {
         )
     )
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
-
     val nome by homeVM.userName.collectAsState(initial = "")
+    val fotoUri  by homeVM.userPhoto.collectAsState()
 
     var emCadastro by remember { mutableStateOf(false) }
 
@@ -69,11 +68,8 @@ fun MainScreen(userPrefs: UserPreferences) {
 
     if (nome.isBlank() || emCadastro) {
         CadastroUsuarioScreen(
-            initialName = nome,
-            onSave = { novoNome ->
-                homeVM.updateUserName(novoNome)
-                emCadastro = false
-            }
+            userPrefs   = userPrefs,
+            onFinished  = { emCadastro = false } // volta para a home
         )
         return
     }
@@ -116,10 +112,10 @@ fun MainScreen(userPrefs: UserPreferences) {
             modifier = Modifier
                 .fillMaxSize()
         ) {
-            HeaderSection(nome = nome,
-                onProfileClick = {
-                    emCadastro = true
-                }
+            HeaderSection(
+                nome = nome,
+                fotoUri = fotoUri,
+                onProfileClick = { emCadastro = true }
             )
 
             if (contas.isNotEmpty()) {
@@ -207,7 +203,6 @@ fun MainScreen(userPrefs: UserPreferences) {
                         DespesasItem(item = item,
                             onRemover = { id ->
                                 despVM.removerDespesaComRestituicao(id)
-                                //despVM.removerDespesa(id, contaSelecionada)
                             }
                         )
                     }
@@ -221,9 +216,4 @@ fun MainScreen(userPrefs: UserPreferences) {
                 .align(Alignment.BottomCenter)
         )
     }
-}
-@Composable
-@Preview(showBackground = true)
-fun MainScreenPreview() {
-    MainScreen()
 }

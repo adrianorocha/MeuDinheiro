@@ -20,7 +20,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,94 +39,7 @@ import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import kotlinx.coroutines.launch
-import java.util.Locale
 
-
-/*@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CardSection(
-    viewModelFactory: ContaSaldoViewModelFactory   // ou sua factory
-) {
-    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
-    val contas by viewModel.contaSaldo.observeAsState(emptyList())
-
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        items(contas, key = { it.id }) { conta ->
-            ContaSaldoCard(
-                conta = conta,
-                onSalvar = { novoSaldo ->
-                    viewModel.atualizarSaldo(conta.banco, novoSaldo)
-                }
-            )
-        }
-    }
-}*/
-/*
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ContaSaldoCard(
-    conta: ContaSaldoDomain,
-    onSalvar: (Double) -> Unit
-) {
-    var textoSaldo by remember(conta) { mutableStateOf(conta.saldo.toString()) }
-    var editando by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier
-            .width(160.dp)
-            .height(120.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(12.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = conta.banco,
-                style = MaterialTheme.typography.titleSmall
-            )
-
-            if (editando) {
-                OutlinedTextField(
-                    value = textoSaldo,
-                    onValueChange = { textoSaldo = it },
-                    label = { Text("Saldo (R$)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            editando = false
-                            val novo = textoSaldo.toDoubleOrNull() ?: Double
-                            onSalvar(novo as Double)
-                        }) {
-                            Icon(Icons.Default.Check, contentDescription = "Salvar")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "R$ ${conta.saldo}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    IconButton(onClick = { editando = true }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Editar")
-                    }
-                }
-            }
-        }
-    }
-}*/
 
 @Composable
 //@Preview(showBackground = true)
@@ -229,7 +141,6 @@ fun CardSection(
 
                     Text(
                         text = formatarMoedaBR(conta.saldo),
-                        //text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", conta.saldo)}",
                         color = Color.Yellow,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,

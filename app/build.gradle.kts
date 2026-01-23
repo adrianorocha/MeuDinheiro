@@ -66,6 +66,13 @@ dependencies {
     implementation(libs.androidx.compose.foundation.layout)
     implementation(libs.androidx.compose.remote.creation.core)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation(libs.androidx.fragment.ktx)
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation(libs.androidx.foundation)
+    implementation("io.coil-kt:coil-compose:2.2.2")
+    implementation(libs.androidx.foundation.layout)
+    implementation("androidx.compose.material:material-icons-extended:1.4.3")
+
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)

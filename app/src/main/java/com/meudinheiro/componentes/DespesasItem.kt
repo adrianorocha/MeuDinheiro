@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
-import java.util.Locale
 
 @Composable
 @Preview(showBackground = true)
