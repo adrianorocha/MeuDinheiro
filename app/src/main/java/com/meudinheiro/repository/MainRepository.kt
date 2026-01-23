@@ -9,11 +9,11 @@ import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
 
 class MainRepository(val context: Context) {
     private val db = AppDatabase.getInstance(context)
-
     //Despesas
     private val despesaDao = db.despesaDao()
     suspend fun inserirDespesa(despesa: Despesa) {
@@ -24,6 +24,9 @@ class MainRepository(val context: Context) {
         return despesaDao.obterDespesas()
     }
 
+    suspend fun obterDespesaPorId(id: Int): Despesa? {
+        return despesaDao.obterDespesaPorId(id)
+    }
     suspend fun obterDespesasPorConta(contaId: String): List<DespesasDomain> {
         return despesaDao.obterDespesasPorConta(contaId)
     }
@@ -35,6 +38,26 @@ class MainRepository(val context: Context) {
     fun getPicCategoria(titulo: String): String {
         val categoria = categorias.find { it.title == titulo }
         return categoria?.pic ?: "default_pic"
+    }
+
+    suspend fun excluirDespesaComRestituicao(id: Int) {
+        // 1. Buscar a despesa antes de excluir
+        val despesa = despesaDao.obterDespesaPorId(id) ?: return
+
+        // 2. Obter o saldo atual da conta
+        val contaSaldo = contaSaldoDao.obterSaldoPorConta(despesa.conta)
+
+        // 3. Calcular o novo saldo (restituir o valor)
+        val novoSaldo = when (despesa.tipo) {
+            TipoDespesa.DEBITO -> contaSaldo + despesa.valor  // Devolve o valor
+            TipoDespesa.CREDITO -> contaSaldo - despesa.valor // Remove o crédito
+        }
+
+        // 4. Excluir a despesa
+        despesaDao.excluirDespesa(id)
+
+        // 5. Atualizar o saldo
+        contaSaldoDao.atualizarSaldo(despesa.conta, novoSaldo)
     }
 
     val categorias = mutableListOf(

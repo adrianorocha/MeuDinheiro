@@ -22,4 +22,7 @@ interface DespesaDao {
 
     @Query("DELETE FROM despesas WHERE id = :id")
     suspend fun excluirDespesa(id: Int)
+
+    @Query("SELECT * FROM despesas WHERE id = :id LIMIT 1")
+    suspend fun obterDespesaPorId(id: Int): Despesa?
 }

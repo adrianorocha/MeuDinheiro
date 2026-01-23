@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.compose.foundation.layout)
     implementation(libs.androidx.compose.remote.creation.core)
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)

@@ -35,4 +35,11 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
             carregarDespesasPorConta(contaSelecionada)
         }
     }
+
+    fun removerDespesaComRestituicao(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.excluirDespesaComRestituicao(id)
+        }
+    }
+
 }

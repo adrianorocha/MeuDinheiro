@@ -267,10 +267,13 @@ fun ActionButtonRow(
                                     conta = contaSelecionada.trim(),
                                     tipo = tipo
                                 )
-                                onAddDespesa(novaDespesa)
                                 if (parcelasInt > 1) {
-                                    viewModel.adicionarDespesaParcelada(novaDespesa, parcelasInt, data.value!!)
+                                    viewModel.adicionarDespesaParcelada(novaDespesa,
+                                        parcelasInt,
+                                        data.value ?: System.currentTimeMillis()
+                                    )
                                 } else {
+                                    onAddDespesa(novaDespesa)
                                     viewModel.adicionarDespesa(novaDespesa)
                                 }
 

@@ -31,6 +31,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.funcoes.DateUtils
+import com.meudinheiro.funcoes.formatarMoedaBR
 import java.util.Locale
 
 @Composable
@@ -41,11 +43,15 @@ fun DespesasItem(
 ){
     val showDialog = remember { mutableStateOf(false) }
 
+    val dataFormatada = remember(item.data) {
+        DateUtils.formatarData(item.data)
+    }
+
     if(showDialog.value){
         AlertDialog(
             onDismissRequest = { showDialog.value = false},
             title = { Text(text = "Remover Despesa")},
-            text = { Text(text = "Deseja remover esta despesa?")},
+            text = { Text(text = "Deseja remover esta despesa? O valor será restituído ao saldo da conta.")},
             confirmButton = {
                 Button(
                     onClick = {
@@ -111,14 +117,14 @@ fun DespesasItem(
                 color = Color.Black
             )
             Text(
-                text = item.data.toString(),
+                text = dataFormatada,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.Black
             )
         }
         Text(
-            text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", item.valor)}",
+            text = formatarMoedaBR(item.valor),
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             color = Color.Gray,

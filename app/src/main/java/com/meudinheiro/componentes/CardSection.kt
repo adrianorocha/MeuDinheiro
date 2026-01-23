@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
+import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import kotlinx.coroutines.launch
@@ -186,7 +187,7 @@ fun CardSection(
                             },
                             onLongClick = {
                                 coroutineScope.launch {
-                                    onExcluir(conta)
+                                    //onExcluir(conta)
                                     showDialog.value = true
                                 }
                             }
@@ -227,7 +228,8 @@ fun CardSection(
                     )
 
                     Text(
-                        text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", conta.saldo)}",
+                        text = formatarMoedaBR(conta.saldo),
+                        //text = "R$ ${String.format(Locale("pt", "BR"), "%.2f", conta.saldo)}",
                         color = Color.Yellow,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,

@@ -1,6 +1,7 @@
 package com.meudinheiro.componentes
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +20,10 @@ import com.meudinheiro.R
 
 @Preview(showBackground = true)
 @Composable
-fun HeaderSection(){
+fun HeaderSection(
+    nome: String,
+    onProfileClick: () -> Unit
+){
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -47,6 +51,7 @@ fun HeaderSection(){
             modifier = Modifier
                 .padding(start = 120.dp, top = 6.dp)
                 .size(50.dp)
+                .clickable(onClick = onProfileClick)
         )
     }
 }

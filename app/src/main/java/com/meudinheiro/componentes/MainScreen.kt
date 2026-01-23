@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -29,15 +30,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.ContaSaldoDomain
+import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import com.meudinheiro.viewModel.DespesasViewModel
 import com.meudinheiro.viewModel.DespesasViewModelFactory
+import com.meudinheiro.viewModel.HomeViewModel
+import com.meudinheiro.viewModel.HomeViewModelFactory
 
 @Composable
-fun MainScreen(
-) {
+fun MainScreen(userPrefs: UserPreferences) {
     var selectedIndex by remember { mutableStateOf(-1) }
     var contaSelecionada by remember { mutableStateOf("") }
 
@@ -53,13 +56,27 @@ fun MainScreen(
             repository
         )
     )
+    val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
+
+    val nome by homeVM.userName.collectAsState(initial = "")
+
+    var emCadastro by remember { mutableStateOf(false) }
 
     var despesasCarregadas by remember { mutableStateOf(false) }
 
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
     var contaPrincipal = contas.firstOrNull()
 
-
+    if (nome.isBlank() || emCadastro) {
+        CadastroUsuarioScreen(
+            initialName = nome,
+            onSave = { novoNome ->
+                homeVM.updateUserName(novoNome)
+                emCadastro = false
+            }
+        )
+        return
+    }
     fun onContaSelecionada(novaConta: String) {
         contaSelecionada = novaConta
         despVM.carregarDespesasPorConta(novaConta)
@@ -99,7 +116,12 @@ fun MainScreen(
             modifier = Modifier
                 .fillMaxSize()
         ) {
-            HeaderSection()
+            HeaderSection(nome = nome,
+                onProfileClick = {
+                    emCadastro = true
+                }
+            )
+
             if (contas.isNotEmpty()) {
                 CardSection(
                     contas = contas,
@@ -184,7 +206,8 @@ fun MainScreen(
                     items(despesas) { item ->
                         DespesasItem(item = item,
                             onRemover = { id ->
-                                despVM.removerDespesa(id, contaSelecionada)
+                                despVM.removerDespesaComRestituicao(id)
+                                //despVM.removerDespesa(id, contaSelecionada)
                             }
                         )
                     }
