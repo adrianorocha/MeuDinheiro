@@ -36,14 +36,19 @@ class UserPreferences(private val context: Context) {
     companion object {
         // só as chaves aqui
         private val KEY_USER_NAME     = stringPreferencesKey("user_name")
+        private val KEY_LOGIN        = stringPreferencesKey("user_login")
         private val KEY_USER_PASS     = stringPreferencesKey("user_pass")
         private val KEY_USER_PHOTO    = stringPreferencesKey("user_photo_uri")
         private val KEY_BIOMETRIC     = booleanPreferencesKey("biometric_enabled")
+
     }
 
     // 2) flows que usam o context da instância
     val userNameFlow: Flow<String> = context.dataStore.data
         .map { prefs -> prefs[KEY_USER_NAME].orEmpty() }
+
+    val userLoginFlow: Flow<String> = context.dataStore.data
+        .map { prefs -> prefs[KEY_LOGIN].orEmpty() }
 
     val userPassFlow: Flow<String> = context.dataStore.data
         .map { prefs -> prefs[KEY_USER_PASS].orEmpty() }
@@ -58,6 +63,12 @@ class UserPreferences(private val context: Context) {
     suspend fun saveUserName(name: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_USER_NAME] = name
+        }
+    }
+
+    suspend fun saveUserLogin (name: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LOGIN] = name
         }
     }
 

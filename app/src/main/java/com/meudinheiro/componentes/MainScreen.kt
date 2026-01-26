@@ -57,7 +57,7 @@ fun MainScreen(userPrefs: UserPreferences) {
     )
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val nome by homeVM.userName.collectAsState(initial = "")
-    val fotoUri  by homeVM.userPhoto.collectAsState()
+    val fotoSalva  by homeVM.userPhoto.collectAsState(initial = "")
 
     var emCadastro by remember { mutableStateOf(false) }
 
@@ -114,7 +114,7 @@ fun MainScreen(userPrefs: UserPreferences) {
         ) {
             HeaderSection(
                 nome = nome,
-                fotoUri = fotoUri,
+                fotoUri = fotoSalva.takeIf { it.isNotBlank() },
                 onProfileClick = { emCadastro = true }
             )
 

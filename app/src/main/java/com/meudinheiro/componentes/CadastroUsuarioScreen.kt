@@ -1,25 +1,51 @@
 package com.meudinheiro.componentes
 
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts.GetContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.*
-import androidx.compose.ui.text.input.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
@@ -30,46 +56,128 @@ import com.meudinheiro.viewModel.AuthViewModel
 import com.meudinheiro.viewModel.AuthViewModelFactory
 import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
+import java.io.File
+import java.util.UUID
+
+private enum class PasswordStrength { WEAK, MEDIUM, STRONG }
+
+private data class PasswordStrengthUi(
+    val strength: PasswordStrength,
+    val progress: Float,        // 0..1
+    val label: String,
+    val color: Color
+)
+
+private fun evaluatePasswordStrength(pass: String): PasswordStrengthUi {
+    if (pass.isBlank()) {
+        return PasswordStrengthUi(
+            strength = PasswordStrength.WEAK,
+            progress = 0f,
+            label = "Fraca",
+            color = Color(0xFFE53935)
+        )
+    }
+
+    var score = 0
+    val len = pass.length
+
+    if (len >= 8) score++
+    if (len >= 12) score++
+    if (pass.any { it.isLowerCase() }) score++
+    if (pass.any { it.isUpperCase() }) score++
+    if (pass.any { it.isDigit() }) score++
+    if (pass.any { !it.isLetterOrDigit() }) score++
+
+    // score máximo: 6
+    val progress = (score / 6f).coerceIn(0f, 1f)
+
+    return when {
+        score <= 2 -> PasswordStrengthUi(
+            strength = PasswordStrength.WEAK,
+            progress = progress.coerceAtMost(0.4f),
+            label = "Fraca",
+            color = Color(0xFFE53935)
+        )
+        score <= 4 -> PasswordStrengthUi(
+            strength = PasswordStrength.MEDIUM,
+            progress = progress.coerceIn(0.4f, 0.75f),
+            label = "Média",
+            color = Color(0xFFFFB300)
+        )
+        else -> PasswordStrengthUi(
+            strength = PasswordStrength.STRONG,
+            progress = progress.coerceAtLeast(0.75f),
+            label = "Forte",
+            color = Color(0xFF43A047)
+        )
+    }
+}
 
 @Composable
 fun CadastroUsuarioScreen(
     userPrefs: UserPreferences,
-    onFinished: ()->Unit
+    onFinished: () -> Unit
 ) {
-    val ctx = LocalContext.current
-    // tenta converter para FragmentActivity
+    val context = LocalContext.current
     val activity = remember {
-        (ctx as? FragmentActivity)
+        (context as? FragmentActivity)
             ?: throw IllegalStateException("Composable must be hosted in a FragmentActivity")
     }
-    val homeVm: HomeViewModel = viewModel(
-        factory = HomeViewModelFactory(userPrefs)
-    )
 
-    val vm: AuthViewModel = viewModel(
-        factory = AuthViewModelFactory(userPrefs)
-    )
+    val homeVm: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
+    val vm: AuthViewModel = viewModel(factory = AuthViewModelFactory(userPrefs))
 
-    var nome by remember { mutableStateOf(homeVm.userName.value) }
+    // campos da tela
+    var nomeCompleto by remember { mutableStateOf("") }
+    var usuario by remember { mutableStateOf("") }
     var senha by remember { mutableStateOf("") }
     var confirma by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
 
-    // 1) coleta a string salva (sempre não-nula, mas pode ser "")
     val savedUri by homeVm.userPhoto.collectAsState(initial = "")
-    // 2) decide se tem foto inicial ou não
     val initialPhotoUri: String? = savedUri.takeIf { it.isNotBlank() }
-
-    // 3) fotoUri agora é String? bem tipado
     var fotoUri by remember { mutableStateOf(initialPhotoUri) }
 
-    // launcher para buscar imagem
     val pickLauncher = rememberLauncherForActivityResult(
-        contract = GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        fotoUri = uri?.toString()
+        if (uri == null) return@rememberLauncherForActivityResult
+
+        try {
+            // copia para um arquivo interno do app (permanente)
+            val dir = File(context.filesDir, "profile")
+            if (!dir.exists()) dir.mkdirs()
+
+            val destFile = File(dir, "profile_${UUID.randomUUID()}.jpg")
+
+            context.contentResolver.openInputStream(uri).use { input ->
+                requireNotNull(input) { "Não foi possível abrir a imagem." }
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            // salva o PATH do arquivo interno
+            fotoUri = destFile.absolutePath
+            homeVm.updateUserPhoto(destFile.absolutePath)
+
+            Log.d("CadastroUsuario", "Foto salva em: ${destFile.absolutePath}")
+
+        } catch (e: Exception) {
+            Toast.makeText(context, "Erro ao salvar foto: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e("CadastroUsuario", "Erro ao salvar foto", e)
+        }
+    }
+    LaunchedEffect(Unit) {
+        vm.loadInitial()
+        nomeCompleto = vm.nomeCompletoState.value
+        usuario = vm.usuarioState.value
+        // não pré-preencher senha na UI por segurança
+        senha = ""
+        confirma = ""
     }
 
-    LaunchedEffect(Unit) { vm.loadInitial()}
+    val strengthUi = remember(senha) { evaluatePasswordStrength(senha) }
 
     Column(
         modifier = Modifier
@@ -79,66 +187,117 @@ fun CadastroUsuarioScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text("Cadastro de Usuário", fontSize = 24.sp)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(Modifier.height(16.dp))
-
-        // avatar
+        // Avatar
         Box(
             modifier = Modifier
                 .size(100.dp)
                 .clip(CircleShape)
-                .clickable { pickLauncher.launch("image/*") },
+                .clickable { pickLauncher.launch(arrayOf("image/*"))},
             contentAlignment = Alignment.Center
         ) {
-            if (fotoUri != null) {
+            if (!fotoUri.isNullOrBlank()) {
                 Image(
                     painter = rememberAsyncImagePainter(fotoUri),
-                    contentDescription = null,
+                    contentDescription = "Foto de perfil",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                // ícone padrão
                 Icon(
                     imageVector = Icons.Default.Person,
-                    contentDescription = null,
+                    contentDescription = "Avatar padrão",
                     modifier = Modifier.size(48.dp)
                 )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
-            value = nome,
-            onValueChange = { nome = it },
+            value = nomeCompleto,
+            onValueChange = { nomeCompleto = it },
             label = { Text("Nome completo") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(8.dp))
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = usuario,
+            onValueChange = { usuario = it },
+            label = { Text("Nome de usuário") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         OutlinedTextField(
             value = senha,
             onValueChange = { senha = it },
             label = { Text("Senha") },
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                    Icon(
+                        imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = null
+                    )
+                }
+            }
         )
-        Spacer(Modifier.height(8.dp))
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Mini barra de força + texto
+        LinearProgressIndicator(
+            progress = { strengthUi.progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp),
+            color = strengthUi.color,
+            trackColor = Color(0xFFE0E0E0)
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Força da senha: ${strengthUi.label}",
+            fontSize = 12.sp,
+            color = strengthUi.color,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         OutlinedTextField(
             value = confirma,
             onValueChange = { confirma = it },
             label = { Text("Confirme a senha") },
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                    Icon(
+                        imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = null
+                    )
+                }
+            }
         )
-        Spacer(Modifier.height(16.dp))
 
-        // Switch para biometria
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Switch biometria
         if (vm.canUseBiometric(activity)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -152,7 +311,9 @@ fun CadastroUsuarioScreen(
                             vm.promptBiometric(
                                 activity,
                                 onAuthenticated = { /* ok */ },
-                                onError = { Toast.makeText(activity, it, Toast.LENGTH_SHORT).show() }
+                                onError = { errorMsg ->
+                                    Toast.makeText(activity, errorMsg, Toast.LENGTH_SHORT).show()
+                                }
                             )
                         } else {
                             vm.useBiometric.value = false
@@ -160,23 +321,41 @@ fun CadastroUsuarioScreen(
                     }
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
-        Spacer(Modifier.height(24.dp))
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Button(
             onClick = {
                 when {
-                    nome.isBlank() ->
-                        Toast.makeText(activity, "Nome obrigatório", Toast.LENGTH_SHORT).show()
+                    nomeCompleto.trim().isBlank() ->
+                        Toast.makeText(activity, "Nome completo obrigatório", Toast.LENGTH_SHORT).show()
+
+                    usuario.trim().isBlank() ->
+                        Toast.makeText(activity, "Nome de usuário obrigatório", Toast.LENGTH_SHORT).show()
+
                     senha.isBlank() ->
                         Toast.makeText(activity, "Senha obrigatória", Toast.LENGTH_SHORT).show()
+
                     senha != confirma ->
                         Toast.makeText(activity, "Senhas diferentes", Toast.LENGTH_SHORT).show()
+
                     else -> {
-                        // grava nome e foto
-                        homeVm.updateUserName(nome.trim())
-                        fotoUri?.let { homeVm.updateUserPhoto(it) }
-                        onFinished()
+                        // grava credenciais no DataStore (nome completo, usuário e senha)
+                        vm.nomeCompletoState.value = nomeCompleto.trim()
+                        vm.usuarioState.value = usuario.trim()
+                        vm.passState.value = senha
+                        vm.confirmState.value = confirma
+                        if (!fotoUri.isNullOrBlank()) {
+                            homeVm.updateUserPhoto(fotoUri!!) // Salva a URI da foto
+                        }
+
+                        vm.saveCredentials(
+                            onSuccess = {
+                                onFinished()
+                            }
+                        )
                     }
                 }
             },
