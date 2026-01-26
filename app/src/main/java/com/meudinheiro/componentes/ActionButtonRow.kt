@@ -1,35 +1,18 @@
 package com.meudinheiro.componentes
 
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,9 +22,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
@@ -55,248 +39,259 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-@Preview(showBackground = true)
 fun ActionButtonRow(
-    categorias :List<String>,
+    categorias: List<String>,
     onAddDespesa: (Despesa) -> Unit,
     getPicCategoria: (String) -> String,
     contaSelecionada: String,
     viewModelFactory: ContaSaldoViewModelFactory
 ) {
-    val exibirFormulario = remember { mutableStateOf(false) }
+    var exibirFormulario by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        ActionButton(R.drawable.deposit, "Depositar", onClick = { })
+        ActionButton(R.drawable.add, "Adicionar", onClick = { exibirFormulario = true })
+        ActionButton(R.drawable.sim_chip, "Config.", onClick = { })
+    }
+
+    if (exibirFormulario) {
+        AddDespesaDialog(
+            categorias = categorias,
+            contaSelecionada = contaSelecionada,
+            getPicCategoria = getPicCategoria,
+            viewModelFactory = viewModelFactory,
+            onAddDespesa = onAddDespesa,
+            onDismiss = { exibirFormulario = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddDespesaDialog(
+    categorias: List<String>,
+    contaSelecionada: String,
+    getPicCategoria: (String) -> String,
+    viewModelFactory: ContaSaldoViewModelFactory,
+    onAddDespesa: (Despesa) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
+
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
     var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) }
+
+    var descricao by rememberSaveable { mutableStateOf("") }
+    var valor by rememberSaveable { mutableStateOf("") }
+    var numeroParcelas by rememberSaveable { mutableStateOf("1") }
+
     val mostrarCalendario = remember { mutableStateOf(false) }
-    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
-
-    val data = remember { mutableStateOf<Long?>(null) }
-
-    var numeroParcelas by remember { mutableStateOf("") }
+    val dataMillis = remember { mutableStateOf<Long?>(null) }
 
     if (mostrarCalendario.value) {
         CustomCalendarDialog(
             onDismiss = { mostrarCalendario.value = false },
             onDateSelected = { ano, mes, dia ->
-                // Usando Calendar para criar um timestamp
-                val selectedCalendar = Calendar.getInstance()
-                selectedCalendar.set(ano, mes, dia, 0, 0, 0)
-                selectedCalendar.set(Calendar.MILLISECOND, 0)
-                data.value = selectedCalendar.timeInMillis // Armazena o timestamp
+                val cal = Calendar.getInstance()
+                cal.set(ano, mes, dia, 0, 0, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                dataMillis.value = cal.timeInMillis
                 mostrarCalendario.value = false
             }
         )
     }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        ActionButton(
-            R.drawable.deposit,
-            "Depositar",
-            onClick = {}
-        )
-        ActionButton(
-            R.drawable.add,
-            "Adicionar",
-            onClick = { exibirFormulario.value = true}
-        )
-        ActionButton(
-            R.drawable.sim_chip,
-            "Configurações",
-            onClick = {}
-        )
+
+    val dateText = remember(dataMillis.value) {
+        dataMillis.value?.let {
+            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
+        } ?: "Selecionar data"
     }
-    if(exibirFormulario.value) {
-        /* Adicionar Despesas */
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-        ){
-            Surface(
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-                    .height(400.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White,
-                shadowElevation = 8.dp
-            )  {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Nova Despesa",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+
+                // Débito / Crédito mais organizado
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Novas Despesas",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
+                    SegmentedButton(
+                        selected = tipo == TipoDespesa.DEBITO,
+                        onClick = { tipo = TipoDespesa.DEBITO },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                    ) { Text("Débito") }
+
+                    SegmentedButton(
+                        selected = tipo == TipoDespesa.CREDITO,
+                        onClick = { tipo = TipoDespesa.CREDITO },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                    ) { Text("Crédito") }
+                }
+
+                // Categoria
+                ExposedDropdownMenuBox(
+                    expanded = expandido,
+                    onExpandedChange = { expandido = !expandido },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = categoriaSelecionada ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Categoria") },
+                        placeholder = { Text("Selecione") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
                     )
-                    var descricao by remember { mutableStateOf("") }
-                    var valor by remember { mutableStateOf("") }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    ){
-                        RadioButton(
-                            selected = tipo == TipoDespesa.DEBITO,
-                            onClick = { tipo = TipoDespesa.DEBITO },
-                        )
-                        Text( modifier = Modifier.padding(start = 3.dp,top = 18.dp),
-                            text = "Débito")
-                        RadioButton(
-                            selected = tipo == TipoDespesa.CREDITO,
-                            onClick = { tipo = TipoDespesa.CREDITO }
-                        )
-                        Text( modifier = Modifier.padding(start = 3.dp,top = 18.dp),
-                            text = "Crédito")
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
+                    ExposedDropdownMenu(
+                        expanded = expandido,
+                        onDismissRequest = { expandido = false }
                     ) {
-                        ExposedDropdownMenuBox(
-                            expanded = expandido,
-                            onExpandedChange = { expandido = !expandido }
-                        ) {
-                            TextField(
-                                value = categoriaSelecionada ?: "Categoria",
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("Categoria") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .menuAnchor()
+                        categorias.forEach { categoria ->
+                            DropdownMenuItem(
+                                text = { Text(categoria) },
+                                onClick = {
+                                    categoriaSelecionada = categoria
+                                    expandido = false
+                                }
                             )
-                            ExposedDropdownMenu(
-                                expanded = expandido,
-                                onDismissRequest = { expandido = false }
-                            ) {
-                                categorias.forEach { categoria ->
-                                    DropdownMenuItem(
-                                        text = { Text(categoria) },
-                                        onClick = {
-                                            categoriaSelecionada = categoria
-                                            expandido = false
-                                        }
-                                    )
-                                }
-                            }
                         }
                     }
-                    //Descrição
-                    TextField(
-                        value = descricao,
-                        onValueChange = { descricao = it },
-                        label = { Text("Descrição") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    ) {
-                        //Valor
-                        TextField(
-                            value = valor,
-                            onValueChange = { valor = it },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            label = { Text("Valor") },
-                            modifier = Modifier
-                                .width(200.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                        )
-                        //Numero de Parcelas
-                        TextField(
-                            value = numeroParcelas,
-                            onValueChange = { numeroParcelas = it },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            label = { Text("Parcelas") },
-                            modifier = Modifier.width(100.dp).clip(RoundedCornerShape(10.dp)).padding(start = 8.dp)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    Log.d("ActionButtonRow", "Data clicada")
-                                    mostrarCalendario.value = true
-                                }
-                        ){
-                            val dateText = data.value?.let {
-                                val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                                sdf.format(Date(it))
-                            } ?: "Selecionar Data"
-                            Text(
-                                text = dateText,
-                                fontSize = 16.sp,
-                                color = Color.Black
-                            )                        }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Button(
-                            onClick = {
-                                val valorDouble = valor.toDoubleOrNull() ?: 0.0
-                                val parcelasInt = numeroParcelas.toIntOrNull() ?: 1
-                                val novaDespesa = Despesa(
-                                    descricao = descricao,
-                                    valor = valorDouble,
-                                    data = data.value?.let { Date(it) } ?: Date(),
-                                    categoria = categoriaSelecionada ?: "Sem Categoria",
-                                    pic = getPicCategoria(categoriaSelecionada ?:""),
-                                    conta = contaSelecionada.trim(),
-                                    tipo = tipo
-                                )
-                                if (parcelasInt > 1) {
-                                    viewModel.adicionarDespesaParcelada(novaDespesa,
-                                        parcelasInt,
-                                        data.value ?: System.currentTimeMillis()
-                                    )
-                                } else {
-                                    onAddDespesa(novaDespesa)
-                                    viewModel.adicionarDespesa(novaDespesa)
-                                }
+                }
 
-                                // Limpa os campos
-                                descricao = ""
-                                valor = ""
-                                numeroParcelas = ""
-                                mostrarCalendario.value = false
-                                categoriaSelecionada = null
-                                exibirFormulario.value = false
-                                data.value = null
-                            },
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                        ) {
-                            Text("Adicionar")
+                // Descrição
+                OutlinedTextField(
+                    value = descricao,
+                    onValueChange = { descricao = it },
+                    label = { Text("Descrição") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+// Linha: Valor | Parcelas
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = valor,
+                        onValueChange = { valor = it },
+                        label = { Text("Valor", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    OutlinedTextField(
+                        value = numeroParcelas,
+                        onValueChange = { numeroParcelas = it },
+                        label = { Text("Parcelas", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier
+                            .weight(1f)
+                            .widthIn(min = 130.dp) // evita quebrar "Parcelas" em telas menores
+                    )
+                }
+
+                // Data (linha separada, padrão moderno)
+                OutlinedTextField(
+                    value = dataMillis.value?.let {
+                        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
+                    } ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Data") },
+                    placeholder = { Text("Selecionar data", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    trailingIcon = {
+                        IconButton(onClick = { mostrarCalendario.value = true }) {
+                            Icon(imageVector = Icons.Filled.CalendarMonth, contentDescription = "Selecionar data")
                         }
-                        Button(
-                            onClick = { exibirFormulario.value = false },
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                        ) {
-                            Text("Cancelar")
-                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Botões
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancelar")
+                    }
+
+                    Button(
+                        onClick = {
+                            val valorDouble = valor.replace(",", ".").toDoubleOrNull()
+                            val parcelasInt = numeroParcelas.toIntOrNull() ?: 1
+
+                            when {
+                                descricao.isBlank() -> return@Button
+                                valorDouble == null || valorDouble <= 0.0 -> return@Button
+                                categoriaSelecionada.isNullOrBlank() -> return@Button
+                            }
+
+                            val novaDespesa = Despesa(
+                                descricao = descricao,
+                                valor = valorDouble,
+                                data = dataMillis.value?.let { Date(it) } ?: Date(),
+                                categoria = categoriaSelecionada ?: "Sem Categoria",
+                                pic = getPicCategoria(categoriaSelecionada ?: ""),
+                                conta = contaSelecionada.trim(),
+                                tipo = tipo
+                            )
+
+                            if (parcelasInt > 1) {
+                                viewModel.adicionarDespesaParcelada(
+                                    novaDespesa,
+                                    parcelasInt,
+                                    dataMillis.value ?: System.currentTimeMillis()
+                                )
+                            } else {
+                                onAddDespesa(novaDespesa)
+                                viewModel.adicionarDespesa(novaDespesa)
+                            }
+
+                            // limpa e fecha
+                            descricao = ""
+                            valor = ""
+                            numeroParcelas = "1"
+                            categoriaSelecionada = null
+                            dataMillis.value = null
+                            onDismiss()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Adicionar")
                     }
                 }
             }
@@ -310,15 +305,15 @@ fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {
         modifier = Modifier
             .weight(1f)
             .height(78.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(color = LightGray)
             .clickable { onClick() }
-            .padding(8.dp),
+            .padding(10.dp),
         verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-
-        ) {
-        Image(painter = painterResource(id = icon),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Image(
+            painter = painterResource(id = icon),
             contentDescription = text
         )
         Text(
@@ -329,7 +324,7 @@ fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp)
+                .padding(top = 6.dp)
         )
     }
 }
