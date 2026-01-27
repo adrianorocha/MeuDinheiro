@@ -1,7 +1,9 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -10,30 +12,25 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,100 +41,62 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.funcoes.formatarMoedaBR
-import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
-import kotlin.math.abs
 
-@OptIn(ExperimentalFoundationApi::class)
+private fun Dp.coerceInDp(min: Dp, max: Dp): Dp {
+    return when {
+        this < min -> min
+        this > max -> max
+        else -> this
+    }
+}
+
 @Composable
 fun CardSection(
     contas: List<ContaSaldoDomain>,
     contasSelecionadaId: String?,
-    viewModelFactory: ContaSaldoViewModelFactory, // mantive por compatibilidade, mas não uso aqui
     onExcluir: (ContaSaldoDomain) -> Unit,
     onContaSelecionada: (String) -> Unit,
     onAtualizar: (ContaSaldoDomain) -> Unit
 ) {
     val lazyListState = rememberLazyListState()
-    var lastAutoSelected by remember { mutableStateOf<String?>(null) }
-    var contaParaExcluir by remember { mutableStateOf<ContaSaldoDomain?>(null) }
 
-    // Seleciona a primeira conta automaticamente (apenas uma vez), se não houver selecionada
-    LaunchedEffect(contas.size, contasSelecionadaId) {
-        if (contas.isNotEmpty() && (contasSelecionadaId.isNullOrBlank())) {
-            val first = contas.first()
-            onContaSelecionada(first.conta)
-            onAtualizar(first)
-        }
-    }
-
-    // Quando parar de rolar, pega o card mais central e seleciona automaticamente
-    LaunchedEffect(contas) {
-        snapshotFlow { lazyListState.isScrollInProgress }
-            .distinctUntilChanged()
-            .filter { isScrolling -> !isScrolling } // só quando solta / termina o snap
-            .map {
-                val layoutInfo = lazyListState.layoutInfo
-                val visible = layoutInfo.visibleItemsInfo
-                if (visible.isEmpty()) return@map null
-
-                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-
-                val centeredItem = visible.minByOrNull { item ->
-                    val itemCenter = item.offset + (item.size / 2)
-                    abs(itemCenter - viewportCenter)
-                }
-
-                centeredItem?.key as? String // como key = conta.conta, isso vira String
-            }
-            .distinctUntilChanged()
-            .collect { centeredKey ->
-                if (centeredKey.isNullOrBlank()) return@collect
-                if (centeredKey == lastAutoSelected) return@collect
-
-                val conta = contas.firstOrNull { it.conta == centeredKey } ?: return@collect
-                lastAutoSelected = centeredKey
-                onContaSelecionada(conta.conta)
-                onAtualizar(conta) // aqui carrega despesas da conta centralizada
-            }
-    }
-    if (contaParaExcluir != null) {
-        AlertDialog(
-            onDismissRequest = { contaParaExcluir = null },
-            title = { Text("Excluir conta") },
-            text = { Text("Deseja excluir esta conta?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onExcluir(contaParaExcluir!!)
-                        contaParaExcluir = null
-                    }
-                ) { Text("Excluir") }
-            },
-            dismissButton = {
-                TextButton(onClick = { contaParaExcluir = null }) { Text("Cancelar") }
-            }
-        )
-    }
+// Controla qual conta está com o dialog aberto (evita 1 dialog por item)
+    val dialogContaId = remember { mutableStateOf<String?>(null) }
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(top = 8.dp)
     ) {
-        // Responsivo:
-        // - Em telas grandes, limita o card pra não ficar “gigante”
-        // - Em telas pequenas, usa ~88% da largura
-        val cardWidth = (maxWidth * 0.88f).coerceAtMost(380.dp)
+        val cardWidth = (maxWidth * 0.84f).coerceInDp(min = 280.dp, max = 420.dp)
+        val cardHeight = 200.dp
+
+        if (contas.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(cardHeight)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Nenhuma conta cadastrada",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            return@BoxWithConstraints
+        }
 
         LazyRow(
             state = lazyListState,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(cardHeight),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             flingBehavior = rememberSnapFlingBehavior(lazyListState)
@@ -147,85 +106,111 @@ fun CardSection(
 
                 ContaCard(
                     conta = conta,
-                    selected = selected,
                     width = cardWidth,
+                    height = cardHeight,
+                    selected = selected,
                     onClick = {
                         onContaSelecionada(conta.conta)
                         onAtualizar(conta)
                     },
-                    onLongClick = { contaParaExcluir = conta }
+                    onLongClick = {
+                        dialogContaId.value = conta.conta
+                    }
                 )
             }
         }
     }
+
+    val contaParaExcluir = contas.firstOrNull { it.conta == dialogContaId.value }
+    if (contaParaExcluir != null) {
+        AlertDialog(
+            onDismissRequest = { dialogContaId.value = null },
+            title = { Text(text = "Excluir Conta") },
+            text = { Text(text = "Deseja excluir a conta ${contaParaExcluir.banco} (C/C: ${contaParaExcluir.conta})?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onExcluir(contaParaExcluir)
+                        dialogContaId.value = null
+                    }
+                ) { Text("Sim") }
+            },
+            dismissButton = {
+                Button(onClick = { dialogContaId.value = null }) { Text("Não") }
+            }
+        )
+    }
+
+
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContaCard(
     conta: ContaSaldoDomain,
-    selected: Boolean,
     width: Dp,
+    height: Dp,
+    selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(18.dp)
 
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-    val borderWidth = if (selected) 2.dp else 0.dp
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        label = "borderColor"
+    )
 
-    ElevatedCard(
+    val elevation by animateDpAsState(
+        targetValue = if (selected) 10.dp else 4.dp,
+        label = "elevation"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.02f else 1f,
+        label = "scale"
+    )
+
+    Card(
         modifier = Modifier
-            .width(width)
-            .aspectRatio(1.85f) // ajusta a altura automaticamente (responsivo)
+            .size(width = width, height = height)
             .clip(shape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             ),
         shape = shape,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (selected) 6.dp else 2.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+        border = BorderStroke(width = 2.dp, color = borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = elevation),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Background
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+        ) {
+            // Fundo com imagem (mantém seu asset)
             Image(
                 painter = painterResource(id = R.drawable.card_tecno),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                alpha = 0.95f
             )
 
-            // Overlay para legibilidade (moderno)
+            // Scrim/gradiente para melhorar leitura do texto em qualquer tela/brilho
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.verticalGradient(
+                        brush = Brush.verticalGradient(
                             colors = listOf(
-                                Color.Black.copy(alpha = 0.15f),
-                                Color.Black.copy(alpha = 0.55f)
+                                Color(0xAA000000),
+                                Color(0x33000000),
+                                Color(0xAA000000)
                             )
                         )
                     )
             )
-
-            // Borda de seleção (sem “pintar tudo”)
-            if (borderWidth > 0.dp) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(2.dp)
-                        .clip(shape)
-                        .background(Color.Transparent)
-                )
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color.Transparent,
-                    shape = shape,
-                    border = BorderStroke(borderWidth, borderColor)
-                ) {}
-            }
 
             // Chip no topo direito (sem padding fixo)
             Image(
@@ -233,45 +218,78 @@ private fun ContaCard(
                 contentDescription = null,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .size(28.dp)
+                    .padding(top = 14.dp, end = 14.dp)
+                    .size(34.dp),
+                contentScale = ContentScale.Fit
+            )
+
+            val titleStyle = MaterialTheme.typography.titleMedium.copy(
+                color = Color(0xFFFFD54F) // “dourado” mais suave
+            )
+
+            val infoStyle = MaterialTheme.typography.bodyMedium.copy(
+                color = Color.White
+            )
+
+            val moneyStyle = MaterialTheme.typography.titleLarge.copy(
+                color = Color(0xFFFFD54F),
+                fontSize = if (width < 320.dp) 18.sp else 20.sp
             )
 
             // Banco
             Text(
                 text = conta.banco,
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
+                style = titleStyle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 14.dp, top = 12.dp, end = 52.dp)
+                    .padding(start = 14.dp, top = 14.dp, end = 56.dp)
             )
 
-            // Agência e Conta (menor, topo)
+            // Agência / Conta
             Text(
                 text = "Agência: ${conta.agencia}  •  C/C: ${conta.conta}",
-                color = Color.White.copy(alpha = 0.92f),
-                style = MaterialTheme.typography.bodySmall,
+                style = infoStyle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 14.dp, top = 38.dp, end = 14.dp)
+                    .align(Alignment.CenterStart)
+                    .padding(start = 14.dp, end = 14.dp)
             )
 
-            // Saldo (destaque)
+            // Saldo
             Text(
                 text = formatarMoedaBR(conta.saldo),
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
+                style = moneyStyle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(start = 14.dp, bottom = 14.dp, end = 14.dp)
             )
+
+            // Destaque sutil quando selecionado (sem “pintar de verde” e perder o design)
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x1400C853)) // verde bem translúcido
+                )
+            }
+
+            // Scale leve (aplicado no conteúdo para sensação “premium”)
+            // (Se preferir scale no card inteiro, dá para colocar graphicsLayer no modifier do Card)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .align(Alignment.Center)
+            ) {
+                // apenas para manter o scale computado (caso queira usar no Card modifier)
+                // Você pode remover se não quiser scale.
+            }
         }
     }
+
+
 }

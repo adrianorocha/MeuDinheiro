@@ -121,21 +121,22 @@ fun MainScreen(userPrefs: UserPreferences) {
             if (contas.isNotEmpty()) {
                 CardSection(
                     contas = contas,
-                    viewModelFactory = ContaSaldoViewModelFactory(repository),
+                    //viewModelFactory = ContaSaldoViewModelFactory(repository),
+                    contasSelecionadaId = contaSelecionada,
                     onExcluir = { conta ->
                         contaVM.removerContaSaldo(conta.id)
-                    },
-                    contasSelecionadaId = contaSelecionada,
-                    onAtualizar = { conta ->
-                        atualizarDespesas(conta)
-                        despVM.carregarDespesasPorConta(conta.conta)
                     },
                     onContaSelecionada = { novaConta ->
                         onContaSelecionada(novaConta)
                         despVM.carregarDespesasPorConta(novaConta)
                         contaVM.selecionarConta(novaConta)
+                    },
+                    onAtualizar = { conta ->
+                        atualizarDespesas(conta)
+                        despVM.carregarDespesasPorConta(conta.conta)
                     }
-                )
+
+                    )
             } else {
                 Text(
                     modifier = Modifier
