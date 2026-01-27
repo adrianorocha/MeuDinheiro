@@ -10,18 +10,19 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ContaSaldoDao {
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirContaSaldo(contaSaldo: ContaSaldo)
 
     @Query("SELECT * FROM contasaldo ORDER BY banco DESC")
     fun obterContaSaldo(): Flow<List<ContaSaldoDomain>>
 
-    @Query("SELECT saldo FROM contaSaldo WHERE conta = :conta LIMIT 1")
-    suspend fun obterSaldoPorConta(conta: String): Double
+    @Query("SELECT saldo FROM contasaldo WHERE conta = :conta LIMIT 1")
+    suspend fun obterSaldoPorConta(conta: String): Double?
+
     @Query("DELETE FROM contasaldo WHERE id = :id")
     suspend fun excluirConta(id: Int)
 
     @Query("UPDATE contasaldo SET saldo = :novoSaldo WHERE conta = :conta")
     suspend fun atualizarSaldo(conta: String, novoSaldo: Double)
-
 }

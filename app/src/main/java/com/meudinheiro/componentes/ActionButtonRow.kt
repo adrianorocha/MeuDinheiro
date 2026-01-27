@@ -192,7 +192,7 @@ private fun AddDespesaDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-// Linha: Valor | Parcelas
+                // Linha: Valor | Parcelas
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -277,7 +277,7 @@ private fun AddDespesaDialog(
                                     dataMillis.value ?: System.currentTimeMillis()
                                 )
                             } else {
-                                onAddDespesa(novaDespesa)
+                                //onAddDespesa(novaDespesa)
                                 viewModel.adicionarDespesa(novaDespesa)
                             }
 

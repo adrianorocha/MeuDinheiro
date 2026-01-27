@@ -42,19 +42,22 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
 
     // Função para adicionar despesas e atualizar o saldo
     fun adicionarDespesa(despesa: Despesa) {
-        selecionarConta(despesa.conta)
-        _saldo.value = contaSaldo.value?.find { it.conta == despesa.conta }?.saldo ?: 0.0
+        _contaSelecionadaId.value = despesa.conta
 
-        when (despesa.tipo) {
-            TipoDespesa.DEBITO -> {
-                _saldo.value -= despesa.valor // Subtrai do saldo
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1) Insere a despesa na conta informada
+            repository.inserirDespesa(despesa)
+
+            // 2) Calcula novo saldo da conta informada
+            val saldoAtual = repository.obterSaldoPorConta(despesa.conta)
+            val novoSaldo = when (despesa.tipo) {
+                TipoDespesa.DEBITO -> saldoAtual - despesa.valor
+                TipoDespesa.CREDITO -> saldoAtual + despesa.valor
             }
-            TipoDespesa.CREDITO -> {
-                _saldo.value += despesa.valor // Soma ao saldo
-            }
+
+            // 3) Atualiza saldo somente dessa conta
+            repository.atualizarSaldo(despesa.conta, novoSaldo)
         }
-        //Atualiza saldo
-        atualizarSaldo(despesa.conta, _saldo.value)
     }
 
     /*fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
@@ -96,53 +99,37 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel(){
     }*/
 
     fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
-        selecionarConta(despesa.conta)
-        _saldo.value = contaSaldo.value?.find { it.conta == despesa.conta }?.saldo ?: 0.0
+        _contaSelecionadaId.value = despesa.conta
 
-        // Calcular o valor da parcela
-        val valorParcela = despesa.valor / numeroParcelas
+        viewModelScope.launch(Dispatchers.IO) {
+            val saldoAtual = repository.obterSaldoPorConta(despesa.conta)
+            var saldoTemp = saldoAtual
 
-        val calendar = Calendar.getInstance().apply {
-            timeInMillis = dataSelecionada // Data inicial recebida
-        }
+            val valorParcela = despesa.valor / numeroParcelas
 
-        for (i in 1..numeroParcelas) {
-            // Calcular a data para esta parcela
-            val dataParcelaCal = Calendar.getInstance().apply {
-                timeInMillis = dataSelecionada
-                add(Calendar.DAY_OF_MONTH, 30 * (i - 1)) // Adiciona 30 dias para cada parcela
-            }
-
-            // Criar uma nova descrição para a parcela
-            val descricaoParcela = "${despesa.descricao} - $i de $numeroParcelas"
-
-            // Criar uma nova instância da despesa com os dados da parcela
-            val despesaParcelada = despesa.copy(
-                descricao = descricaoParcela,
-                valor = valorParcela,
-                data = Date(dataParcelaCal.timeInMillis)
-            )
-
-            // Ajustar o saldo
-            when (despesa.tipo) {
-                TipoDespesa.DEBITO -> {
-                    _saldo.value -= valorParcela
+            for (i in 1..numeroParcelas) {
+                val dataParcelaCal = Calendar.getInstance().apply {
+                    timeInMillis = dataSelecionada
+                    add(Calendar.DAY_OF_MONTH, 30 * (i - 1))
                 }
-                TipoDespesa.CREDITO -> {
-                    _saldo.value += valorParcela
+
+                val despesaParcelada = despesa.copy(
+                    descricao = "${despesa.descricao} - $i de $numeroParcelas",
+                    valor = valorParcela,
+                    data = Date(dataParcelaCal.timeInMillis)
+                )
+
+                repository.inserirDespesa(despesaParcelada)
+
+                saldoTemp = when (despesa.tipo) {
+                    TipoDespesa.DEBITO -> saldoTemp - valorParcela
+                    TipoDespesa.CREDITO -> saldoTemp + valorParcela
                 }
             }
 
-            // Persistir a parcela no banco de dados
-            viewModelScope.launch(Dispatchers.IO) {
-                repository.inserirDespesa(despesaParcelada) // Insere a despesa com a descrição atualizada
-            }
+            repository.atualizarSaldo(despesa.conta, saldoTemp)
         }
-
-        // Atualizar o saldo no banco (apenas uma vez após todas as parcelas)
-        atualizarSaldo(despesa.conta, _saldo.value)
     }
-
     fun selecionarConta(contaId: String) {
         _contaSelecionadaId.value = contaId
     }

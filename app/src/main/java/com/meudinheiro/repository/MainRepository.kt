@@ -107,6 +107,9 @@ class MainRepository(val context: Context) {
         contaSaldoDao.inserirContaSaldo(contaSaldo)
     }
 
+    suspend fun obterSaldoPorConta(conta: String): Double {
+        return contaSaldoDao.obterSaldoPorConta(conta) ?: 0.0
+    }
     suspend fun excluirConta(id: Int) {
         return contaSaldoDao.excluirConta(id)
     }
@@ -115,5 +118,3 @@ class MainRepository(val context: Context) {
         contaSaldoDao.atualizarSaldo(conta, novoSaldo)
     }
 }
-
-
