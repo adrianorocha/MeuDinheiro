@@ -1,8 +1,8 @@
 package com.meudinheiro.componentes
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,9 +29,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +48,8 @@ import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.funcoes.formatarMoedaBR
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 private fun Dp.coerceInDp(min: Dp, max: Dp): Dp {
     return when {
@@ -52,6 +57,29 @@ private fun Dp.coerceInDp(min: Dp, max: Dp): Dp {
         this > max -> max
         else -> this
     }
+}
+
+private fun LazyListState.findCenteredItemIndex(): Int? {
+    val layoutInfo = this.layoutInfo
+    val visible = layoutInfo.visibleItemsInfo
+    if (visible.isEmpty()) return null
+
+    val viewportStart = layoutInfo.viewportStartOffset
+    val viewportEnd = layoutInfo.viewportEndOffset
+    val viewportCenter = (viewportStart + viewportEnd) / 2
+
+    var bestIndex: Int? = null
+    var bestDistance = Int.MAX_VALUE
+
+    for (item in visible) {
+        val itemCenter = item.offset + (item.size / 2)
+        val distance = kotlin.math.abs(itemCenter - viewportCenter)
+        if (distance < bestDistance) {
+            bestDistance = distance
+            bestIndex = item.index
+        }
+    }
+    return bestIndex
 }
 
 @Composable
@@ -63,9 +91,34 @@ fun CardSection(
     onAtualizar: (ContaSaldoDomain) -> Unit
 ) {
     val lazyListState = rememberLazyListState()
-
-// Controla qual conta está com o dialog aberto (evita 1 dialog por item)
     val dialogContaId = remember { mutableStateOf<String?>(null) }
+
+    // Evita disparar seleção automática repetida
+    val lastAutoSelectedId = remember { mutableStateOf<String?>(null) }
+
+    // Seleciona automaticamente quando o usuário PARA de rolar (após snap)
+    LaunchedEffect(contas) {
+        snapshotFlow { lazyListState.isScrollInProgress }
+            .distinctUntilChanged()
+            .filter { inProgress -> !inProgress }
+            .collect {
+                val centeredIndex = lazyListState.findCenteredItemIndex() ?: return@collect
+                val contaCentered = contas.getOrNull(centeredIndex) ?: return@collect
+
+                // Se já está selecionada, não faz nada
+                val targetId = contaCentered.conta
+                if (targetId.isBlank()) return@collect
+
+                val alreadySelected = (targetId == contasSelecionadaId)
+                val alreadyAutoSent = (targetId == lastAutoSelectedId.value)
+
+                if (!alreadySelected && !alreadyAutoSent) {
+                    lastAutoSelectedId.value = targetId
+                    onContaSelecionada(targetId)
+                    onAtualizar(contaCentered)
+                }
+            }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -110,8 +163,10 @@ fun CardSection(
                     height = cardHeight,
                     selected = selected,
                     onClick = {
+                        // Clique ainda seleciona imediatamente
+                        lastAutoSelectedId.value = conta.conta
                         onContaSelecionada(conta.conta)
-                        //onAtualizar(conta)
+                        onAtualizar(conta)
                     },
                     onLongClick = {
                         dialogContaId.value = conta.conta
@@ -140,8 +195,6 @@ fun CardSection(
             }
         )
     }
-
-
 }
 
 @Composable
@@ -188,7 +241,6 @@ private fun ContaCard(
                 .fillMaxSize()
                 .clip(shape)
         ) {
-            // Fundo com imagem (mantém seu asset)
             Image(
                 painter = painterResource(id = R.drawable.card_tecno),
                 contentDescription = null,
@@ -197,7 +249,6 @@ private fun ContaCard(
                 alpha = 0.95f
             )
 
-            // Scrim/gradiente para melhorar leitura do texto em qualquer tela/brilho
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -212,7 +263,6 @@ private fun ContaCard(
                     )
             )
 
-            // Chip no topo direito (sem padding fixo)
             Image(
                 painter = painterResource(id = R.drawable.sim_chip_2),
                 contentDescription = null,
@@ -224,7 +274,7 @@ private fun ContaCard(
             )
 
             val titleStyle = MaterialTheme.typography.titleMedium.copy(
-                color = Color(0xFFFFD54F) // “dourado” mais suave
+                color = Color(0xFFFFD54F)
             )
 
             val infoStyle = MaterialTheme.typography.bodyMedium.copy(
@@ -236,7 +286,6 @@ private fun ContaCard(
                 fontSize = if (width < 320.dp) 18.sp else 20.sp
             )
 
-            // Banco
             Text(
                 text = conta.banco,
                 style = titleStyle,
@@ -247,7 +296,6 @@ private fun ContaCard(
                     .padding(start = 14.dp, top = 14.dp, end = 56.dp)
             )
 
-            // Agência / Conta
             Text(
                 text = "Agência: ${conta.agencia}  •  C/C: ${conta.conta}",
                 style = infoStyle,
@@ -258,7 +306,6 @@ private fun ContaCard(
                     .padding(start = 14.dp, end = 14.dp)
             )
 
-            // Saldo
             Text(
                 text = formatarMoedaBR(conta.saldo),
                 style = moneyStyle,
@@ -269,27 +316,16 @@ private fun ContaCard(
                     .padding(start = 14.dp, bottom = 14.dp, end = 14.dp)
             )
 
-            // Destaque sutil quando selecionado (sem “pintar de verde” e perder o design)
             if (selected) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0x1400C853)) // verde bem translúcido
+                        .background(Color(0x1400C853))
                 )
             }
 
-            // Scale leve (aplicado no conteúdo para sensação “premium”)
-            // (Se preferir scale no card inteiro, dá para colocar graphicsLayer no modifier do Card)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .align(Alignment.Center)
-            ) {
-                // apenas para manter o scale computado (caso queira usar no Card modifier)
-                // Você pode remover se não quiser scale.
-            }
+            // Se quiser realmente aplicar o scale, você pode colocar no modifier do Card com graphicsLayer
+            // (mantive seu scale calculado para uso futuro)
         }
     }
-
-
 }
