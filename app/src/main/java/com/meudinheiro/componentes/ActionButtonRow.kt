@@ -41,11 +41,14 @@ import java.util.Locale
 @Composable
 fun ActionButtonRow(
     categorias: List<String>,
-    onAddDespesa: (Despesa) -> Unit,
+    onAddDespesa: (Despesa) -> Unit, // pode manter, mas abaixo vou inserir pela ViewModel
     getPicCategoria: (String) -> String,
-    contaSelecionada: String,
+    contaSelecionada: String, // ideal: passe o estado “real” da conta selecionada
     viewModelFactory: ContaSaldoViewModelFactory
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
+
     var exibirFormulario by remember { mutableStateOf(false) }
 
     Row(
@@ -55,7 +58,16 @@ fun ActionButtonRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         ActionButton(R.drawable.deposit, "Depositar", onClick = { })
-        ActionButton(R.drawable.add, "Adicionar", onClick = { exibirFormulario = true })
+
+        ActionButton(R.drawable.add, "Adicionar", onClick = {
+            val conta = contaSelecionada.trim()
+            if (conta.isBlank()) {
+                Toast.makeText(context, "Selecione uma conta antes de adicionar.", Toast.LENGTH_SHORT).show()
+            } else {
+                exibirFormulario = true
+            }
+        })
+
         ActionButton(R.drawable.sim_chip, "Config.", onClick = { })
     }
 
@@ -64,8 +76,7 @@ fun ActionButtonRow(
             categorias = categorias,
             contaSelecionada = contaSelecionada,
             getPicCategoria = getPicCategoria,
-            viewModelFactory = viewModelFactory,
-            onAddDespesa = onAddDespesa,
+            viewModel = viewModel,
             onDismiss = { exibirFormulario = false }
         )
     }
@@ -77,11 +88,13 @@ private fun AddDespesaDialog(
     categorias: List<String>,
     contaSelecionada: String,
     getPicCategoria: (String) -> String,
-    viewModelFactory: ContaSaldoViewModelFactory,
-    onAddDespesa: (Despesa) -> Unit,
+    viewModel: ContaSaldoViewModel,
     onDismiss: () -> Unit
 ) {
-    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Congela a conta selecionada no momento em que o Dialog abriu
+    val contaFixada = remember { contaSelecionada.trim() }
 
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
@@ -107,12 +120,6 @@ private fun AddDespesaDialog(
         )
     }
 
-    val dateText = remember(dataMillis.value) {
-        dataMillis.value?.let {
-            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
-        } ?: "Selecionar data"
-    }
-
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -132,10 +139,14 @@ private fun AddDespesaDialog(
                     fontSize = 20.sp
                 )
 
-                // Débito / Crédito mais organizado
-                SingleChoiceSegmentedButtonRow(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                // Mostra a conta onde vai salvar (ajuda a validar visualmente)
+                Text(
+                    text = "Conta: $contaFixada",
+                    color = Color.DarkGray,
+                    fontSize = 13.sp
+                )
+
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     SegmentedButton(
                         selected = tipo == TipoDespesa.DEBITO,
                         onClick = { tipo = TipoDespesa.DEBITO },
@@ -149,7 +160,6 @@ private fun AddDespesaDialog(
                     ) { Text("Crédito") }
                 }
 
-                // Categoria
                 ExposedDropdownMenuBox(
                     expanded = expandido,
                     onExpandedChange = { expandido = !expandido },
@@ -183,7 +193,6 @@ private fun AddDespesaDialog(
                     }
                 }
 
-                // Descrição
                 OutlinedTextField(
                     value = descricao,
                     onValueChange = { descricao = it },
@@ -192,7 +201,6 @@ private fun AddDespesaDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Linha: Valor | Parcelas
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -203,7 +211,7 @@ private fun AddDespesaDialog(
                         onValueChange = { valor = it },
                         label = { Text("Valor", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f)
                     )
 
@@ -215,11 +223,10 @@ private fun AddDespesaDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier
                             .weight(1f)
-                            .widthIn(min = 130.dp) // evita quebrar "Parcelas" em telas menores
+                            .widthIn(min = 130.dp)
                     )
                 }
 
-                // Data (linha separada, padrão moderno)
                 OutlinedTextField(
                     value = dataMillis.value?.let {
                         SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
@@ -237,7 +244,6 @@ private fun AddDespesaDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Botões
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -245,14 +251,17 @@ private fun AddDespesaDialog(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Cancelar")
-                    }
+                    ) { Text("Cancelar") }
 
                     Button(
                         onClick = {
                             val valorDouble = valor.replace(",", ".").toDoubleOrNull()
                             val parcelasInt = numeroParcelas.toIntOrNull() ?: 1
+
+                            if (contaFixada.isBlank()) {
+                                Toast.makeText(context, "Conta inválida. Selecione uma conta novamente.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
 
                             when {
                                 descricao.isBlank() -> return@Button
@@ -266,9 +275,11 @@ private fun AddDespesaDialog(
                                 data = dataMillis.value?.let { Date(it) } ?: Date(),
                                 categoria = categoriaSelecionada ?: "Sem Categoria",
                                 pic = getPicCategoria(categoriaSelecionada ?: ""),
-                                conta = contaSelecionada.trim(),
+                                conta = contaFixada, // AQUI está o “garantido”
                                 tipo = tipo
                             )
+
+                            Log.d("AddDespesaDialog", "Inserindo despesa na conta=$contaFixada valor=$valorDouble tipo=$tipo")
 
                             if (parcelasInt > 1) {
                                 viewModel.adicionarDespesaParcelada(
@@ -277,11 +288,9 @@ private fun AddDespesaDialog(
                                     dataMillis.value ?: System.currentTimeMillis()
                                 )
                             } else {
-                                //onAddDespesa(novaDespesa)
                                 viewModel.adicionarDespesa(novaDespesa)
                             }
 
-                            // limpa e fecha
                             descricao = ""
                             valor = ""
                             numeroParcelas = "1"
@@ -290,9 +299,7 @@ private fun AddDespesaDialog(
                             onDismiss()
                         },
                         modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Adicionar")
-                    }
+                    ) { Text("Adicionar") }
                 }
             }
         }

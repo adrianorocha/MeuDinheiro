@@ -1,7 +1,7 @@
 package com.meudinheiro.repository
 
 import android.content.Context
-import android.util.Log
+import androidx.room.withTransaction
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.CategoriaDomain
@@ -12,10 +12,16 @@ import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
 
-class MainRepository(val context: Context) {
+class MainRepository(private val context: Context) {
+
     private val db = AppDatabase.getInstance(context)
-    //Despesas
+
+    // DAOs
     private val despesaDao = db.despesaDao()
+    private val contaSaldoDao = db.contaSaldoDao()
+
+    /* ======================= DESPESAS ======================= */
+
     suspend fun inserirDespesa(despesa: Despesa) {
         despesaDao.inserirDespesa(despesa)
     }
@@ -27,6 +33,7 @@ class MainRepository(val context: Context) {
     suspend fun obterDespesaPorId(id: Int): Despesa? {
         return despesaDao.obterDespesaPorId(id)
     }
+
     suspend fun obterDespesasPorConta(contaId: String): List<DespesasDomain> {
         return despesaDao.obterDespesasPorConta(contaId)
     }
@@ -35,32 +42,37 @@ class MainRepository(val context: Context) {
         despesaDao.excluirDespesa(id)
     }
 
-    fun getPicCategoria(titulo: String): String {
-        val categoria = categorias.find { it.title == titulo }
-        return categoria?.pic ?: "default_pic"
-    }
-
+    /**
+     * Exclui a despesa e ajusta o saldo da conta devolvendo/removendo o valor.
+     * Tudo feito em transação para não deixar dados inconsistentes.
+     */
     suspend fun excluirDespesaComRestituicao(id: Int) {
-        // 1. Buscar a despesa antes de excluir
-        val despesa = despesaDao.obterDespesaPorId(id) ?: return
+        db.withTransaction {
+            // 1. Buscar a despesa
+            val despesa = despesaDao.obterDespesaPorId(id) ?: return@withTransaction
 
-        // 2. Obter o saldo atual da conta
-        val contaSaldo = contaSaldoDao.obterSaldoPorConta(despesa.conta)
+            // 2. Obter saldo atual (tratando possível null do DAO)
+            val saldoAtual = contaSaldoDao.obterSaldoPorConta(despesa.conta) ?: 0.0
 
-        // 3. Calcular o novo saldo (restituir o valor)
-        val novoSaldo = when (despesa.tipo) {
-            TipoDespesa.DEBITO -> contaSaldo + despesa.valor  // Devolve o valor
-            TipoDespesa.CREDITO -> contaSaldo - despesa.valor // Remove o crédito
+            // 3. Calcular novo saldo
+            val novoSaldo = when (despesa.tipo) {
+                TipoDespesa.DEBITO -> saldoAtual + despesa.valor   // devolve o débito
+                TipoDespesa.CREDITO -> saldoAtual - despesa.valor  // remove o crédito
+                else -> saldoAtual                                  // fallback se tiver outro tipo
+            }
+
+            // 4. Atualizar saldo da conta
+            contaSaldoDao.atualizarSaldo(despesa.conta, novoSaldo)
+
+            // 5. Excluir a despesa
+            despesaDao.excluirDespesa(id)
         }
-
-        // 4. Excluir a despesa
-        despesaDao.excluirDespesa(id)
-
-        // 5. Atualizar o saldo
-        contaSaldoDao.atualizarSaldo(despesa.conta, novoSaldo)
     }
 
-    val categorias = mutableListOf(
+    /* ======================= CATEGORIAS / BANCOS (IN-MEMORY) ======================= */
+
+    // Listas imutáveis — você não precisa alterá-las em tempo de execução
+    val categorias: List<CategoriaDomain> = listOf(
         CategoriaDomain(pic = "fuel", title = "Combustível"),
         CategoriaDomain(pic = "restaurant", title = "Alimentação"),
         CategoriaDomain(pic = "transport", title = "Transporte"),
@@ -77,7 +89,7 @@ class MainRepository(val context: Context) {
         CategoriaDomain(pic = "lunch", title = "Lanche")
     )
 
-    val bancos = mutableListOf(
+    val bancos: List<BancoDomain> = listOf(
         BancoDomain(id = 1, nome = "Banco do Brasil"),
         BancoDomain(id = 2, nome = "Bradesco"),
         BancoDomain(id = 3, nome = "Santander"),
@@ -96,8 +108,12 @@ class MainRepository(val context: Context) {
         BancoDomain(id = 16, nome = "Banco BMG")
     )
 
-    //Saldo Conta
-    private val contaSaldoDao = db.contaSaldoDao()
+    fun getPicCategoria(titulo: String): String {
+        val categoria = categorias.find { it.title == titulo }
+        return categoria?.pic ?: "default_pic"
+    }
+
+    /* ======================= SALDO DE CONTAS ======================= */
 
     fun obterContaSaldo(): Flow<List<ContaSaldoDomain>> {
         return contaSaldoDao.obterContaSaldo()
@@ -107,11 +123,15 @@ class MainRepository(val context: Context) {
         contaSaldoDao.inserirContaSaldo(contaSaldo)
     }
 
+    /**
+     * Wrapper para garantir que, se não existir saldo para a conta, volte 0.0
+     */
     suspend fun obterSaldoPorConta(conta: String): Double {
         return contaSaldoDao.obterSaldoPorConta(conta) ?: 0.0
     }
+
     suspend fun excluirConta(id: Int) {
-        return contaSaldoDao.excluirConta(id)
+        contaSaldoDao.excluirConta(id)
     }
 
     suspend fun atualizarSaldo(conta: String, novoSaldo: Double) {

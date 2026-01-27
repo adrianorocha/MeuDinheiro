@@ -75,7 +75,6 @@ dependencies {
     implementation("androidx.biometric:biometric:1.2.0-alpha04")
     implementation(libs.androidx.appcompat)
     implementation("androidx.compose.material3:material3:1.0.0")
-    implementation(libs.androidx.compose.ui.unit)
 
 
     ksp("androidx.room:room-compiler:2.8.4")

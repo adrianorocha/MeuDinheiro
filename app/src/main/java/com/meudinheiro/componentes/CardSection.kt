@@ -111,7 +111,7 @@ fun CardSection(
                     selected = selected,
                     onClick = {
                         onContaSelecionada(conta.conta)
-                        onAtualizar(conta)
+                        //onAtualizar(conta)
                     },
                     onLongClick = {
                         dialogContaId.value = conta.conta
