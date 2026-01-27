@@ -22,6 +22,11 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         contaSelecionadaFlow.value = contaId.trim()
     }
 
+    fun marcarComoPaga(id: Int, pago: Boolean = true) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.marcarDespesaComoPaga(id, pago)
+        }
+    }
     val despesasLiveData: LiveData<List<DespesasDomain>> =
         contaSelecionadaFlow
             .filter { it.isNotBlank() }

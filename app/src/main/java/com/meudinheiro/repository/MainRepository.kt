@@ -46,6 +46,14 @@ class MainRepository(private val context: Context) {
         return despesaDao.obterDespesasPorContaFlow(contaId)
     }
 
+    suspend fun marcarDespesaComoPaga(id: Int, pago: Boolean) {
+        despesaDao.setPago(id, pago)
+    }
+
+    suspend fun obterPendentesVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa> {
+        return despesaDao.obterPendentesVencendo(inicioMillis, fimMillis)
+    }
+
     /**
      * Exclui a despesa e ajusta o saldo da conta devolvendo/removendo o valor.
      * Tudo feito em transação para não deixar dados inconsistentes.
