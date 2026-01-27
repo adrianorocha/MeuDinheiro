@@ -2,17 +2,27 @@ package com.meudinheiro.componentes
 
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.Image
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -32,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,13 +53,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Color.Companion.LightGray
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -61,7 +74,6 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActionButtonRow(
     categorias: List<String>,
@@ -72,24 +84,71 @@ fun ActionButtonRow(
     val context = androidx.compose.ui.platform.LocalContext.current
     var exibirFormulario by remember { mutableStateOf(false) }
 
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
     ) {
-        ActionButton(R.drawable.deposit, "Depositar", onClick = { })
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(22.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.10f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.06f)
+                        )
+                    )
+                )
+                .padding(horizontal = 12.dp, vertical = 12.dp)
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val perItem = maxWidth / 3
 
-        ActionButton(R.drawable.add, "Adicionar", onClick = {
-            val conta = contaSelecionada.trim()
-            if (conta.isBlank()) {
-                Toast.makeText(context, "Selecione uma conta antes de adicionar.", Toast.LENGTH_SHORT).show()
-            } else {
-                exibirFormulario = true
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ActionButton(
+                        icon = R.drawable.deposit,
+                        text = "Depositar",
+                        accent = MaterialTheme.colorScheme.tertiary,
+                        perItemWidth = perItem,
+                        onClick = { }
+                    )
+
+                    ActionButton(
+                        icon = R.drawable.add,
+                        text = "Adicionar",
+                        accent = MaterialTheme.colorScheme.primary,
+                        perItemWidth = perItem,
+                        onClick = {
+                            val conta = contaSelecionada.trim()
+                            if (conta.isBlank()) {
+                                Toast.makeText(context, "Selecione uma conta antes de adicionar.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                exibirFormulario = true
+                            }
+                        }
+                    )
+
+                    ActionButton(
+                        icon = R.drawable.sim_chip,
+                        text = "Config.",
+                        accent = MaterialTheme.colorScheme.secondary,
+                        perItemWidth = perItem,
+                        onClick = { }
+                    )
+                }
             }
-        })
-
-        ActionButton(R.drawable.sim_chip, "Config.", onClick = { })
+        }
     }
 
     if (exibirFormulario) {
@@ -102,7 +161,6 @@ fun ActionButtonRow(
         )
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddDespesaDialog(
@@ -503,31 +561,107 @@ private fun AddDespesaDialog(
 }
 
 @Composable
-fun RowScope.ActionButton(icon: Int, text: String, onClick: () -> Unit) {
-    Column(
+fun RowScope.ActionButton(
+    icon: Int,
+    text: String,
+    accent: Color,
+    perItemWidth: Dp,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.98f else 1f,
+        label = "actionScale"
+    )
+
+    val bg by animateColorAsState(
+        targetValue = if (pressed)
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
+        else
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f),
+        label = "actionBg"
+    )
+
+    val border by animateColorAsState(
+        targetValue = if (pressed)
+            accent.copy(alpha = 0.45f)
+        else
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+        label = "actionBorder"
+    )
+
+    // Em telas bem estreitas, reduz um pouco a fonte automaticamente
+    val compactText = perItemWidth < 120.dp
+    val textStyle = if (compactText) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium
+
+    Surface(
         modifier = Modifier
             .weight(1f)
-            .height(78.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(color = LightGray)
-            .clickable { onClick() }
-            .padding(10.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .heightIn(min = 76.dp) // sem maxHeight, para respeitar fonte maior (acessibilidade)
+            .scale(scale)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            ),
+        shape = RoundedCornerShape(18.dp),
+        color = bg,
+        tonalElevation = 0.dp,
+        shadowElevation = if (pressed) 6.dp else 0.dp,
+        border = BorderStroke(1.dp, border)
     ) {
-        Image(
-            painter = painterResource(id = icon),
-            contentDescription = text
-        )
-        Text(
-            text = text,
-            color = Color.Blue,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 6.dp)
-        )
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                accent.copy(alpha = if (pressed) 0.30f else 0.22f),
+                                accent.copy(alpha = 0.10f),
+                                Color.Transparent
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = text,
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(Modifier.size(8.dp))
+
+            Text(
+                text = text,
+                style = textStyle,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (pressed) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White.copy(alpha = 0.07f))
+            )
+        }
     }
 }

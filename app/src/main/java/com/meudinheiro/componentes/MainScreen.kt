@@ -86,7 +86,13 @@ fun MainScreen(userPrefs: UserPreferences) {
             HeaderSection(
                 nome = nome,
                 fotoUri = fotoSalva.takeIf { it.isNotBlank() },
-                onProfileClick = { emCadastro = true }
+                onProfileClick = { emCadastro = true },
+                chipText = "Sincronizado",
+                chipStyle = HeaderChipStyle.SUCCESS,
+                showNotifications = true,
+                hasUnreadNotifications = false,
+                onNotificationsClick = {
+                }
             )
 
             if (contas.isNotEmpty()) {
