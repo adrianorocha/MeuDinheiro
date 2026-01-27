@@ -42,6 +42,10 @@ class MainRepository(private val context: Context) {
         despesaDao.excluirDespesa(id)
     }
 
+    fun obterDespesasPorContaFlow(contaId: String): Flow<List<DespesasDomain>> {
+        return despesaDao.obterDespesasPorContaFlow(contaId)
+    }
+
     /**
      * Exclui a despesa e ajusta o saldo da conta devolvendo/removendo o valor.
      * Tudo feito em transação para não deixar dados inconsistentes.

@@ -2,23 +2,12 @@ package com.meudinheiro.componentes
 
 import android.util.Log
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,7 +17,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
@@ -41,63 +29,48 @@ import com.meudinheiro.viewModel.HomeViewModelFactory
 @Composable
 fun MainScreen(userPrefs: UserPreferences) {
     var selectedIndex by remember { mutableStateOf(-1) }
-    var contaSelecionada by remember { mutableStateOf("") }
-
-    fun onItemSelected(index: Int) {
-        selectedIndex = index
-    }
+    fun onItemSelected(index: Int) { selectedIndex = index }
 
     val context = LocalContext.current
-    val repository = remember { MainRepository(context) } //Carrega as Informações do Repository
-    val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
-    val contaVM: ContaSaldoViewModel = viewModel(
-        factory = ContaSaldoViewModelFactory(
-            repository
-        )
-    )
-    val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
-    val nome by homeVM.userName.collectAsState(initial = "")
-    val fotoSalva  by homeVM.userPhoto.collectAsState(initial = "")
+    val repository = remember { MainRepository(context) }
 
+    val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
+    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
+    val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
+
+    val nome by homeVM.userName.collectAsState(initial = "")
+    val fotoSalva by homeVM.userPhoto.collectAsState(initial = "")
     var emCadastro by remember { mutableStateOf(false) }
 
-    var despesasCarregadas by remember { mutableStateOf(false) }
-
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
-    var contaPrincipal = contas.firstOrNull()
+    val contaSelecionadaId by contaVM.contaSelecionadaId.observeAsState(null)
 
     if (nome.isBlank() || emCadastro) {
         CadastroUsuarioScreen(
-            userPrefs   = userPrefs,
-            onFinished  = { emCadastro = false } // volta para a home
+            userPrefs = userPrefs,
+            onFinished = { emCadastro = false }
         )
         return
     }
-    fun onContaSelecionada(novaConta: String) {
-        contaSelecionada = novaConta
-        despVM.carregarDespesasPorConta(novaConta)
-        Log.d("MainScreen", "Conta selecionada: $contaSelecionada")
-    }
-    fun atualizarDespesas(conta: ContaSaldoDomain) {
-        contaSelecionada = contas.first().conta
-        if (contaSelecionada.isNotEmpty() && !despesasCarregadas) {
-            despVM.carregarDespesasPorConta(contaSelecionada)
-            despesasCarregadas = true
+
+    // Se não tem selecionada (ou ficou inválida), seleciona a primeira
+    LaunchedEffect(contas, contaSelecionadaId) {
+        if (contas.isEmpty()) return@LaunchedEffect
+
+        val selected = contaSelecionadaId?.trim().orEmpty()
+        val exists = selected.isNotBlank() && contas.any { it.conta == selected }
+
+        if (!exists) {
+            val first = contas.first().conta
+            contaVM.selecionarConta(first)
         }
     }
 
-    LaunchedEffect(contas) {
-        if (contas.isNotEmpty()) {
-            if (contaSelecionada.isEmpty()) {  // Somente se não estiver selecionada
-                contaSelecionada = contas.first().conta
-                despVM.carregarDespesasPorConta(contaSelecionada)
-                Log.d("MainScreen", "Conta selecionada na inicialização: $contaSelecionada")
-            }
-        }
-    }
-    LaunchedEffect(contaSelecionada) {
-        contaSelecionada?.let { id ->
-            despVM.carregarDespesasPorConta(id)
+    // Carrega despesas somente quando a conta selecionada mudar
+    LaunchedEffect(contaSelecionadaId) {
+        val id = contaSelecionadaId?.trim().orEmpty()
+        if (id.isNotBlank()) {
+            despVM.setContaSelecionada(contaSelecionadaId.orEmpty())
         }
     }
 
@@ -106,12 +79,10 @@ fun MainScreen(userPrefs: UserPreferences) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(color = Color.White)
+            .background(Color.White)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+
             HeaderSection(
                 nome = nome,
                 fotoUri = fotoSalva.takeIf { it.isNotBlank() },
@@ -121,22 +92,19 @@ fun MainScreen(userPrefs: UserPreferences) {
             if (contas.isNotEmpty()) {
                 CardSection(
                     contas = contas,
-                    //viewModelFactory = ContaSaldoViewModelFactory(repository),
-                    contasSelecionadaId = contaSelecionada,
+                    contasSelecionadaId = contaSelecionadaId?.orEmpty(),
                     onExcluir = { conta ->
                         contaVM.removerContaSaldo(conta.id)
                     },
                     onContaSelecionada = { novaConta ->
-                        onContaSelecionada(novaConta)
-                        despVM.carregarDespesasPorConta(novaConta)
                         contaVM.selecionarConta(novaConta)
                     },
                     onAtualizar = { conta ->
-                        atualizarDespesas(conta)
-                        despVM.carregarDespesasPorConta(conta.conta)
+                        // Quando o CardSection detecta o card central ao parar de rolar,
+                        // ele deve apenas refletir isso na seleção.
+                        contaVM.selecionarConta(conta.conta)
                     }
-
-                    )
+                )
             } else {
                 Text(
                     modifier = Modifier
@@ -146,23 +114,15 @@ fun MainScreen(userPrefs: UserPreferences) {
                     fontWeight = FontWeight.Bold,
                     color = Color.Black,
                     textAlign = TextAlign.Center,
-
                     text = "Nenhuma Conta Cadastrada"
                 )
             }
+
             ActionButtonRow(
-                categorias = repository.categorias.map {
-                    it.title
-                },
-                onAddDespesa = { nova ->
-                    contaSelecionada.takeIf { it.isNotEmpty() }?.let {conta ->
-                    despVM.adicionarDespesa( nova.copy(conta = conta))
-                }},
-                getPicCategoria = { nome ->
-                    repository.getPicCategoria(nome)
-                },
-                contaSelecionada = contaSelecionada.orEmpty(),
-                viewModelFactory = ContaSaldoViewModelFactory(repository)
+                categorias = repository.categorias.map { it.title },
+                getPicCategoria = { nomeCategoria -> repository.getPicCategoria(nomeCategoria) },
+                contaSelecionada = contaSelecionadaId.orEmpty(),
+                viewModel = contaVM
             )
 
             if (selectedIndex == 0) {
@@ -171,6 +131,7 @@ fun MainScreen(userPrefs: UserPreferences) {
                     onClose = { selectedIndex = -1 }
                 )
             }
+
             Row(
                 modifier = Modifier
                     .padding(16.dp)
@@ -185,9 +146,12 @@ fun MainScreen(userPrefs: UserPreferences) {
                     textAlign = TextAlign.Center
                 )
             }
+
             if (despesas.isEmpty()) {
                 Text(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.Red,
@@ -200,21 +164,17 @@ fun MainScreen(userPrefs: UserPreferences) {
                         .fillMaxSize()
                         .padding(bottom = 80.dp)
                 ) {
-                    items(despesas) { item ->
-                        DespesasItem(item = item,
-                            onRemover = { id ->
-                                despVM.removerDespesaComRestituicao(id)
-                            }
-                        )
+                    items(despesas, key = { it.id }) { item ->
+                        DespesasItem(item = item, onRemover = { id -> despVM.removerDespesaComRestituicao(id) })
                     }
                 }
             }
         }
+
         NavigationSection(
             selectedIndex = selectedIndex,
             onItemSelected = ::onItemSelected,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
+            modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
 }

@@ -25,4 +25,7 @@ interface DespesaDao {
 
     @Query("SELECT * FROM despesas WHERE id = :id LIMIT 1")
     suspend fun obterDespesaPorId(id: Int): Despesa?
+
+    @Query("SELECT * FROM despesas WHERE conta = :contaId ORDER BY data DESC")
+    fun obterDespesasPorContaFlow(contaId: String): Flow<List<DespesasDomain>>
 }

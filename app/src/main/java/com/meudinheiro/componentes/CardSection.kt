@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,7 @@ import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.funcoes.formatarMoedaBR
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 private fun Dp.coerceInDp(min: Dp, max: Dp): Dp {
     return when {
@@ -92,31 +94,56 @@ fun CardSection(
 ) {
     val lazyListState = rememberLazyListState()
     val dialogContaId = remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    // Evita disparar seleção automática repetida
-    val lastAutoSelectedId = remember { mutableStateOf<String?>(null) }
+    // Sempre enxergar os valores mais atuais dentro das coroutines (sem reiniciar efeito)
+    val contasAtual by rememberUpdatedState(contas)
+    val selecionadaAtual by rememberUpdatedState(contasSelecionadaId)
+    val onContaSelecionadaAtual by rememberUpdatedState(onContaSelecionada)
+    val onAtualizarAtual by rememberUpdatedState(onAtualizar)
 
-    // Seleciona automaticamente quando o usuário PARA de rolar (após snap)
-    LaunchedEffect(contas) {
+    // 1) Se a seleção ficou inválida (ex.: conta removida), seleciona a primeira disponível
+    LaunchedEffect(contas, contasSelecionadaId) {
+        if (contas.isEmpty()) return@LaunchedEffect
+
+        val exists = contasSelecionadaId != null && contas.any { it.conta == contasSelecionadaId }
+        if (!exists) {
+            val first = contas.first()
+            onContaSelecionada(first.conta)
+            onAtualizar(first)
+            lazyListState.scrollToItem(0)
+        }
+    }
+
+    // 2) Auto-seleção ao TERMINAR o scroll (sem reiniciar ao atualizar "contas" por saldo)
+    LaunchedEffect(lazyListState) {
+        var wasScrolling = false
+
         snapshotFlow { lazyListState.isScrollInProgress }
             .distinctUntilChanged()
-            .filter { inProgress -> !inProgress }
-            .collect {
-                val centeredIndex = lazyListState.findCenteredItemIndex() ?: return@collect
-                val contaCentered = contas.getOrNull(centeredIndex) ?: return@collect
+            .collect { inProgress ->
+                if (inProgress) {
+                    wasScrolling = true
+                    return@collect
+                }
 
-                // Se já está selecionada, não faz nada
+                // só reage no "fim" de um scroll real
+                if (!wasScrolling) return@collect
+                wasScrolling = false
+
+                val centeredIndex = lazyListState.findCenteredItemIndex() ?: return@collect
+                val contaCentered = contasAtual.getOrNull(centeredIndex) ?: return@collect
+
                 val targetId = contaCentered.conta
                 if (targetId.isBlank()) return@collect
 
-                val alreadySelected = (targetId == contasSelecionadaId)
-                val alreadyAutoSent = (targetId == lastAutoSelectedId.value)
-
-                if (!alreadySelected && !alreadyAutoSent) {
-                    lastAutoSelectedId.value = targetId
-                    onContaSelecionada(targetId)
-                    onAtualizar(contaCentered)
+                // só troca se mudou
+                if (selecionadaAtual != targetId) {
+                    onContaSelecionadaAtual(targetId)
                 }
+
+                // garante que suas despesas/saldo da conta central sejam atualizados
+                onAtualizarAtual(contaCentered)
             }
     }
 
@@ -163,14 +190,15 @@ fun CardSection(
                     height = cardHeight,
                     selected = selected,
                     onClick = {
-                        // Clique ainda seleciona imediatamente
-                        lastAutoSelectedId.value = conta.conta
+                        // Clique: seleciona e centraliza para evitar divergência entre "clicado" e "central"
+                        val idx = contas.indexOfFirst { it.conta == conta.conta }
+                        if (idx >= 0) {
+                            scope.launch { lazyListState.animateScrollToItem(idx) }
+                        }
                         onContaSelecionada(conta.conta)
                         onAtualizar(conta)
                     },
-                    onLongClick = {
-                        dialogContaId.value = conta.conta
-                    }
+                    onLongClick = { dialogContaId.value = conta.conta }
                 )
             }
         }

@@ -5,14 +5,40 @@ import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,12 +52,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.viewModel.ContaSaldoViewModel
-import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -41,14 +65,11 @@ import java.util.Locale
 @Composable
 fun ActionButtonRow(
     categorias: List<String>,
-    onAddDespesa: (Despesa) -> Unit, // pode manter, mas abaixo vou inserir pela ViewModel
     getPicCategoria: (String) -> String,
-    contaSelecionada: String, // ideal: passe o estado “real” da conta selecionada
-    viewModelFactory: ContaSaldoViewModelFactory
+    contaSelecionada: String,
+    viewModel: ContaSaldoViewModel
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
-
     var exibirFormulario by remember { mutableStateOf(false) }
 
     Row(
@@ -107,6 +128,142 @@ private fun AddDespesaDialog(
     val mostrarCalendario = remember { mutableStateOf(false) }
     val dataMillis = remember { mutableStateOf<Long?>(null) }
 
+    // Erros (UI)
+    var erroConta by remember { mutableStateOf<String?>(null) }
+    var erroCategoria by remember { mutableStateOf<String?>(null) }
+    var erroDescricao by remember { mutableStateOf<String?>(null) }
+    var erroValor by remember { mutableStateOf<String?>(null) }
+    var erroParcelas by remember { mutableStateOf<String?>(null) }
+    var erroData by remember { mutableStateOf<String?>(null) }
+
+    fun normalizeMoneyInput(raw: String): String {
+        // Mantém apenas dígitos e separadores . ,
+        val filtered = raw.filter { it.isDigit() || it == ',' || it == '.' }
+        if (filtered.isBlank()) return ""
+
+        // Permite só um separador decimal
+        var separatorCount = 0
+        val normalized = buildString {
+            filtered.forEach { ch ->
+                if (ch == ',' || ch == '.') {
+                    if (separatorCount == 0) {
+                        append(ch)
+                        separatorCount++
+                    }
+                } else {
+                    append(ch)
+                }
+            }
+        }
+
+        // Evita começar com separador (ex: ",50" -> "0,50")
+        val first = normalized.firstOrNull()
+        return if (first == ',' || first == '.') "0$normalized" else normalized
+    }
+
+    fun parseMoneyToDouble(text: String): Double? {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return null
+        val normalized = trimmed.replace(",", ".")
+        return normalized.toDoubleOrNull()
+    }
+
+    fun parseParcelas(text: String): Int? {
+        val t = text.trim()
+        if (t.isBlank()) return null
+        return t.toIntOrNull()
+    }
+
+    fun validarTudo(): Boolean {
+        val desc = descricao.trim()
+        val cat = categoriaSelecionada?.trim().orEmpty()
+        val valorDouble = parseMoneyToDouble(valor)
+        val parcelasInt = parseParcelas(numeroParcelas)
+        val data = dataMillis.value
+
+        erroConta = null
+        erroCategoria = null
+        erroDescricao = null
+        erroValor = null
+        erroParcelas = null
+        erroData = null
+
+        var ok = true
+
+        if (contaFixada.isBlank()) {
+            erroConta = "Conta inválida. Selecione uma conta novamente."
+            ok = false
+        }
+
+        if (cat.isBlank()) {
+            erroCategoria = "Selecione uma categoria."
+            ok = false
+        } else if (categorias.isNotEmpty() && !categorias.contains(cat)) {
+            // Evita categoria “fantasma” caso lista venha diferente
+            erroCategoria = "Categoria inválida."
+            ok = false
+        }
+
+        if (desc.isBlank()) {
+            erroDescricao = "Descrição obrigatória."
+            ok = false
+        } else if (desc.length < 3) {
+            erroDescricao = "Descrição muito curta."
+            ok = false
+        } else if (desc.length > 60) {
+            erroDescricao = "Máximo de 60 caracteres."
+            ok = false
+        }
+
+        if (valorDouble == null) {
+            erroValor = "Informe um valor válido."
+            ok = false
+        } else if (valorDouble <= 0.0) {
+            erroValor = "O valor deve ser maior que 0."
+            ok = false
+        } else if (valorDouble.isInfinite() || valorDouble.isNaN()) {
+            erroValor = "Valor inválido."
+            ok = false
+        }
+
+        if (parcelasInt == null) {
+            erroParcelas = "Informe as parcelas."
+            ok = false
+        } else if (parcelasInt < 1) {
+            erroParcelas = "Mínimo: 1 parcela."
+            ok = false
+        } else if (parcelasInt > 360) {
+            erroParcelas = "Máximo: 360 parcelas."
+            ok = false
+        }
+
+        if (data == null) {
+            erroData = "Selecione uma data."
+            ok = false
+        }
+
+        return ok
+    }
+
+    // Revalida de forma leve quando o usuário mexe nos campos (evita “travar” UX)
+    val podeAdicionar by remember(
+        contaFixada,
+        categoriaSelecionada,
+        descricao,
+        valor,
+        numeroParcelas,
+        dataMillis.value
+    ) {
+        mutableStateOf(
+            contaFixada.isNotBlank()
+                    && !categoriaSelecionada.isNullOrBlank()
+                    && descricao.trim().length >= 3
+                    && (parseMoneyToDouble(valor) ?: 0.0) > 0.0
+                    && (parseParcelas(numeroParcelas) ?: 0) >= 1
+                    && dataMillis.value != null
+        )
+    }
+
     if (mostrarCalendario.value) {
         CustomCalendarDialog(
             onDismiss = { mostrarCalendario.value = false },
@@ -116,6 +273,8 @@ private fun AddDespesaDialog(
                 cal.set(Calendar.MILLISECOND, 0)
                 dataMillis.value = cal.timeInMillis
                 mostrarCalendario.value = false
+                // limpa erro ao selecionar
+                erroData = null
             }
         )
     }
@@ -139,12 +298,14 @@ private fun AddDespesaDialog(
                     fontSize = 20.sp
                 )
 
-                // Mostra a conta onde vai salvar (ajuda a validar visualmente)
                 Text(
                     text = "Conta: $contaFixada",
                     color = Color.DarkGray,
                     fontSize = 13.sp
                 )
+                if (erroConta != null) {
+                    Text(text = erroConta!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
 
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     SegmentedButton(
@@ -169,9 +330,15 @@ private fun AddDespesaDialog(
                         value = categoriaSelecionada ?: "",
                         onValueChange = {},
                         readOnly = true,
+                        isError = erroCategoria != null,
                         label = { Text("Categoria") },
                         placeholder = { Text("Selecione") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
+                        supportingText = {
+                            if (erroCategoria != null) {
+                                Text(erroCategoria!!, color = MaterialTheme.colorScheme.error)
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .menuAnchor()
@@ -187,6 +354,7 @@ private fun AddDespesaDialog(
                                 onClick = {
                                     categoriaSelecionada = categoria
                                     expandido = false
+                                    erroCategoria = null
                                 }
                             )
                         }
@@ -195,9 +363,20 @@ private fun AddDespesaDialog(
 
                 OutlinedTextField(
                     value = descricao,
-                    onValueChange = { descricao = it },
+                    onValueChange = {
+                        descricao = it
+                        if (erroDescricao != null) erroDescricao = null
+                    },
+                    isError = erroDescricao != null,
                     label = { Text("Descrição") },
                     singleLine = true,
+                    supportingText = {
+                        if (erroDescricao != null) {
+                            Text(erroDescricao!!, color = MaterialTheme.colorScheme.error)
+                        } else {
+                            Text("${descricao.trim().length}/60", fontSize = 12.sp)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -208,19 +387,35 @@ private fun AddDespesaDialog(
                 ) {
                     OutlinedTextField(
                         value = valor,
-                        onValueChange = { valor = it },
+                        onValueChange = {
+                            valor = normalizeMoneyInput(it)
+                            if (erroValor != null) erroValor = null
+                        },
+                        isError = erroValor != null,
                         label = { Text("Valor", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        supportingText = {
+                            if (erroValor != null) Text(erroValor!!, color = MaterialTheme.colorScheme.error)
+                        },
                         modifier = Modifier.weight(1f)
                     )
 
                     OutlinedTextField(
                         value = numeroParcelas,
-                        onValueChange = { numeroParcelas = it },
+                        onValueChange = { novo ->
+                            // só dígitos, evita caracteres que quebram toInt
+                            val digitsOnly = novo.filter { it.isDigit() }
+                            numeroParcelas = if (digitsOnly.isBlank()) "" else digitsOnly.take(3)
+                            if (erroParcelas != null) erroParcelas = null
+                        },
+                        isError = erroParcelas != null,
                         label = { Text("Parcelas", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        supportingText = {
+                            if (erroParcelas != null) Text(erroParcelas!!, color = MaterialTheme.colorScheme.error)
+                        },
                         modifier = Modifier
                             .weight(1f)
                             .widthIn(min = 130.dp)
@@ -234,12 +429,16 @@ private fun AddDespesaDialog(
                     onValueChange = {},
                     readOnly = true,
                     singleLine = true,
+                    isError = erroData != null,
                     label = { Text("Data") },
                     placeholder = { Text("Selecionar data", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     trailingIcon = {
                         IconButton(onClick = { mostrarCalendario.value = true }) {
                             Icon(imageVector = Icons.Filled.CalendarMonth, contentDescription = "Selecionar data")
                         }
+                    },
+                    supportingText = {
+                        if (erroData != null) Text(erroData!!, color = MaterialTheme.colorScheme.error)
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -254,43 +453,40 @@ private fun AddDespesaDialog(
                     ) { Text("Cancelar") }
 
                     Button(
+                        enabled = podeAdicionar,
                         onClick = {
-                            val valorDouble = valor.replace(",", ".").toDoubleOrNull()
-                            val parcelasInt = numeroParcelas.toIntOrNull() ?: 1
-
-                            if (contaFixada.isBlank()) {
-                                Toast.makeText(context, "Conta inválida. Selecione uma conta novamente.", Toast.LENGTH_SHORT).show()
+                            if (!validarTudo()) {
+                                Toast.makeText(context, "Revise os campos destacados.", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
 
-                            when {
-                                descricao.isBlank() -> return@Button
-                                valorDouble == null || valorDouble <= 0.0 -> return@Button
-                                categoriaSelecionada.isNullOrBlank() -> return@Button
-                            }
+                            val valorDouble = parseMoneyToDouble(valor) ?: return@Button
+                            val parcelasInt = parseParcelas(numeroParcelas) ?: 1
+                            val dataFinal = dataMillis.value ?: System.currentTimeMillis()
+                            val categoriaFinal = categoriaSelecionada!!.trim()
 
                             val novaDespesa = Despesa(
-                                descricao = descricao,
+                                descricao = descricao.trim(),
                                 valor = valorDouble,
-                                data = dataMillis.value?.let { Date(it) } ?: Date(),
-                                categoria = categoriaSelecionada ?: "Sem Categoria",
-                                pic = getPicCategoria(categoriaSelecionada ?: ""),
-                                conta = contaFixada, // AQUI está o “garantido”
+                                data = Date(dataFinal),
+                                categoria = categoriaFinal,
+                                pic = getPicCategoria(categoriaFinal),
+                                conta = contaFixada,
                                 tipo = tipo
                             )
 
-                            Log.d("AddDespesaDialog", "Inserindo despesa na conta=$contaFixada valor=$valorDouble tipo=$tipo")
+                            Log.d(
+                                "AddDespesaDialog",
+                                "Inserindo despesa conta=$contaFixada valor=$valorDouble tipo=$tipo parcelas=$parcelasInt"
+                            )
 
                             if (parcelasInt > 1) {
-                                viewModel.adicionarDespesaParcelada(
-                                    novaDespesa,
-                                    parcelasInt,
-                                    dataMillis.value ?: System.currentTimeMillis()
-                                )
+                                viewModel.adicionarDespesaParcelada(novaDespesa, parcelasInt, dataFinal)
                             } else {
                                 viewModel.adicionarDespesa(novaDespesa)
                             }
 
+                            // limpa e fecha
                             descricao = ""
                             valor = ""
                             numeroParcelas = "1"
