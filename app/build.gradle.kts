@@ -77,6 +77,7 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.0.0")
     implementation(libs.androidx.compose.animation.core)
     implementation(libs.androidx.compose.ui.unit)
+    implementation(libs.androidx.work.runtime.ktx)
 
 
     ksp("androidx.room:room-compiler:2.8.4")

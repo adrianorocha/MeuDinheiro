@@ -1,5 +1,6 @@
 package com.meudinheiro.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.Date
@@ -13,7 +14,10 @@ data class Despesa(
     val categoria: String,
     val conta: String,
     val pic: String,
-    val tipo: TipoDespesa
+    val tipo: TipoDespesa,
+
+    @ColumnInfo(name = "pago", defaultValue = "0")
+    val pago: Boolean = false
 )
 
 enum class TipoDespesa {

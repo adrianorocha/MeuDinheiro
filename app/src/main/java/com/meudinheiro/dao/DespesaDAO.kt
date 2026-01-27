@@ -28,4 +28,34 @@ interface DespesaDao {
 
     @Query("SELECT * FROM despesas WHERE conta = :contaId ORDER BY data DESC")
     fun obterDespesasPorContaFlow(contaId: String): Flow<List<DespesasDomain>>
+
+    @Query("SELECT * FROM despesas WHERE data BETWEEN :inicioMillis AND :fimMillis ORDER BY data ASC")
+    suspend fun obterDespesasVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa>
+
+    @Query("""
+    SELECT * FROM despesas 
+    WHERE conta = :contaId AND data BETWEEN :inicioMillis AND :fimMillis
+    ORDER BY data ASC
+""")
+    suspend fun obterDespesasVencendoPorConta(contaId: String, inicioMillis: Long, fimMillis: Long): List<Despesa>
+
+    @Query("""
+    SELECT * FROM despesas
+    WHERE conta = :contaId
+      AND pago = 0
+      AND data BETWEEN :inicioMillis AND :fimMillis
+    ORDER BY data ASC
+""")
+    suspend fun obterPendentesVencendoPorConta(contaId: String, inicioMillis: Long, fimMillis: Long): List<Despesa>
+
+    @Query("UPDATE despesas SET pago = :pago WHERE id = :id")
+    suspend fun setPago(id: Int, pago: Boolean)
+
+    @Query("""
+    SELECT * FROM despesas
+    WHERE pago = 0
+      AND data BETWEEN :inicioMillis AND :fimMillis
+    ORDER BY data ASC
+""")
+    suspend fun obterPendentesVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa>
 }

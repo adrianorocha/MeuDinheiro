@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.simulateHotReload
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -365,12 +366,21 @@ private fun PremiumAvatarButton(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            if (!fotoUri.isNullOrBlank()) {
-                val model = if (fotoUri.startsWith("/")) File(fotoUri) else fotoUri
+            val file = remember(fotoUri) {
+                fotoUri
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() && it.startsWith("/") }
+                    ?.let { File(it) }
+            }
+            val fileOk = remember(file) { file != null && file.exists() && file.length() > 0L }
+
+            if (fileOk) {
+//                if (!fotoUri.isNullOrBlank()) {
+                //val model = if (fotoUri.startsWith("/")) File(fotoUri) else fotoUri
 
                 AsyncImage(
                     model = ImageRequest.Builder(context)
-                        .data(model)
+                        .data(file)
                         .crossfade(true)
                         .build(),
                     contentDescription = "Foto de perfil",

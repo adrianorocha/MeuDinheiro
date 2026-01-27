@@ -348,8 +348,7 @@ fun CadastroUsuarioScreen(
                         vm.passState.value = senha
                         vm.confirmState.value = confirma
                         if (!fotoUri.isNullOrBlank()) {
-                            homeVm.updateUserPhoto(fotoUri!!) // Salva a URI da foto
-                        }
+                            vm.userPhotoState.value = fotoUri!!.trim()                        }
 
                         vm.saveCredentials(
                             onSuccess = {

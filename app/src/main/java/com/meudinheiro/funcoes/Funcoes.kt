@@ -9,6 +9,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +42,13 @@ class UserPreferences(private val context: Context) {
         private val KEY_USER_PASS     = stringPreferencesKey("user_pass")
         private val KEY_USER_PHOTO    = stringPreferencesKey("user_photo_uri")
         private val KEY_BIOMETRIC     = booleanPreferencesKey("biometric_enabled")
-
+        private val KEY_NOTIF_ENABLED = booleanPreferencesKey("notif_enabled")
+        private val KEY_NOTIF_DAYS_AHEAD = intPreferencesKey("notif_days_ahead")
+        private val KEY_NOTIF_HOUR = intPreferencesKey("notif_hour")
+        private val KEY_NOTIF_MINUTE = intPreferencesKey("notif_minute")
+        private val KEY_NOTIF_ONLY_CREDIT = booleanPreferencesKey("notif_only_credit")
+        private val KEY_NOTIF_LAST_DAY = longPreferencesKey("notif_last_day") // evita repetir no mesmo dia
+        private val KEY_NOTIF_ONLY_PENDING = booleanPreferencesKey("notif_only_pending")
     }
 
     // 2) flows que usam o context da instância
@@ -59,6 +67,46 @@ class UserPreferences(private val context: Context) {
     val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data
         .map { prefs -> prefs[KEY_BIOMETRIC] ?: false }
 
+    val notifEnabledFlow = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIF_ENABLED] ?: false
+    }
+
+    val notifDaysAheadFlow = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIF_DAYS_AHEAD] ?: 3
+    }
+
+    val notifHourFlow = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIF_HOUR] ?: 9
+    }
+
+    val notifMinuteFlow = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIF_MINUTE] ?: 0
+    }
+
+    val notifOnlyCreditFlow = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIF_ONLY_CREDIT] ?: false
+    }
+
+    val notifLastDayFlow = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIF_LAST_DAY] ?: 0L
+    }
+    val notifOnlyPendingFlow = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIF_ONLY_PENDING] ?: true
+    }
+    suspend fun saveNotifOnlyPending(v: Boolean) {
+        context.dataStore.edit { it[KEY_NOTIF_ONLY_PENDING] = v }
+    }
+    suspend fun saveNotifEnabled(v: Boolean) {
+        context.dataStore.edit { it[KEY_NOTIF_ENABLED] = v }
+    }
+
+    suspend fun saveNotifOnlyCredit(v: Boolean) {
+        context.dataStore.edit { it[KEY_NOTIF_ONLY_CREDIT] = v }
+    }
+
+    suspend fun saveNotifLastDay(v: Long) {
+        context.dataStore.edit { it[KEY_NOTIF_LAST_DAY] = v }
+    }
     // 3) métodos de gravação que usam o context
     suspend fun saveUserName(name: String) {
         context.dataStore.edit { prefs ->
@@ -89,4 +137,8 @@ class UserPreferences(private val context: Context) {
             prefs[KEY_BIOMETRIC] = enabled
         }
     }
+
+    fun saveNotifDaysAhead(v: Int) {}
+    fun saveNotifHour(v: Int) {}
+    fun saveNotifMinute(v: Int) {}
 }

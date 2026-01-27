@@ -13,4 +13,19 @@ class Converters {
     fun dateToTimestamp(date: Date?): Long? {
         return date?.time
     }
+
+    @TypeConverter
+    fun fromDate(d: Date?): Long? = d?.time
+
+    @TypeConverter
+    fun toDate(ms: Long?): Date? = ms?.let { Date(it) }
+
+    @TypeConverter
+    fun fromTipo(t: TipoDespesa?): String? = t?.name
+
+    @TypeConverter
+    fun toTipo(s: String?): TipoDespesa {
+        if (s.isNullOrBlank()) return TipoDespesa.DEBITO
+        return runCatching { TipoDespesa.valueOf(s) }.getOrDefault(TipoDespesa.DEBITO)
+    }
 }

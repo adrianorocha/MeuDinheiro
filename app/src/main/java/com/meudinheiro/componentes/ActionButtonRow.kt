@@ -79,7 +79,8 @@ fun ActionButtonRow(
     categorias: List<String>,
     getPicCategoria: (String) -> String,
     contaSelecionada: String,
-    viewModel: ContaSaldoViewModel
+    viewModel: ContaSaldoViewModel,
+    onConfigClick: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var exibirFormulario by remember { mutableStateOf(false) }
@@ -144,7 +145,7 @@ fun ActionButtonRow(
                         text = "Config.",
                         accent = MaterialTheme.colorScheme.secondary,
                         perItemWidth = perItem,
-                        onClick = { }
+                        onClick = onConfigClick
                     )
                 }
             }

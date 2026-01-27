@@ -10,5 +10,6 @@ data class DespesasDomain(
     val data: Date,
     val conta: String,
     val categoria: String,
-    val tipo: TipoDespesa
+    val tipo: TipoDespesa,
+    val pago: Boolean
 )

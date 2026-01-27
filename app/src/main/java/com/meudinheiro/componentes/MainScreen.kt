@@ -29,6 +29,7 @@ import com.meudinheiro.viewModel.HomeViewModelFactory
 @Composable
 fun MainScreen(userPrefs: UserPreferences) {
     var selectedIndex by remember { mutableStateOf(-1) }
+    var showAvisos by remember { mutableStateOf(false) }
     fun onItemSelected(index: Int) { selectedIndex = index }
 
     val context = LocalContext.current
@@ -128,9 +129,16 @@ fun MainScreen(userPrefs: UserPreferences) {
                 categorias = repository.categorias.map { it.title },
                 getPicCategoria = { nomeCategoria -> repository.getPicCategoria(nomeCategoria) },
                 contaSelecionada = contaSelecionadaId.orEmpty(),
-                viewModel = contaVM
-            )
+                viewModel = contaVM,
+                onConfigClick = { showAvisos = true }
 
+            )
+            if (showAvisos) {
+                Configuracao(
+                    userPrefs = userPrefs,
+                    onBack = { showAvisos = false }
+                )
+            }
             if (selectedIndex == 0) {
                 ContaBancaria(
                     viewModelFactory = ContaSaldoViewModelFactory(repository),
