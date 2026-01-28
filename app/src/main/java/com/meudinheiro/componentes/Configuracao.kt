@@ -3,7 +3,6 @@ package com.meudinheiro.componentes
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -24,10 +23,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
-import com.meudinheiro.notif.ExpenseNotif
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,7 +76,7 @@ fun Configuracao(
         topBar = {
             TopAppBar(
                 title = { Text("Avisos e parâmetros") },
-                windowInsets = WindowInsets(0, 0, 0, 0) // evita “inset duplo” em alguns layouts
+                windowInsets = WindowInsets(0, 25, 0, 0) // evita “inset duplo” em alguns layouts
             )
         },
         bottomBar = {
@@ -102,19 +100,13 @@ fun Configuracao(
                             return@Button
                         }
                         AgendadorNotifDespesas.runNow(context)
-                        /*ExpenseNotif.show(
-                            context = context,
-                            title = "Teste de aviso",
-                            text = "Seus avisos estão funcionando.",
-                            bigText = "Se você tiver despesas pendentes com data futura, o aviso diário também aparecerá."
-                        )*/
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("Testar") }
             }
         },
         // deixa o Scaffold não colocar padding extra automaticamente
-        contentWindowInsets = WindowInsets(0, 25, 0, 0)
+        contentWindowInsets = WindowInsets(0, 40, 0, 0)
     ) { padding ->
 
         LazyColumn(

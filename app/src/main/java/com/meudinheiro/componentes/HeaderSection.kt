@@ -63,6 +63,7 @@ fun HeaderSection(
     chipStyle: HeaderChipStyle = HeaderChipStyle.SUCCESS,
     showNotifications: Boolean = true,
     hasUnreadNotifications: Boolean = false,
+    notificationCount: Int,
     onNotificationsClick: () -> Unit = {}
 ) {
     val containerShape = RoundedCornerShape(22.dp)
@@ -375,9 +376,6 @@ private fun PremiumAvatarButton(
             val fileOk = remember(file) { file != null && file.exists() && file.length() > 0L }
 
             if (fileOk) {
-//                if (!fotoUri.isNullOrBlank()) {
-                //val model = if (fotoUri.startsWith("/")) File(fotoUri) else fotoUri
-
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(file)

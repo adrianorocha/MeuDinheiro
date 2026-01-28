@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -11,6 +12,7 @@ import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.flow.first
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -37,6 +39,7 @@ class DespesasDevidas(
 
         val daysAhead = prefs.notifDaysAheadFlow.first()
         val onlyCredit = prefs.notifOnlyCreditFlow.first()
+        val df = SimpleDateFormat("EEE, dd MMM yyyy", Locale("pt", "BR"))
 
         val (inicio, fim) = buildWindowDates(daysAhead)
 
@@ -49,19 +52,18 @@ class DespesasDevidas(
         val total = pendentes.sumOf { it.valor }
 
         val title = "Despesas a vencer"
-        val text = "${pendentes.size} pendente(s) nos próximos $daysAhead dia(s) — Total: ${nf.format(total)}$ - Venc: ${inicio.toString()  }"
+        val text = "${pendentes.size} pendente(s) nos próximos $daysAhead dia(s) — Total: ${nf.format(total)}"
 
         val lines = pendentes
             .sortedBy { it.data.time }
             .take(6)
             .joinToString("\n") { d ->
-                "• ${d.descricao} — ${nf.format(d.valor)}"
+                "• ${d.descricao} — ${df.format(d.data)} — ${nf.format(d.valor)}"
             }
 
         val bigText = if (pendentes.size > 6) {
             "$lines\n\n+${pendentes.size - 6} item(ns) não exibidos."
         } else lines
-
         ExpenseNotif.show(
             context = context,
             title = title,

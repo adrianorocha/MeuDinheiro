@@ -1,9 +1,15 @@
 package com.meudinheiro
 
+import android.app.Activity
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
@@ -51,7 +57,7 @@ fun ShowApp() {
     val userPrefs = remember { UserPreferences(context) }
 
     var nextAfterSplash by remember { mutableStateOf<AppStage?>(null) }
-
+    var showExitDialog by remember { mutableStateOf(false) }
     // Carrega do DataStore uma vez (valor real), sem depender de "initial = """
     LaunchedEffect(Unit) {
         val u = userPrefs.userNameFlow.firstOrNull().orEmpty().trim()
@@ -59,6 +65,42 @@ fun ShowApp() {
         nextAfterSplash = if (u.isNotBlank() && p.isNotBlank()) AppStage.Login else AppStage.Cadastro
     }
 
+// Intercepta o botão voltar/gesture
+    BackHandler(enabled = stage != AppStage.Splash) {
+        when (stage) {
+            AppStage.Home -> showExitDialog = true
+            AppStage.Avisos -> stage = AppStage.Home
+            AppStage.Login -> stage = AppStage.Cadastro
+            AppStage.Cadastro -> showExitDialog = true
+            else -> { /* Splash não intercepta */ }
+        }
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("Sair do aplicativo") },
+            text = { Text("Deseja realmente sair?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExitDialog = false
+                        val act = context as? Activity
+                        if (act != null) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                act.finishAndRemoveTask() // remove de Recentes
+                            } else {
+                                act.finishAffinity()
+                            }
+                        }
+                    }
+                ) { Text("Sair") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
     when (stage) {
         AppStage.Splash -> {
             SplashScreen(
