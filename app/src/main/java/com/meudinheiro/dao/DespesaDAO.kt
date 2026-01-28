@@ -7,6 +7,7 @@ import androidx.room.Query
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesasDomain
 import kotlinx.coroutines.flow.Flow
+import java.util.Date
 
 @Dao
 interface DespesaDao {
@@ -30,7 +31,7 @@ interface DespesaDao {
     fun obterDespesasPorContaFlow(contaId: String): Flow<List<DespesasDomain>>
 
     @Query("SELECT * FROM despesas WHERE data BETWEEN :inicioMillis AND :fimMillis ORDER BY data ASC")
-    suspend fun obterDespesasVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa>
+    suspend fun obterDespesasVencendo(inicioMillis: Date, fimMillis: Date): List<Despesa>
 
     @Query("""
     SELECT * FROM despesas 
@@ -58,4 +59,5 @@ interface DespesaDao {
     ORDER BY data ASC
 """)
     suspend fun obterPendentesVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa>
+
 }

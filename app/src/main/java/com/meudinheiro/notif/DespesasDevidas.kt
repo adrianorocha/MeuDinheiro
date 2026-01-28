@@ -55,6 +55,8 @@ class DespesasDevidas(
         val db = AppDatabase.getInstance(context) // ajuste conforme seu singleton
         val dao = db.despesaDao()
 
+        val onlyPending = prefs.notifOnlyPendingFlow.first() // default true
+
         val lista = dao.obterDespesasVencendo(inicio, fim)
             .let { all ->
                 if (!onlyCredit) all

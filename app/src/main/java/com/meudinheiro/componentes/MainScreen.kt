@@ -1,13 +1,23 @@
 package com.meudinheiro.componentes
 
-import android.util.Log
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,9 +37,11 @@ import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
 
 @Composable
-fun MainScreen(userPrefs: UserPreferences) {
+fun MainScreen(
+    userPrefs: UserPreferences,
+    onOpenAvisos: () -> Unit
+) {
     var selectedIndex by remember { mutableStateOf(-1) }
-    var showAvisos by remember { mutableStateOf(false) }
     fun onItemSelected(index: Int) { selectedIndex = index }
 
     val context = LocalContext.current
@@ -54,7 +66,8 @@ fun MainScreen(userPrefs: UserPreferences) {
         return
     }
 
-    // Se não tem selecionada (ou ficou inválida), seleciona a primeira
+    // Se a tela de avisos está aberta, mostra ela em tela cheia e não desenha mais nada da Home
+
     LaunchedEffect(contas, contaSelecionadaId) {
         if (contas.isEmpty()) return@LaunchedEffect
 
@@ -67,7 +80,6 @@ fun MainScreen(userPrefs: UserPreferences) {
         }
     }
 
-    // Carrega despesas somente quando a conta selecionada mudar
     LaunchedEffect(contaSelecionadaId) {
         val id = contaSelecionadaId?.trim().orEmpty()
         if (id.isNotBlank()) {
@@ -92,25 +104,16 @@ fun MainScreen(userPrefs: UserPreferences) {
                 chipStyle = HeaderChipStyle.SUCCESS,
                 showNotifications = true,
                 hasUnreadNotifications = false,
-                onNotificationsClick = {
-                }
+                onNotificationsClick = { }
             )
 
             if (contas.isNotEmpty()) {
                 CardSection(
                     contas = contas,
                     contasSelecionadaId = contaSelecionadaId?.orEmpty(),
-                    onExcluir = { conta ->
-                        contaVM.removerContaSaldo(conta.id)
-                    },
-                    onContaSelecionada = { novaConta ->
-                        contaVM.selecionarConta(novaConta)
-                    },
-                    onAtualizar = { conta ->
-                        // Quando o CardSection detecta o card central ao parar de rolar,
-                        // ele deve apenas refletir isso na seleção.
-                        contaVM.selecionarConta(conta.conta)
-                    }
+                    onExcluir = { conta -> contaVM.removerContaSaldo(conta.id) },
+                    onContaSelecionada = { novaConta -> contaVM.selecionarConta(novaConta) },
+                    onAtualizar = { conta -> contaVM.selecionarConta(conta.conta) }
                 )
             } else {
                 Text(
@@ -130,15 +133,9 @@ fun MainScreen(userPrefs: UserPreferences) {
                 getPicCategoria = { nomeCategoria -> repository.getPicCategoria(nomeCategoria) },
                 contaSelecionada = contaSelecionadaId.orEmpty(),
                 viewModel = contaVM,
-                onConfigClick = { showAvisos = true }
-
+                onConfigClick = onOpenAvisos
             )
-            if (showAvisos) {
-                Configuracao(
-                    userPrefs = userPrefs,
-                    onBack = { showAvisos = false }
-                )
-            }
+
             if (selectedIndex == 0) {
                 ContaBancaria(
                     viewModelFactory = ContaSaldoViewModelFactory(repository),
@@ -179,7 +176,11 @@ fun MainScreen(userPrefs: UserPreferences) {
                         .padding(bottom = 80.dp)
                 ) {
                     items(despesas, key = { it.id }) { item ->
-                        DespesasItem(item = item, onRemover = { id -> despVM.removerDespesaComRestituicao(id) })
+                        DespesasItem(
+                            item = item,
+                            onRemover = { id -> despVM.removerDespesaComRestituicao(id) },
+                            onTogglePago = { id, pago -> despVM.marcarComoPaga(id, pago) }
+                        )
                     }
                 }
             }

@@ -1,6 +1,8 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.meudinheiro.R
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
 
@@ -43,6 +46,7 @@ import com.meudinheiro.funcoes.formatarMoedaBR
 fun DespesasItem(
     item: DespesasDomain,
     onRemover: (Int) -> Unit,
+    onTogglePago: ((Int, Boolean) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
     var showDialog by remember { mutableStateOf(false) }
@@ -52,14 +56,19 @@ fun DespesasItem(
     val context = LocalContext.current
     val resId = remember(item.pic) {
         val id = context.resources.getIdentifier(item.pic, "drawable", context.packageName)
-        if (id != 0) id else R.drawable.user // fallback (troque por um ícone seu se quiser)
+        if (id != 0) id else R.drawable.user // fallback
     }
 
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
             title = { Text("Remover despesa") },
-            text = { Text("Deseja remover esta despesa? O valor será restituído ao saldo da conta.") },
+            text = {
+                Text(
+                    "Deseja remover esta despesa? " +
+                            "O valor será restituído ao saldo da conta."
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -74,6 +83,18 @@ fun DespesasItem(
         )
     }
 
+    val cardColor =
+        if (item.pago)
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
+        else
+            MaterialTheme.colorScheme.surface
+
+    val valorColor =
+        if (item.pago)
+            MaterialTheme.colorScheme.onSurfaceVariant
+        else
+            MaterialTheme.colorScheme.onSurface
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -84,7 +105,7 @@ fun DespesasItem(
             ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = cardColor
         ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
@@ -132,16 +153,61 @@ fun DespesasItem(
                 )
             }
 
-            Column(
-                horizontalAlignment = Alignment.End
-            ) {
-                Text(
-                    text = formatarMoedaBR(item.valor),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                // Se você tiver “conta” ou “categoria” para mostrar pequeno, pode colocar aqui.
-                // Text("Conta X", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = formatarMoedaBR(item.valor),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = valorColor
+                    )
+                    if(item.tipo == TipoDespesa.DEBITO){
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Chip de status / ação "Marcar como pago"
+                    val chipBg: Color
+                    val chipBorder: Color
+                    val chipTextColor: Color
+                    val chipText: String
+                    val clickable = !item.pago && onTogglePago != null
+
+                    if (item.pago) {
+                        chipBg = Color(0xFF00C853).copy(alpha = 0.12f)
+                        chipBorder = Color(0xFF00C853)
+                        chipTextColor = Color(0xFF00C853)
+                        chipText = "Pago"
+                    } else {
+                        chipBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        chipBorder = MaterialTheme.colorScheme.primary
+                        chipTextColor = MaterialTheme.colorScheme.primary
+                        chipText = "Marcar como pago"
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = chipBg,
+                        border = BorderStroke(1.dp, chipBorder),
+                        modifier = if (clickable) {
+                            Modifier.clickable {
+                                onTogglePago?.invoke(item.id, !item.pago)
+//                                onTogglePago?.invoke(item.id, true)
+                            }
+                        } else {
+                            Modifier
+                        }
+                    ) {
+                        Text(
+                            text = chipText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = chipTextColor,
+                            modifier = Modifier
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }

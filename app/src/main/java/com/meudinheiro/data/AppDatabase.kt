@@ -10,16 +10,16 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.dao.DespesaDao
 
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE despesas ADD COLUMN pago INTEGER NOT NULL DEFAULT 0")
+    }
+}
 
-@Database(entities = [Despesa::class, ContaSaldo::class], version = 2)
+@Database(entities = [Despesa::class, ContaSaldo::class], version = 1)
 @TypeConverters(Converters::class)
 
 abstract class AppDatabase : RoomDatabase() {
-    val MIGRATION_1_2 = object : Migration(1, 2) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE despesas ADD COLUMN pago INTEGER NOT NULL DEFAULT 0")
-        }
-    }
     abstract fun despesaDao(): DespesaDao
     abstract fun contaSaldoDao(): ContaSaldoDao
 
@@ -34,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "financas-db"
                 )
                     .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_1_2)
                     .build()
                     .also { INSTANCE = it }
             }

@@ -11,7 +11,9 @@ import com.meudinheiro.componentes.CadastroUsuarioScreen
 import com.meudinheiro.componentes.LoginScreen
 import com.meudinheiro.componentes.MainScreen
 import com.meudinheiro.componentes.SplashScreen
+import com.meudinheiro.componentes.Configuracao
 import com.meudinheiro.funcoes.UserPreferences
+import com.meudinheiro.notif.AgendadorNotifDespesas
 import kotlinx.coroutines.flow.firstOrNull
 
 class MainActivity : AppCompatActivity() {
@@ -19,6 +21,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        AgendadorNotifDespesas.scheduleDaily(this, 9, 0)
 
         setContent {
             ShowApp()
@@ -26,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-private enum class AppStage { Splash, Cadastro, Login, Home }
+private enum class AppStage { Splash, Cadastro, Login, Home, Avisos }
 
 @Composable
 fun ShowApp() {
@@ -72,7 +75,17 @@ fun ShowApp() {
         }
 
         AppStage.Home -> {
-            MainScreen(userPrefs)
+            MainScreen(userPrefs,
+            onOpenAvisos = {
+                stage = AppStage.Avisos
+            }
+            )
+        }
+        AppStage.Avisos -> {
+            Configuracao(
+                userPrefs = userPrefs,
+                onBack = { stage = AppStage.Home }
+            )
         }
     }
 }

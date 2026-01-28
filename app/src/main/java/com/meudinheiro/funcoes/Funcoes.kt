@@ -138,7 +138,20 @@ class UserPreferences(private val context: Context) {
         }
     }
 
-    fun saveNotifDaysAhead(v: Int) {}
-    fun saveNotifHour(v: Int) {}
-    fun saveNotifMinute(v: Int) {}
+    suspend fun saveNotifDaysAhead(days: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NOTIF_DAYS_AHEAD] = days
+        }
+    }
+    suspend fun saveNotifHour(hour: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NOTIF_HOUR] = hour
+        }
+    }
+    suspend fun saveNotifMinute(minute: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NOTIF_MINUTE] = minute
+
+        }
+    }
 }

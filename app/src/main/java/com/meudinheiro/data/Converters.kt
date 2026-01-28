@@ -15,12 +15,6 @@ class Converters {
     }
 
     @TypeConverter
-    fun fromDate(d: Date?): Long? = d?.time
-
-    @TypeConverter
-    fun toDate(ms: Long?): Date? = ms?.let { Date(it) }
-
-    @TypeConverter
     fun fromTipo(t: TipoDespesa?): String? = t?.name
 
     @TypeConverter

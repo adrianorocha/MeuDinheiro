@@ -660,7 +660,7 @@ fun RowScope.ActionButton(
         if (pressed) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .size(38.dp)
                     .background(Color.White.copy(alpha = 0.07f))
             )
         }
