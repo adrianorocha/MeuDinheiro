@@ -44,7 +44,7 @@ class DespesasDevidas(
         val (inicio, fim) = buildWindowDates(daysAhead)
 
         val repo = MainRepository(context)
-        val pendentes = repo.getPendentesAVencer(inicio, fim, onlyCredit)
+        val pendentes = repo.getPendentesAVencer(inicio, fim, onlyCredit = false)
 
         if (pendentes.isEmpty()) return Result.success()
 

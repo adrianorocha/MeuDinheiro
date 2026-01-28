@@ -175,7 +175,7 @@ class MainRepository(private val context: Context) {
         onlyCredit: Boolean
     ): List<Despesa> {
         val (inicio, fim) = buildWindowDates(daysAhead)
-        val dao = db.despesaDao() // AJUSTE: seu acesso ao DAO
+        val dao = db.despesaDao()
 
         val aVencer = if (onlyCredit) {
             dao.obterPendentesVencendoDatePorTipo(inicio, fim, TipoDespesa.DEBITO)
@@ -194,7 +194,7 @@ class MainRepository(private val context: Context) {
     }
 
     suspend fun contarPendencias(daysAhead: Int, onlyCredit: Boolean): Int {
-        return listarPendencias(daysAhead, onlyCredit).size
+        return listarPendencias(daysAhead, onlyCredit = false).size
     }
 
     private fun buildWindowDates(daysAhead: Int): Pair<Date, Date> {

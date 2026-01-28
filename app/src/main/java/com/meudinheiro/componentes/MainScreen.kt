@@ -75,7 +75,7 @@ fun MainScreen(
 
     LaunchedEffect(daysAhead, onlyCredit) {
         notifCount = withContext(Dispatchers.IO) {
-            repository.contarPendencias(daysAhead, onlyCredit)
+            repository.contarPendencias(daysAhead, onlyCredit = false)
         }
     }
     // Se a tela de avisos está aberta, mostra ela em tela cheia e não desenha mais nada da Home
