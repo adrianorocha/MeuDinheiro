@@ -12,6 +12,7 @@ import com.meudinheiro.data.DespesaAviso
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
+import java.util.Calendar
 import java.util.Date
 
 class MainRepository(private val context: Context) {
@@ -164,9 +165,53 @@ class MainRepository(private val context: Context) {
     suspend fun getPendentesAVencer(inicio: Date, fim: Date, onlyCredit: Boolean): List<Despesa> {
         val dao = db.despesaDao() // AJUSTE: como você acessa o DAO dentro do repository
         return if (onlyCredit) {
-            dao.obterPendentesVencendoDatePorTipo(inicio, fim, TipoDespesa.CREDITO)
+            dao.obterPendentesVencendoDatePorTipo(inicio, fim, TipoDespesa.DEBITO)
         } else {
             dao.obterPendentesVencendoDate(inicio, fim)
         }
+    }
+    suspend fun listarPendencias(
+        daysAhead: Int,
+        onlyCredit: Boolean
+    ): List<Despesa> {
+        val (inicio, fim) = buildWindowDates(daysAhead)
+        val dao = db.despesaDao() // AJUSTE: seu acesso ao DAO
+
+        val aVencer = if (onlyCredit) {
+            dao.obterPendentesVencendoDatePorTipo(inicio, fim, TipoDespesa.DEBITO)
+        } else {
+            dao.obterPendentesVencendoDate(inicio, fim)
+        }
+
+        val atrasadas = if (onlyCredit) {
+            dao.obterPendentesAtrasadasPorTipo(inicio, TipoDespesa.DEBITO)
+        } else {
+            dao.obterPendentesAtrasadas(inicio)
+        }
+
+        return (atrasadas + aVencer).distinctBy { it.id }.sortedBy { it.data.time }
+
+    }
+
+    suspend fun contarPendencias(daysAhead: Int, onlyCredit: Boolean): Int {
+        return listarPendencias(daysAhead, onlyCredit).size
+    }
+
+    private fun buildWindowDates(daysAhead: Int): Pair<Date, Date> {
+        val calIni = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val calFim = Calendar.getInstance().apply {
+            timeInMillis = calIni.timeInMillis
+            add(Calendar.DAY_OF_YEAR, daysAhead)
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }
+        return Date(calIni.timeInMillis) to Date(calFim.timeInMillis)
     }
 }

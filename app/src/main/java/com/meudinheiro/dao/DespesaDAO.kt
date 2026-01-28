@@ -78,4 +78,20 @@ ORDER BY data ASC
 """)
     suspend fun obterPendentesVencendoDatePorTipo(inicio: Date, fim: Date, tipo: TipoDespesa): List<Despesa>
 
+    @Query("""
+SELECT * FROM despesas
+WHERE pago = 0
+AND data < :inicio
+ORDER BY data ASC
+""")
+    suspend fun obterPendentesAtrasadas(inicio: Date): List<Despesa>
+
+    @Query("""
+SELECT * FROM despesas
+WHERE pago = 0
+AND tipo = :tipo
+AND data < :inicio
+ORDER BY data ASC
+""")
+    suspend fun obterPendentesAtrasadasPorTipo(inicio: Date, tipo: TipoDespesa): List<Despesa>
 }

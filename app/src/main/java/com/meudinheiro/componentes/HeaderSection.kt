@@ -63,7 +63,7 @@ fun HeaderSection(
     chipStyle: HeaderChipStyle = HeaderChipStyle.SUCCESS,
     showNotifications: Boolean = true,
     hasUnreadNotifications: Boolean = false,
-    notificationCount: Int,
+    notificationCount: Int = 0,
     onNotificationsClick: () -> Unit = {}
 ) {
     val containerShape = RoundedCornerShape(22.dp)
@@ -128,7 +128,7 @@ fun HeaderSection(
                         PremiumChip(
                             text = chipText,
                             style = chipStyle,
-                            modifier = Modifier.fillMaxWidth(0.72f) // evita encostar nos botões da direita
+                            modifier = Modifier.fillMaxWidth(0.72f)
                         )
                     }
                 }
@@ -139,6 +139,7 @@ fun HeaderSection(
                     PremiumIconButton(
                         contentDescription = "Notificações",
                         showBadge = hasUnreadNotifications,
+                        badgeCount = notificationCount,
                         onClick = onNotificationsClick
                     ) {
                         Icon(
@@ -159,8 +160,6 @@ fun HeaderSection(
             }
         }
     }
-
-
 }
 
 @Composable
@@ -223,6 +222,7 @@ private fun PremiumChip(
 private fun PremiumIconButton(
     contentDescription: String,
     showBadge: Boolean,
+    badgeCount: Int,
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -251,6 +251,7 @@ private fun PremiumIconButton(
         modifier = Modifier.size(46.dp),
         contentAlignment = Alignment.Center
     ) {
+        // glow
         Box(
             modifier = Modifier
                 .size(54.dp)
@@ -266,6 +267,7 @@ private fun PremiumIconButton(
                 )
         )
 
+        // botão
         Box(
             modifier = Modifier
                 .size(42.dp)
@@ -291,7 +293,30 @@ private fun PremiumIconButton(
             }
         }
 
-        if (showBadge) {
+        // Badge com número (prioridade) OU bolinha simples
+        val count = badgeCount.coerceAtLeast(0)
+        if (count > 0) {
+            val txt = if (count > 99) "99+" else count.toString()
+
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 2.dp, end = 2.dp),
+                shape = RoundedCornerShape(999.dp),
+                color = Color(0xFFFF3D00),
+                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.surface),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                Text(
+                    text = txt,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
+        } else if (showBadge) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -303,8 +328,6 @@ private fun PremiumIconButton(
             )
         }
     }
-
-
 }
 
 @Composable
@@ -376,6 +399,9 @@ private fun PremiumAvatarButton(
             val fileOk = remember(file) { file != null && file.exists() && file.length() > 0L }
 
             if (fileOk) {
+//                if (!fotoUri.isNullOrBlank()) {
+                //val model = if (fotoUri.startsWith("/")) File(fotoUri) else fotoUri
+
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(file)

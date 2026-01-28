@@ -35,14 +35,20 @@ import com.meudinheiro.viewModel.DespesasViewModel
 import com.meudinheiro.viewModel.DespesasViewModelFactory
 import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun MainScreen(
     userPrefs: UserPreferences,
-    onOpenAvisos: () -> Unit
+    onOpenAvisos: () -> Unit,
+    onOpenPendencias: () -> Unit
 ) {
     var selectedIndex by remember { mutableStateOf(-1) }
     fun onItemSelected(index: Int) { selectedIndex = index }
+
+    val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
+    val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
 
     val context = LocalContext.current
     val repository = remember { MainRepository(context) }
@@ -65,7 +71,13 @@ fun MainScreen(
         )
         return
     }
+    var notifCount by remember { mutableStateOf(0) }
 
+    LaunchedEffect(daysAhead, onlyCredit) {
+        notifCount = withContext(Dispatchers.IO) {
+            repository.contarPendencias(daysAhead, onlyCredit)
+        }
+    }
     // Se a tela de avisos está aberta, mostra ela em tela cheia e não desenha mais nada da Home
 
     LaunchedEffect(contas, contaSelecionadaId) {
@@ -103,8 +115,9 @@ fun MainScreen(
                 chipText = "Sincronizado",
                 chipStyle = HeaderChipStyle.SUCCESS,
                 showNotifications = true,
-                hasUnreadNotifications = false,
-                onNotificationsClick = { }
+                hasUnreadNotifications = (notifCount > 0),
+                notificationCount = notifCount,
+                onNotificationsClick = onOpenPendencias
             )
 
             if (contas.isNotEmpty()) {
