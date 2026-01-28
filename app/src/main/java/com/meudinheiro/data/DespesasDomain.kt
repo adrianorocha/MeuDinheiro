@@ -13,3 +13,11 @@ data class DespesasDomain(
     val tipo: TipoDespesa,
     val pago: Boolean
 )
+
+data class DespesaAviso(
+    val id: Long,
+    val titulo: String,
+    val valor: Double,
+    val vencimentoMillis: Long,
+    val tipo: String
+)

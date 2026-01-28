@@ -1,14 +1,16 @@
 package com.meudinheiro.notif
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.UserPreferences
-import com.meudinheiro.data.AppDatabase // ajuste o package do seu AppDatabase
+import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.flow.first
 import java.text.NumberFormat
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -25,81 +27,67 @@ class DespesasDevidas(
         val enabled = prefs.notifEnabledFlow.first()
         if (!enabled) return Result.success()
 
-        val daysAhead = prefs.notifDaysAheadFlow.first()
-        val hour = prefs.notifHourFlow.first()
-        val minute = prefs.notifMinuteFlow.first()
-        val onlyCredit = prefs.notifOnlyCreditFlow.first()
-
-        // Evita notificar mais de 1x no mesmo dia
-        val todayKey = dayKey(System.currentTimeMillis())
-        val lastDay = prefs.notifLastDayFlow.first()
-        if (lastDay == todayKey) return Result.success()
-
-        val calStart = Calendar.getInstance().apply {
-            // janela começa AGORA (se quiser, pode começar no início do dia)
-            timeInMillis = System.currentTimeMillis()
+        if (Build.VERSION.SDK_INT >= 33) {
+            val ok = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!ok) return Result.success()
         }
 
-        val calEnd = Calendar.getInstance().apply {
-            timeInMillis = System.currentTimeMillis()
+        val daysAhead = prefs.notifDaysAheadFlow.first()
+        val onlyCredit = prefs.notifOnlyCreditFlow.first()
+
+        val (inicio, fim) = buildWindowDates(daysAhead)
+
+        val repo = MainRepository(context)
+        val pendentes = repo.getPendentesAVencer(inicio, fim, onlyCredit)
+
+        if (pendentes.isEmpty()) return Result.success()
+
+        val nf = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
+        val total = pendentes.sumOf { it.valor }
+
+        val title = "Despesas a vencer"
+        val text = "${pendentes.size} pendente(s) nos próximos $daysAhead dia(s) — Total: ${nf.format(total)}$ - Venc: ${inicio.toString()  }"
+
+        val lines = pendentes
+            .sortedBy { it.data.time }
+            .take(6)
+            .joinToString("\n") { d ->
+                "• ${d.descricao} — ${nf.format(d.valor)}"
+            }
+
+        val bigText = if (pendentes.size > 6) {
+            "$lines\n\n+${pendentes.size - 6} item(ns) não exibidos."
+        } else lines
+
+        ExpenseNotif.show(
+            context = context,
+            title = title,
+            text = text,
+            bigText = bigText
+        )
+
+        return Result.success()
+    }
+
+    private fun buildWindowDates(daysAhead: Int): Pair<Date, Date> {
+        val calIni = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val calFim = Calendar.getInstance().apply {
+            timeInMillis = calIni.timeInMillis
             add(Calendar.DAY_OF_YEAR, daysAhead)
             set(Calendar.HOUR_OF_DAY, 23)
             set(Calendar.MINUTE, 59)
             set(Calendar.SECOND, 59)
             set(Calendar.MILLISECOND, 999)
         }
-
-        val inicio = Date(calStart.timeInMillis)
-        val fim = Date(calEnd.timeInMillis)
-
-        val db = AppDatabase.getInstance(context) // ajuste conforme seu singleton
-        val dao = db.despesaDao()
-
-        val onlyPending = prefs.notifOnlyPendingFlow.first() // default true
-
-        val lista = dao.obterDespesasVencendo(inicio, fim)
-            .let { all ->
-                if (!onlyCredit) all
-                else all.filter { it.tipo == TipoDespesa.CREDITO }
-            }
-
-        if (lista.isEmpty()) return Result.success()
-
-        val df = SimpleDateFormat("dd/MM", Locale.getDefault())
-        val moeda = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
-
-        val primeiraData = lista.minByOrNull { it.data.time }?.data
-        val ate = primeiraData?.let { df.format(it) } ?: df.format(fim)
-
-        val title = "Despesas a vencer"
-        val text = "Você tem ${lista.size} despesa(s) para pagar nos próximos $daysAhead dia(s)."
-
-        val detalhes = buildString {
-            append("Vencimentos até $ate\n\n")
-            lista.take(5).forEach { d ->
-                append("• ${d.descricao} — ${moeda.format(d.valor)} — ${df.format(d.data)}\n")
-            }
-            if (lista.size > 5) append("\nE mais ${lista.size - 5}...")
-        }
-
-        ExpenseNotif.show(
-            context = context,
-            title = title,
-            text = text,
-            bigText = detalhes
-        )
-
-        prefs.saveNotifLastDay(todayKey)
-        return Result.success()
-    }
-
-    private fun dayKey(ms: Long): Long {
-        val c = Calendar.getInstance().apply { timeInMillis = ms }
-        // chave única por dia (yyyyMMdd)
-        val y = c.get(Calendar.YEAR)
-        val m = c.get(Calendar.MONTH) + 1
-        val d = c.get(Calendar.DAY_OF_MONTH)
-        return (y * 10000 + m * 100 + d).toLong()
+        return Date(calIni.timeInMillis) to Date(calFim.timeInMillis)
     }
 
 

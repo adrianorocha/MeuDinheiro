@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
 import java.util.Date
 
@@ -59,5 +60,22 @@ interface DespesaDao {
     ORDER BY data ASC
 """)
     suspend fun obterPendentesVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa>
+
+    @Query("""
+SELECT * FROM despesas
+WHERE pago = 0
+AND data BETWEEN :inicio AND :fim
+ORDER BY data ASC
+""")
+    suspend fun obterPendentesVencendoDate(inicio: Date, fim: Date): List<Despesa>
+
+    @Query("""
+SELECT * FROM despesas
+WHERE pago = 0
+AND tipo = :tipo
+AND data BETWEEN :inicio AND :fim
+ORDER BY data ASC
+""")
+    suspend fun obterPendentesVencendoDatePorTipo(inicio: Date, fim: Date, tipo: TipoDespesa): List<Despesa>
 
 }

@@ -8,9 +8,11 @@ import com.meudinheiro.data.CategoriaDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.data.DespesaAviso
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
+import java.util.Date
 
 class MainRepository(private val context: Context) {
 
@@ -148,5 +150,23 @@ class MainRepository(private val context: Context) {
 
     suspend fun atualizarSaldo(conta: String, novoSaldo: Double) {
         contaSaldoDao.atualizarSaldo(conta, novoSaldo)
+    }
+    suspend fun getDespesasAVencer(
+        startMillis: Long,
+        endMillis: Long,
+        onlyCredit: Boolean
+    ): List<DespesaAviso> {
+        // AJUSTE AQUI: consulte seu DAO e retorne uma lista com:
+        // titulo/descricao, valor, vencimentoMillis e tipo(para filtrar crédito)
+        TODO("implementar no seu DAO")
+    }
+
+    suspend fun getPendentesAVencer(inicio: Date, fim: Date, onlyCredit: Boolean): List<Despesa> {
+        val dao = db.despesaDao() // AJUSTE: como você acessa o DAO dentro do repository
+        return if (onlyCredit) {
+            dao.obterPendentesVencendoDatePorTipo(inicio, fim, TipoDespesa.CREDITO)
+        } else {
+            dao.obterPendentesVencendoDate(inicio, fim)
+        }
     }
 }

@@ -101,12 +101,13 @@ fun Configuracao(
                             permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             return@Button
                         }
-                        ExpenseNotif.show(
+                        AgendadorNotifDespesas.runNow(context)
+                        /*ExpenseNotif.show(
                             context = context,
                             title = "Teste de aviso",
                             text = "Seus avisos estão funcionando.",
                             bigText = "Se você tiver despesas pendentes com data futura, o aviso diário também aparecerá."
-                        )
+                        )*/
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("Testar") }
@@ -324,7 +325,7 @@ private fun TimeRow(
             ) { Text("Min -") }
 
             OutlinedButton(
-                onClick = { onMinuteChange((minute + 5) % 60) },
+                onClick = { onMinuteChange((minute + 1) % 60) },
                 modifier = Modifier
                     .weight(1f)
                     .height(36.dp)

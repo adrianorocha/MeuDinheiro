@@ -7,6 +7,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.meudinheiro.componentes.CadastroUsuarioScreen
 import com.meudinheiro.componentes.LoginScreen
 import com.meudinheiro.componentes.MainScreen
@@ -14,19 +16,29 @@ import com.meudinheiro.componentes.SplashScreen
 import com.meudinheiro.componentes.Configuracao
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
+import com.meudinheiro.notif.DespesasDevidas
 import kotlinx.coroutines.flow.firstOrNull
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        AgendadorNotifDespesas.scheduleDaily(this, 9, 0)
+        scheduleExpenseNotificationWorker()
 
         setContent {
             ShowApp()
         }
     }
+    private fun scheduleExpenseNotificationWorker() {
+        // Define a periodicidade do worker
+        val workRequest = PeriodicWorkRequestBuilder<DespesasDevidas>(1, TimeUnit.DAYS)
+            .build()
+
+        WorkManager.getInstance(this).enqueue(workRequest)
+    }
+
 }
 
 private enum class AppStage { Splash, Cadastro, Login, Home, Avisos }
@@ -89,3 +101,4 @@ fun ShowApp() {
         }
     }
 }
+
