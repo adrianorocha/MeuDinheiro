@@ -1,46 +1,82 @@
 package com.meudinheiro.componentes
 
-// ... imports padrão ...
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.room.util.copy
 import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.funcoes.formatarMoedaBR
-
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-// ... funções utilitárias (coerceInDp, findCenteredItemIndex) mantidas ...
+// --- Funções Utilitárias Necessárias ---
 private fun Dp.coerceInDp(min: Dp, max: Dp): Dp = if(this < min) min else if(this > max) max else this
+
+// Função para descobrir qual item está no meio da tela
+private fun LazyListState.findCenteredItemIndex(): Int? {
+    val layoutInfo = this.layoutInfo
+    val visible = layoutInfo.visibleItemsInfo
+    if (visible.isEmpty()) return null
+
+    val viewportStart = layoutInfo.viewportStartOffset
+    val viewportEnd = layoutInfo.viewportEndOffset
+    val viewportCenter = (viewportStart + viewportEnd) / 2
+
+    var bestIndex: Int? = null
+    var bestDistance = Int.MAX_VALUE
+
+    for (item in visible) {
+        val itemCenter = item.offset + (item.size / 2)
+        val distance = kotlin.math.abs(itemCenter - viewportCenter)
+        if (distance < bestDistance) {
+            bestDistance = distance
+            bestIndex = item.index
+        }
+    }
+    return bestIndex
+}
 
 // Cores
 private val Gold = Color(0xFFFFD700)
-//private val TextWhite = Color(0xFFE0E1DD)
-
 @Composable
 fun CardSection(
     contas: List<ContaSaldoDomain>,
@@ -51,10 +87,58 @@ fun CardSection(
     getReceitaConta: (String) -> Double = { 0.0 },
     getDespesaConta: (String) -> Double = { 0.0 }
 ) {
-    // ... Lógica de Scroll e SnapshotFlow mantida (copie do original) ...
     val lazyListState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    // ...
+
+    // Estados atualizados para uso dentro do Flow (evita bugs de recomposição)
+    val contasAtual by rememberUpdatedState(contas)
+    val selecionadaAtual by rememberUpdatedState(contasSelecionadaId)
+    val onContaSelecionadaAtual by rememberUpdatedState(onContaSelecionada)
+    val onAtualizarAtual by rememberUpdatedState(onAtualizar)
+
+    // 1. Se a lista mudar ou seleção sumir, volta para o primeiro
+    LaunchedEffect(contas, contasSelecionadaId) {
+        if (contas.isEmpty()) return@LaunchedEffect
+        val exists = contasSelecionadaId != null && contas.any { it.conta == contasSelecionadaId }
+        if (!exists) {
+            val first = contas.first()
+            onContaSelecionada(first.conta)
+            onAtualizar(first)
+            lazyListState.scrollToItem(0)
+        }
+    }
+
+    // 2. Lógica de Auto-Seleção ao parar o Scroll [IMPORTANTE]
+    LaunchedEffect(lazyListState) {
+        var wasScrolling = false
+
+        // Monitora se o scroll está em progresso
+        snapshotFlow { lazyListState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { inProgress ->
+                if (inProgress) {
+                    wasScrolling = true
+                } else {
+                    // O scroll acabou de parar?
+                    if (wasScrolling) {
+                        wasScrolling = false
+                        // Acha quem está no centro
+                        val centeredIndex = lazyListState.findCenteredItemIndex()
+                        if (centeredIndex != null) {
+                            val contaCentered = contasAtual.getOrNull(centeredIndex)
+                            if (contaCentered != null) {
+                                val targetId = contaCentered.conta
+                                // Se for diferente do atual, seleciona!
+                                if (selecionadaAtual != targetId) {
+                                    onContaSelecionadaAtual(targetId)
+                                    onAtualizarAtual(contaCentered)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -66,7 +150,7 @@ fun CardSection(
 
         LazyRow(
             state = lazyListState,
-            contentPadding = PaddingValues(horizontal = 24.dp), // Mais margem
+            contentPadding = PaddingValues(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             flingBehavior = rememberSnapFlingBehavior(lazyListState)
         ) {
@@ -80,11 +164,15 @@ fun CardSection(
                     receita = getReceitaConta(conta.conta),
                     despesa = getDespesaConta(conta.conta),
                     onClick = {
+                        // Clique também deve animar o scroll para centralizar
+                        val idx = contas.indexOfFirst { it.conta == conta.conta }
+                        if (idx >= 0) {
+                            scope.launch { lazyListState.animateScrollToItem(idx) }
+                        }
                         onContaSelecionada(conta.conta)
                         onAtualizar(conta)
-                        // ... logica de scroll ...
                     },
-                    onLongClick = { /* logica excluir */ }
+                    onLongClick = { onExcluir(conta) }
                 )
             }
         }
@@ -103,13 +191,15 @@ private fun ContaCard(
     onLongClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(24.dp)
-    val borderCol by animateColorAsState(if (selected) Gold else Color.Transparent)
-    val scale by animateFloatAsState(if (selected) 1.05f else 1f)
+    // Animação da borda Dourada quando selecionado
+    val borderCol by animateColorAsState(if (selected) Gold else Color.Transparent, label = "border")
+    // Animação de escala (leve zoom) quando selecionado
+    val scale by animateFloatAsState(if (selected) 1.05f else 1f, label = "scale")
 
     Card(
         modifier = Modifier
             .size(width, height)
-            .scale(scale)
+            .scale(scale) // Aplica o zoom visual
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = shape,
         border = BorderStroke(2.dp, borderCol),
@@ -122,14 +212,16 @@ private fun ContaCard(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
-                alpha = 0.8f // Um pouco mais escuro
+                alpha = 0.8f
             )
-            // Overlay escuro
+            // Overlay escuro para garantir legibilidade do texto branco
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
 
             // Conteúdo
             Column(
-                modifier = Modifier.padding(20.dp).fillMaxSize(),
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 // Topo: Banco e Chip

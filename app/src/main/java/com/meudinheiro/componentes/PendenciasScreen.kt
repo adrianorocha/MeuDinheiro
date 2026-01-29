@@ -55,7 +55,7 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-// Cores Premium (Consistência com outras telas)
+// Cores Premium
 private val CardBg = Color(0xFF1E2B3E)
 private val ExpenseRed = Color(0xFFEF5350)
 private val IncomeGreen = Color(0xFF69F0AE)
@@ -70,6 +70,9 @@ fun PendenciasScreen(
     val repo = remember { MainRepository(context) }
 
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
+
+    // 1. Obtemos a lista de contas para poder descobrir o nome do banco
+    val listaContas by repo.obterContaSaldo().collectAsState(initial = emptyList())
 
     var items by remember { mutableStateOf<List<Despesa>>(emptyList()) }
 
@@ -121,7 +124,6 @@ fun PendenciasScreen(
                 // Header com Resumo
                 PremiumSummaryCard(count = items.size, total = nf.format(total))
 
-                // Botão de Ação (Mantido conforme pedido, mas estilizado)
                 OutlinedButton(
                     onClick = onBack,
                     modifier = Modifier.fillMaxWidth(),
@@ -161,7 +163,11 @@ fun PendenciasScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
                     ) {
                         items(items, key = { it.id }) { d ->
-                            PremiumPendenciaCard(d, nf, df)
+                            // 2. Encontramos o nome do banco comparando o número da conta
+                            val nomeBanco = listaContas.find { it.conta == d.conta }?.banco ?: "Banco"
+
+                            // 3. Passamos o nomeBanco para o Card
+                            PremiumPendenciaCard(d, nf, df, nomeBanco)
                         }
                     }
                 }
@@ -200,7 +206,8 @@ private fun PremiumSummaryCard(count: Int, total: String) {
 private fun PremiumPendenciaCard(
     d: Despesa,
     nf: NumberFormat,
-    df: SimpleDateFormat
+    df: SimpleDateFormat,
+    nomeBanco: String // Parâmetro novo
 ) {
     val valorColor = if (d.tipo == TipoDespesa.CREDITO) IncomeGreen else ExpenseRed
 
@@ -253,13 +260,14 @@ private fun PremiumPendenciaCard(
             androidx.compose.material3.Divider(color = Color.White.copy(alpha = 0.1f))
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Linha 3: Detalhes (Conta e Categoria)
+            // Linha 3: Detalhes (Banco, Conta e Categoria)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // Aqui mostramos: "Nubank • 12345-6"
                 Text(
-                    text = "${d.conta}",
+                    text = "$nomeBanco • ${d.conta}",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextWhite.copy(alpha = 0.6f)
                 )

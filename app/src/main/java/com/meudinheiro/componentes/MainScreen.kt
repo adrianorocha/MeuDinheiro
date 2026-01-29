@@ -176,15 +176,9 @@ fun MainScreen(
             )
 
             if (selectedIndex == 0) {
-                ContaBancariaDialog( // Usei o nome do Dialog correto aqui
-                    bancos = listOf("Nubank", "Inter", "Itaú", "Bradesco", "Santander", "Caixa", "BB", "C6"), // Exemplo
-                    onAdicionar = { banco, ag, cc ->
-                        // Lógica de adicionar conta deve ser passada via ViewModel ou Callback na main
-                        // Como o MainScreen original não tinha essa lógica completa injetada, adapte conforme seu HomeViewModel
-                        // homeVM.adicionarConta(...)
-                        selectedIndex = -1
-                    },
-                    onCancelar = { selectedIndex = -1 }
+                ContaBancaria(
+                    viewModelFactory = ContaSaldoViewModelFactory(repository),
+                    onClose = { selectedIndex = -1 }
                 )
             }
 
