@@ -10,6 +10,7 @@ import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaAviso
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
@@ -18,7 +19,6 @@ import java.util.Date
 class MainRepository(private val context: Context) {
 
     private val db = AppDatabase.getInstance(context)
-
     // DAOs
     private val despesaDao = db.despesaDao()
     private val contaSaldoDao = db.contaSaldoDao()
@@ -177,20 +177,13 @@ class MainRepository(private val context: Context) {
         val (inicio, fim) = buildWindowDates(daysAhead)
         val dao = db.despesaDao()
 
-        val aVencer = if (onlyCredit) {
-            dao.obterPendentesVencendoDatePorTipo(inicio, fim, TipoDespesa.DEBITO)
-        } else {
-            dao.obterPendentesVencendoDate(inicio, fim)
-        }
+        val tipoAlvo = if (onlyCredit) TipoDespesa.CREDITO else TipoDespesa.DEBITO
 
-        val atrasadas = if (onlyCredit) {
-            dao.obterPendentesAtrasadasPorTipo(inicio, TipoDespesa.DEBITO)
-        } else {
-            dao.obterPendentesAtrasadas(inicio)
-        }
+        val aVencer = dao.obterPendentesVencendoDatePorTipo(inicio, fim, TipoDespesa.DEBITO)
+
+        val atrasadas = dao.obterPendentesAtrasadasPorTipo(inicio, tipoAlvo)
 
         return (atrasadas + aVencer).distinctBy { it.id }.sortedBy { it.data.time }
-
     }
 
     suspend fun contarPendencias(daysAhead: Int, onlyCredit: Boolean): Int {
@@ -213,5 +206,24 @@ class MainRepository(private val context: Context) {
             set(Calendar.MILLISECOND, 999)
         }
         return Date(calIni.timeInMillis) to Date(calFim.timeInMillis)
+    }
+
+    suspend fun obterResumoFinanceiro(inicio: Date, fim: Date): List<ResumoFinanceiroDto> {
+        return db.despesaDao().obterResumoPorPeriodo(inicio, fim)
+    }
+
+    // Função auxiliar para pegar o primeiro e último dia do Mês Atual (para o painel ser útil)
+// Se quiser "Tudo desde sempre", basta passar datas muito distantes.
+    fun getDatesCurrentMonth(): Pair<Date, Date> {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+        val start = cal.time
+
+        cal.add(java.util.Calendar.MONTH, 1)
+        cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+        cal.add(java.util.Calendar.DATE, -1)
+        val end = cal.time
+
+        return Pair(start, end)
     }
 }

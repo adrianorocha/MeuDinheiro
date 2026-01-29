@@ -47,13 +47,12 @@ fun PendenciasScreen(
     val repo = remember { MainRepository(context) }
 
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
-    val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
 
     var items by remember { mutableStateOf<List<Despesa>>(emptyList()) }
 
-    LaunchedEffect(daysAhead, onlyCredit) {
+    LaunchedEffect(daysAhead) {
         items = withContext(Dispatchers.IO) {
-            repo.listarPendencias(daysAhead, onlyCredit)
+            repo.listarPendencias(daysAhead, onlyCredit = false)
         }
     }
 

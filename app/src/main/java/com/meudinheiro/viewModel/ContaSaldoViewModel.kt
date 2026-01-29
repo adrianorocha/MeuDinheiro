@@ -14,13 +14,24 @@ import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
 
+data class DashboardFinanceiroState(
+    val receitaGlobal: Double = 0.0,
+    val despesaGlobal: Double = 0.0,
+    // Mapa: Chave = NomeDaConta -> Valor = Par(Receita, Despesa)
+    val dadosPorConta: Map<String, Pair<Double, Double>> = emptyMap()
+)
 class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() {
 
     val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
+
+    private val _dashboardState = MutableStateFlow(DashboardFinanceiroState())
+    val dashboardState = _dashboardState.asStateFlow()
 
     private var _saldo = mutableStateOf(0.0)
     val saldo: State<Double> get() = _saldo
@@ -32,6 +43,7 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
 
     init {
         bancos.value = repository.bancos
+        carregarResumoFinanceiro()
     }
 
     val contaSaldo: LiveData<List<ContaSaldoDomain>> = repository.obterContaSaldo().asLiveData(
@@ -40,6 +52,48 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
 
     private val _contaSelecionadaId = MutableLiveData<String?>(null)
     val contaSelecionadaId: LiveData<String?> = _contaSelecionadaId
+
+    fun carregarResumoFinanceiro() {
+        viewModelScope.launch(Dispatchers.IO) {
+            // Define o período: Mês atual
+            val (inicio, fim) = repository.getDatesCurrentMonth()
+
+            val listaResumo = repository.obterResumoFinanceiro(inicio, fim)
+
+            var recGlobal = 0.0
+            var despGlobal = 0.0
+            val mapaContas = mutableMapOf<String, Pair<Double, Double>>()
+
+            // Consolida os dados em memória (extremamente rápido)
+            listaResumo.forEach { dto ->
+                // Soma nos globais
+                if (dto.tipo == TipoDespesa.CREDITO) recGlobal += dto.valorTotal
+                else despGlobal += dto.valorTotal
+
+                // Soma por conta
+                val (recAtual, despAtual) = mapaContas.getOrDefault(dto.conta, 0.0 to 0.0)
+                if (dto.tipo == TipoDespesa.CREDITO) {
+                    mapaContas[dto.conta] = (recAtual + dto.valorTotal) to despAtual
+                } else {
+                    mapaContas[dto.conta] = recAtual to (despAtual + dto.valorTotal)
+                }
+            }
+
+            _dashboardState.value = DashboardFinanceiroState(
+                receitaGlobal = recGlobal,
+                despesaGlobal = despGlobal,
+                dadosPorConta = mapaContas
+            )
+        }
+    }
+
+    fun obterReceitaPorConta(conta: String): Double {
+        return _dashboardState.value.dadosPorConta[conta]?.first ?: 0.0
+    }
+
+    fun obterDespesaPorConta(conta: String): Double {
+        return _dashboardState.value.dadosPorConta[conta]?.second ?: 0.0
+    }
 
     /**
      * Adiciona uma despesa na conta informada, sem alterar a seleção atual.

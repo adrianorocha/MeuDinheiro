@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -90,7 +91,9 @@ fun CardSection(
     contasSelecionadaId: String?,
     onExcluir: (ContaSaldoDomain) -> Unit,
     onContaSelecionada: (String) -> Unit,
-    onAtualizar: (ContaSaldoDomain) -> Unit
+    onAtualizar: (ContaSaldoDomain) -> Unit,
+    getReceitaConta: (String) -> Double = { 0.0 },
+    getDespesaConta: (String) -> Double = { 0.0 }
 ) {
     val lazyListState = rememberLazyListState()
     val dialogContaId = remember { mutableStateOf<String?>(null) }
@@ -184,11 +187,18 @@ fun CardSection(
             items(contas, key = { it.conta }) { conta ->
                 val selected = conta.conta == contasSelecionadaId
 
+                val rec = getReceitaConta(conta.conta)
+                val desp = getDespesaConta(conta.conta)
+
                 ContaCard(
                     conta = conta,
                     width = cardWidth,
                     height = cardHeight,
                     selected = selected,
+                    receita = rec,
+                    despesa = desp,
+
+
                     onClick = {
                         // Clique: seleciona e centraliza para evitar divergência entre "clicado" e "central"
                         val idx = contas.indexOfFirst { it.conta == conta.conta }
@@ -231,6 +241,8 @@ private fun ContaCard(
     width: Dp,
     height: Dp,
     selected: Boolean,
+    receita: Double,
+    despesa: Double,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -343,6 +355,25 @@ private fun ContaCard(
                     .align(Alignment.BottomStart)
                     .padding(start = 14.dp, bottom = 14.dp, end = 14.dp)
             )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(14.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = "Receitas: ${formatarMoedaBR(receita)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF69F0AE), // Verde claro legível no escuro
+                    maxLines = 1
+                )
+                Text(
+                    text = "Despesas: ${formatarMoedaBR(despesa)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFFF8A80), // Vermelho claro legível no escuro
+                    maxLines = 1
+                )
+            }
 
             if (selected) {
                 Box(

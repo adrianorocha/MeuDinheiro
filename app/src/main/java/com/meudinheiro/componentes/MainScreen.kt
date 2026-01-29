@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,7 +49,6 @@ fun MainScreen(
     fun onItemSelected(index: Int) { selectedIndex = index }
 
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
-    val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
 
     val context = LocalContext.current
     val repository = remember { MainRepository(context) }
@@ -64,6 +64,8 @@ fun MainScreen(
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
     val contaSelecionadaId by contaVM.contaSelecionadaId.observeAsState(null)
 
+    val dashboardState by contaVM.dashboardState.collectAsState()
+
     if (nome.isBlank() || emCadastro) {
         CadastroUsuarioScreen(
             userPrefs = userPrefs,
@@ -71,9 +73,15 @@ fun MainScreen(
         )
         return
     }
+
+    //Gatilhos para forçar atualização do sino de notificações
+    var refreshTrigger by remember { mutableIntStateOf(0) }
     var notifCount by remember { mutableStateOf(0) }
 
-    LaunchedEffect(daysAhead, onlyCredit) {
+    LaunchedEffect(Unit) {
+        contaVM.carregarResumoFinanceiro()
+    }
+    LaunchedEffect(daysAhead, refreshTrigger) {
         notifCount = withContext(Dispatchers.IO) {
             repository.contarPendencias(daysAhead, onlyCredit = false)
         }
@@ -117,7 +125,9 @@ fun MainScreen(
                 showNotifications = true,
                 hasUnreadNotifications = (notifCount > 0),
                 notificationCount = notifCount,
-                onNotificationsClick = onOpenPendencias
+                onNotificationsClick = onOpenPendencias,
+                receitaTotal = dashboardState.receitaGlobal,
+                despesaTotal = dashboardState.despesaGlobal
             )
 
             if (contas.isNotEmpty()) {
@@ -126,7 +136,9 @@ fun MainScreen(
                     contasSelecionadaId = contaSelecionadaId?.orEmpty(),
                     onExcluir = { conta -> contaVM.removerContaSaldo(conta.id) },
                     onContaSelecionada = { novaConta -> contaVM.selecionarConta(novaConta) },
-                    onAtualizar = { conta -> contaVM.selecionarConta(conta.conta) }
+                    onAtualizar = { conta -> contaVM.selecionarConta(conta.conta) },
+                    getReceitaConta = { contaId -> contaVM.obterReceitaPorConta(contaId) },
+                    getDespesaConta = { contaId -> contaVM.obterDespesaPorConta(contaId) }
                 )
             } else {
                 Text(
@@ -191,8 +203,10 @@ fun MainScreen(
                     items(despesas, key = { it.id }) { item ->
                         DespesasItem(
                             item = item,
-                            onRemover = { id -> despVM.removerDespesaComRestituicao(id) },
-                            onTogglePago = { id, pago -> despVM.marcarComoPaga(id, pago) }
+                            onRemover = { id -> despVM.removerDespesaComRestituicao(id)
+                                refreshTrigger++ },
+                            onTogglePago = { id, pago -> despVM.marcarComoPaga(id, pago)
+                                refreshTrigger++ }
                         )
                     }
                 }

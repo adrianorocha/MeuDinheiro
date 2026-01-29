@@ -21,3 +21,9 @@ data class DespesaAviso(
     val vencimentoMillis: Long,
     val tipo: String
 )
+
+data class ResumoFinanceiroDto(
+    val conta: String,
+    val tipo: TipoDespesa,
+    val valorTotal: Double
+)

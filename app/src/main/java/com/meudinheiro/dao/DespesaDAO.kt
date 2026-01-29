@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
 import java.util.Date
@@ -94,4 +95,12 @@ AND data < :inicio
 ORDER BY data ASC
 """)
     suspend fun obterPendentesAtrasadasPorTipo(inicio: Date, tipo: TipoDespesa): List<Despesa>
+
+    @Query("""
+    SELECT conta, tipo, SUM(valor) as valorTotal
+    FROM despesas
+    WHERE data BETWEEN :inicio AND :fim
+    GROUP BY conta, tipo
+""")
+    suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): List<ResumoFinanceiroDto>
 }
