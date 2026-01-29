@@ -97,10 +97,13 @@ ORDER BY data ASC
     suspend fun obterPendentesAtrasadasPorTipo(inicio: Date, tipo: TipoDespesa): List<Despesa>
 
     @Query("""
-    SELECT conta, tipo, SUM(valor) as valorTotal
+    SELECT conta, tipo, pago, SUM(valor) as valorTotal
     FROM despesas
     WHERE data BETWEEN :inicio AND :fim
-    GROUP BY conta, tipo
+    GROUP BY conta, tipo, pago
 """)
     suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): List<ResumoFinanceiroDto>
+
+@Query("UPDATE Despesas SET pago = :status WHERE id = :id")
+suspend fun atualizarStatusPago(id: Long, status: Boolean)
 }

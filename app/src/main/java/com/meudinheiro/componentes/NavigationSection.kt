@@ -3,11 +3,13 @@ package com.meudinheiro.componentes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -32,6 +34,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.meudinheiro.R
 
+// Cores Premium Locais
+private val DockBg = Color(0xFF1E2B3E).copy(alpha = 0.95f) // Fundo escuro translúcido
+private val AccentGold = Color(0xFFFFD700) // Dourado para seleção
+
 @Composable
 fun NavigationSection(
     selectedIndex: Int,
@@ -40,22 +46,21 @@ fun NavigationSection(
 ) {
     val selected = selectedIndex == 0
 
-    val dockShape = RoundedCornerShape(26.dp)
+    val dockShape = RoundedCornerShape(32.dp)
 
-// “Glass” sem blur (compatível com qualquer Android), com gradiente e transparência
-    val dockBg = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-    val dockBorder = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+    // Dock flutuante escuro com borda sutil
+    val dockBorder = Color.White.copy(alpha = 0.15f)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 24.dp, vertical = 16.dp), // Aumentei o padding lateral para ficar mais "ilhado"
         shape = dockShape,
-        color = dockBg,
+        color = DockBg,
         tonalElevation = 0.dp,
-        shadowElevation = 18.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, dockBorder)
+        shadowElevation = 20.dp, // Sombra mais forte para destacar do fundo escuro
+        border = BorderStroke(1.dp, dockBorder)
     ) {
         Box(
             modifier = Modifier
@@ -63,13 +68,13 @@ fun NavigationSection(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.10f),
+                            Color.White.copy(alpha = 0.08f), // Reflexo superior sutil
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.06f)
+                            Color.Black.copy(alpha = 0.2f)   // Sombra inferior interna
                         )
                     )
                 )
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -78,15 +83,13 @@ fun NavigationSection(
             ) {
                 PremiumSingleDockItem(
                     selected = selected,
-                    label = "Conta",
+                    label = "Minha Conta", // Texto um pouco mais descritivo fica elegante
                     iconRes = R.drawable.bank,
                     onClick = { onItemSelected(0) }
                 )
             }
         }
     }
-
-
 }
 
 @Composable
@@ -96,39 +99,42 @@ private fun PremiumSingleDockItem(
     iconRes: Int,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(24.dp)
 
+    // Animação de Fundo: Dourado translúcido se selecionado, Transparente se não
     val bg by animateColorAsState(
         targetValue = if (selected)
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+            AccentGold.copy(alpha = 0.15f)
         else
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            Color.Transparent,
         label = "dockItemBg"
     )
 
+    // Animação de Borda: Dourado sutil se selecionado, Branco muito sutil se não
     val border by animateColorAsState(
         targetValue = if (selected)
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            AccentGold.copy(alpha = 0.3f)
         else
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+            Color.White.copy(alpha = 0.05f),
         label = "dockItemBorder"
     )
 
+    // Animação de Cor do Texto/Ícone: Dourado vs Branco acinzentado
     val contentColor by animateColorAsState(
         targetValue = if (selected)
-            MaterialTheme.colorScheme.primary
+            AccentGold
         else
-            MaterialTheme.colorScheme.onSurfaceVariant,
+            TextWhite.copy(alpha = 0.6f),
         label = "dockItemContent"
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.02f else 1f,
+        targetValue = if (selected) 1.05f else 1f,
         label = "dockItemScale"
     )
 
     val padH by animateDpAsState(
-        targetValue = if (selected) 18.dp else 16.dp,
+        targetValue = if (selected) 24.dp else 16.dp, // Mais espaçamento quando selecionado
         label = "dockItemPadH"
     )
 
@@ -139,12 +145,12 @@ private fun PremiumSingleDockItem(
         shape = shape,
         color = bg,
         tonalElevation = 0.dp,
-        shadowElevation = if (selected) 6.dp else 0.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, border)
+        shadowElevation = 0.dp, // Item interno flat
+        border = BorderStroke(1.dp, border)
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = padH, vertical = 10.dp)
+                .padding(horizontal = padH, vertical = 12.dp)
                 .graphicsLayer(
                     scaleX = scale,
                     scaleY = scale
@@ -152,25 +158,25 @@ private fun PremiumSingleDockItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            // Se seus ícones forem PNG coloridos e você NÃO quiser tint:
-            // troque o tint por Color.Unspecified.
+            // Se seus ícones forem coloridos, use tint = Color.Unspecified
+            // Se forem monocromáticos (recomendado para esse visual), use o tint dinâmico
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = label,
                 tint = contentColor,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
 
-            androidx.compose.foundation.layout.Spacer(Modifier.size(10.dp))
+            if (selected) {
+                Spacer(Modifier.size(10.dp))
 
-            Text(
-                text = label,
-                color = contentColor,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-            )
+                Text(
+                    text = label,
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
-
-
 }

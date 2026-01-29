@@ -31,7 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "financas-db"
+                    "meudinheiro-db"
                 )
                     .fallbackToDestructiveMigration()
                     .addMigrations(MIGRATION_1_2)

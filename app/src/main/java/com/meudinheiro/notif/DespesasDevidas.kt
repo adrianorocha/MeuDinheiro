@@ -38,7 +38,7 @@ class DespesasDevidas(
         }
 
         val daysAhead = prefs.notifDaysAheadFlow.first()
-        val onlyCredit = prefs.notifOnlyCreditFlow.first()
+
         val df = SimpleDateFormat("EEE, dd MMM yyyy", Locale("pt", "BR"))
 
         val (inicio, fim) = buildWindowDates(daysAhead)

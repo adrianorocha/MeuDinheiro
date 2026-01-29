@@ -53,10 +53,9 @@ class MainRepository(private val context: Context) {
         despesaDao.setPago(id, pago)
     }
 
-    suspend fun obterPendentesVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa> {
-        return despesaDao.obterPendentesVencendo(inicioMillis, fimMillis)
+    suspend fun atualizarStatusPago(id: Long, status: Boolean) {
+        despesaDao.atualizarStatusPago(id, status)
     }
-
     /**
      * Exclui a despesa e ajusta o saldo da conta devolvendo/removendo o valor.
      * Tudo feito em transação para não deixar dados inconsistentes.
@@ -213,15 +212,14 @@ class MainRepository(private val context: Context) {
     }
 
     // Função auxiliar para pegar o primeiro e último dia do Mês Atual (para o painel ser útil)
-// Se quiser "Tudo desde sempre", basta passar datas muito distantes.
     fun getDatesCurrentMonth(): Pair<Date, Date> {
-        val cal = java.util.Calendar.getInstance()
-        cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.DAY_OF_MONTH, 1)
         val start = cal.time
 
-        cal.add(java.util.Calendar.MONTH, 1)
-        cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
-        cal.add(java.util.Calendar.DATE, -1)
+        cal.add(Calendar.MONTH, 1)
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        cal.add(Calendar.DATE, -1)
         val end = cal.time
 
         return Pair(start, end)

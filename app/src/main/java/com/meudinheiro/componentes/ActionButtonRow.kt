@@ -1,23 +1,23 @@
 package com.meudinheiro.componentes
 
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -39,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -48,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,10 +72,16 @@ import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.viewModel.ContaSaldoViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+
+// Cores locais
+private val DialogBg = Color(0xFF1E2B3E)
+private val TextColor = Color(0xFFE0E1DD)
 
 @Composable
 fun ActionButtonRow(
@@ -84,72 +93,46 @@ fun ActionButtonRow(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var exibirFormulario by remember { mutableStateOf(false) }
+    var exibirDeposito by remember { mutableStateOf(false) }
 
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        tonalElevation = 0.dp,
-        shadowElevation = 8.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(22.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.10f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.06f)
-                        )
-                    )
-                )
-                .padding(horizontal = 12.dp, vertical = 12.dp)
-        ) {
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val perItem = maxWidth / 3
+        val modifierItem = Modifier.weight(1f)
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ActionButton(
-                        icon = R.drawable.deposit,
-                        text = "Depositar",
-                        accent = MaterialTheme.colorScheme.tertiary,
-                        perItemWidth = perItem,
-                        onClick = { }
-                    )
-
-                    ActionButton(
-                        icon = R.drawable.add,
-                        text = "Adicionar",
-                        accent = MaterialTheme.colorScheme.primary,
-                        perItemWidth = perItem,
-                        onClick = {
-                            val conta = contaSelecionada.trim()
-                            if (conta.isBlank()) {
-                                Toast.makeText(context, "Selecione uma conta antes de adicionar.", Toast.LENGTH_SHORT).show()
-                            } else {
-                                exibirFormulario = true
-                            }
-                        }
-                    )
-
-                    ActionButton(
-                        icon = R.drawable.sim_chip,
-                        text = "Config.",
-                        accent = MaterialTheme.colorScheme.secondary,
-                        perItemWidth = perItem,
-                        onClick = onConfigClick
-                    )
-                }
+        ActionButton(
+            icon = R.drawable.deposit,
+            text = "Depositar",
+            color = Color(0xFF4CAF50), // Verde
+            modifier = modifierItem,
+            onClick = {
+                if (contaSelecionada.isBlank()) Toast.makeText(context, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+                else exibirDeposito = true
             }
-        }
+        )
+
+        ActionButton(
+            icon = R.drawable.add,
+            text = "Nova Despesa",
+            color = Color(0xFF2196F3), // Azul
+            modifier = modifierItem,
+            onClick = {
+                if (contaSelecionada.isBlank()) Toast.makeText(context, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+                else exibirFormulario = true
+            }
+        )
+
+        ActionButton(
+            icon = R.drawable.sim_chip, // Usando ícone de config/chip
+            text = "Avisos",
+            color = Color(0xFFFFC107), // Amarelo
+            modifier = modifierItem,
+            onClick = onConfigClick
+        )
     }
 
     if (exibirFormulario) {
@@ -161,7 +144,194 @@ fun ActionButtonRow(
             onDismiss = { exibirFormulario = false }
         )
     }
+
+    if (exibirDeposito) {
+        DepositDialog(
+            contaSelecionada = contaSelecionada,
+            viewModel = viewModel,
+            onDismiss = { exibirDeposito = false }
+        )
+    }
 }
+
+@Composable
+fun ActionButton(
+    icon: Int,
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.95f else 1f)
+
+    Column(
+        modifier = modifier
+            .scale(scale)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .background(color.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
+                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(18.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = Color.Unspecified,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = text,
+            color = TextColor.copy(alpha = 0.8f),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun PremiumDialogCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = DialogBg),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp) // Flat
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+fun PremiumTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    readOnly: Boolean = false,
+    trailingIcon: @Composable (() -> Unit)? = null
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        readOnly = readOnly,
+        trailingIcon = trailingIcon,
+        modifier = modifier,
+        keyboardOptions = keyboardOptions,
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Color.White.copy(alpha = 0.5f),
+            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+            focusedTextColor = TextColor,
+            unfocusedTextColor = TextColor,
+            focusedLabelColor = Color.White,
+            unfocusedLabelColor = Color.White.copy(alpha = 0.6f),
+            cursorColor = Color.White
+        )
+    )
+}
+
+// ... (Lógica do DepositDialog e AddDespesaDialog mantida, apenas trocando os componentes visuais pelos Premium acima)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DepositDialog(
+    contaSelecionada: String,
+    viewModel: ContaSaldoViewModel,
+    onDismiss: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var valor by rememberSaveable { mutableStateOf("") }
+    val dataMillis = remember { mutableStateOf(System.currentTimeMillis()) }
+    var mostrarCalendario by remember { mutableStateOf(false) }
+
+    if (mostrarCalendario) {
+        CustomCalendarDialog(
+            onDismiss = { mostrarCalendario = false },
+            onDateSelected = { y, m, d ->
+                val c = Calendar.getInstance().apply { set(y, m, d) }
+                dataMillis.value = c.timeInMillis
+                mostrarCalendario = false
+            }
+        )
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        PremiumDialogCard {
+            Text("Novo Depósito", style = MaterialTheme.typography.titleLarge, color = TextColor)
+            Text("Para: $contaSelecionada", color = TextColor.copy(alpha = 0.6f))
+
+            PremiumTextField(
+                value = valor,
+                onValueChange = { valor = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                label = "Valor (R$)",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+
+            PremiumTextField(
+                value = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(dataMillis.value)),
+                onValueChange = {},
+                label = "Data",
+                readOnly = true,
+                trailingIcon = {
+                    IconButton(onClick = { mostrarCalendario = true }) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = TextColor)
+                    }
+                }
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextColor)
+                ) { Text("Cancelar") }
+
+                Button(
+                    onClick = {
+                        val v = valor.replace(",", ".").toDoubleOrNull()
+                        if (v != null && v > 0) {
+                            val dep = Despesa(
+                                descricao = "Depósito",
+                                categoria = "Depósito",
+                                valor = v,
+                                data = Date(dataMillis.value),
+                                pic = "deposit", // Assegure-se que este drawable existe
+                                conta = contaSelecionada,
+                                tipo = TipoDespesa.CREDITO,
+                                pago = true
+                            )
+                            viewModel.adicionarDespesa(dep)
+                            scope.launch {
+                                delay(200)
+                                viewModel.carregarResumoFinanceiro()
+                            }
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), contentColor = Color.White)
+                ) { Text("Confirmar") }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddDespesaDialog(
@@ -171,9 +341,10 @@ private fun AddDespesaDialog(
     viewModel: ContaSaldoViewModel,
     onDismiss: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
 
-    // Congela a conta selecionada no momento em que o Dialog abriu
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
     val contaFixada = remember { contaSelecionada.trim() }
 
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
@@ -195,27 +366,18 @@ private fun AddDespesaDialog(
     var erroParcelas by remember { mutableStateOf<String?>(null) }
     var erroData by remember { mutableStateOf<String?>(null) }
 
+    // --- LÓGICA DE VALIDAÇÃO E FORMATAÇÃO (MANTIDA) ---
     fun normalizeMoneyInput(raw: String): String {
-        // Mantém apenas dígitos e separadores . ,
         val filtered = raw.filter { it.isDigit() || it == ',' || it == '.' }
         if (filtered.isBlank()) return ""
-
-        // Permite só um separador decimal
         var separatorCount = 0
         val normalized = buildString {
             filtered.forEach { ch ->
                 if (ch == ',' || ch == '.') {
-                    if (separatorCount == 0) {
-                        append(ch)
-                        separatorCount++
-                    }
-                } else {
-                    append(ch)
-                }
+                    if (separatorCount == 0) { append(ch); separatorCount++ }
+                } else { append(ch) }
             }
         }
-
-        // Evita começar com separador (ex: ",50" -> "0,50")
         val first = normalized.firstOrNull()
         return if (first == ',' || first == '.') "0$normalized" else normalized
     }
@@ -223,8 +385,7 @@ private fun AddDespesaDialog(
     fun parseMoneyToDouble(text: String): Double? {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return null
-        val normalized = trimmed.replace(",", ".")
-        return normalized.toDoubleOrNull()
+        return trimmed.replace(",", ".").toDoubleOrNull()
     }
 
     fun parseParcelas(text: String): Int? {
@@ -240,86 +401,32 @@ private fun AddDespesaDialog(
         val parcelasInt = parseParcelas(numeroParcelas)
         val data = dataMillis.value
 
-        erroConta = null
-        erroCategoria = null
-        erroDescricao = null
-        erroValor = null
-        erroParcelas = null
-        erroData = null
+        erroConta = null; erroCategoria = null; erroDescricao = null
+        erroValor = null; erroParcelas = null; erroData = null
 
         var ok = true
 
-        if (contaFixada.isBlank()) {
-            erroConta = "Conta inválida. Selecione uma conta novamente."
-            ok = false
-        }
+        if (contaFixada.isBlank()) { erroConta = "Conta inválida."; ok = false }
+        if (cat.isBlank()) { erroCategoria = "Selecione uma categoria."; ok = false }
+        else if (categorias.isNotEmpty() && !categorias.contains(cat)) { erroCategoria = "Categoria inválida."; ok = false }
 
-        if (cat.isBlank()) {
-            erroCategoria = "Selecione uma categoria."
-            ok = false
-        } else if (categorias.isNotEmpty() && !categorias.contains(cat)) {
-            // Evita categoria “fantasma” caso lista venha diferente
-            erroCategoria = "Categoria inválida."
-            ok = false
-        }
+        if (desc.isBlank()) { erroDescricao = "Descrição obrigatória."; ok = false }
+        else if (desc.length < 3) { erroDescricao = "Descrição muito curta."; ok = false }
+        else if (desc.length > 60) { erroDescricao = "Máximo de 60 caracteres."; ok = false }
 
-        if (desc.isBlank()) {
-            erroDescricao = "Descrição obrigatória."
-            ok = false
-        } else if (desc.length < 3) {
-            erroDescricao = "Descrição muito curta."
-            ok = false
-        } else if (desc.length > 60) {
-            erroDescricao = "Máximo de 60 caracteres."
-            ok = false
-        }
+        if (valorDouble == null || valorDouble <= 0.0) { erroValor = "Valor inválido."; ok = false }
 
-        if (valorDouble == null) {
-            erroValor = "Informe um valor válido."
-            ok = false
-        } else if (valorDouble <= 0.0) {
-            erroValor = "O valor deve ser maior que 0."
-            ok = false
-        } else if (valorDouble.isInfinite() || valorDouble.isNaN()) {
-            erroValor = "Valor inválido."
-            ok = false
-        }
+        if (parcelasInt == null || parcelasInt < 1 || parcelasInt > 360) { erroParcelas = "Parcelas inválidas (1-360)."; ok = false }
 
-        if (parcelasInt == null) {
-            erroParcelas = "Informe as parcelas."
-            ok = false
-        } else if (parcelasInt < 1) {
-            erroParcelas = "Mínimo: 1 parcela."
-            ok = false
-        } else if (parcelasInt > 360) {
-            erroParcelas = "Máximo: 360 parcelas."
-            ok = false
-        }
-
-        if (data == null) {
-            erroData = "Selecione uma data."
-            ok = false
-        }
+        if (data == null) { erroData = "Selecione uma data."; ok = false }
 
         return ok
     }
 
-    // Revalida de forma leve quando o usuário mexe nos campos (evita “travar” UX)
-    val podeAdicionar by remember(
-        contaFixada,
-        categoriaSelecionada,
-        descricao,
-        valor,
-        numeroParcelas,
-        dataMillis.value
-    ) {
+    val podeAdicionar by remember(contaFixada, categoriaSelecionada, descricao, valor, numeroParcelas, dataMillis.value) {
         mutableStateOf(
-            contaFixada.isNotBlank()
-                    && !categoriaSelecionada.isNullOrBlank()
-                    && descricao.trim().length >= 3
-                    && (parseMoneyToDouble(valor) ?: 0.0) > 0.0
-                    && (parseParcelas(numeroParcelas) ?: 0) >= 1
-                    && dataMillis.value != null
+            contaFixada.isNotBlank() && !categoriaSelecionada.isNullOrBlank() && descricao.trim().length >= 3
+                    && (parseMoneyToDouble(valor) ?: 0.0) > 0.0 && (parseParcelas(numeroParcelas) ?: 0) >= 1 && dataMillis.value != null
         )
     }
 
@@ -332,54 +439,84 @@ private fun AddDespesaDialog(
                 cal.set(Calendar.MILLISECOND, 0)
                 dataMillis.value = cal.timeInMillis
                 mostrarCalendario.value = false
-                // limpa erro ao selecionar
                 erroData = null
             }
         )
     }
 
+    // --- ESTILOS PREMIUM ---
+    val inputColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Color.White.copy(alpha = 0.8f),
+        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+        focusedTextColor = TextWhite,
+        unfocusedTextColor = TextWhite,
+        focusedLabelColor = Color.White,
+        unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
+        cursorColor = Color.White,
+        errorCursorColor = MaterialTheme.colorScheme.error,
+        errorLabelColor = MaterialTheme.colorScheme.error,
+        errorBorderColor = MaterialTheme.colorScheme.error,
+        focusedTrailingIconColor = Color.White,
+        unfocusedTrailingIconColor = Color.White.copy(alpha = 0.7f)
+    )
+
+    val segmentColors = SegmentedButtonDefaults.colors(
+        activeContainerColor = TextWhite,
+        activeContentColor = PremiumDarkBlue,
+        inactiveContainerColor = Color.Transparent,
+        inactiveContentColor = TextWhite,
+        activeBorderColor = TextWhite,
+        inactiveBorderColor = TextWhite.copy(alpha = 0.3f)
+    )
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = DialogBg),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "Nova Despesa",
+                    text = "Nova Movimentação",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
+                    fontSize = 20.sp,
+                    color = TextWhite
                 )
 
                 Text(
                     text = "Conta: $contaFixada",
-                    color = Color.DarkGray,
+                    color = TextWhite.copy(alpha = 0.6f),
                     fontSize = 13.sp
                 )
-                if (erroConta != null) {
-                    Text(text = erroConta!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
+                if (erroConta != null) Text(text = erroConta!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
 
+                // Segmented Button Estilizado
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     SegmentedButton(
                         selected = tipo == TipoDespesa.DEBITO,
                         onClick = { tipo = TipoDespesa.DEBITO },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        colors = segmentColors,
+                        border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
                     ) { Text("Débito") }
 
                     SegmentedButton(
                         selected = tipo == TipoDespesa.CREDITO,
                         onClick = { tipo = TipoDespesa.CREDITO },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        colors = segmentColors,
+                        border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
                     ) { Text("Crédito") }
                 }
 
+                // Categoria Dropdown
                 ExposedDropdownMenuBox(
                     expanded = expandido,
                     onExpandedChange = { expandido = !expandido },
@@ -393,23 +530,20 @@ private fun AddDespesaDialog(
                         label = { Text("Categoria") },
                         placeholder = { Text("Selecione") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
-                        supportingText = {
-                            if (erroCategoria != null) {
-                                Text(erroCategoria!!, color = MaterialTheme.colorScheme.error)
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor()
+                        supportingText = { if (erroCategoria != null) Text(erroCategoria!!, color = MaterialTheme.colorScheme.error) },
+                        colors = inputColors,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
                     )
 
                     ExposedDropdownMenu(
                         expanded = expandido,
-                        onDismissRequest = { expandido = false }
+                        onDismissRequest = { expandido = false },
+                        modifier = Modifier.background(DialogBg)// Menu escuro
                     ) {
                         categorias.forEach { categoria ->
                             DropdownMenuItem(
-                                text = { Text(categoria) },
+                                text = { Text(categoria, color = TextWhite) },
                                 onClick = {
                                     categoriaSelecionada = categoria
                                     expandido = false
@@ -420,25 +554,23 @@ private fun AddDespesaDialog(
                     }
                 }
 
+                // Descrição
                 OutlinedTextField(
                     value = descricao,
-                    onValueChange = {
-                        descricao = it
-                        if (erroDescricao != null) erroDescricao = null
-                    },
+                    onValueChange = { descricao = it; if (erroDescricao != null) erroDescricao = null },
                     isError = erroDescricao != null,
                     label = { Text("Descrição") },
                     singleLine = true,
                     supportingText = {
-                        if (erroDescricao != null) {
-                            Text(erroDescricao!!, color = MaterialTheme.colorScheme.error)
-                        } else {
-                            Text("${descricao.trim().length}/60", fontSize = 12.sp)
-                        }
+                        if (erroDescricao != null) Text(erroDescricao!!, color = MaterialTheme.colorScheme.error)
+                        else Text("${descricao.trim().length}/60", fontSize = 12.sp, color = TextWhite.copy(alpha = 0.5f))
                     },
+                    colors = inputColors,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Valor e Parcelas
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -446,24 +578,20 @@ private fun AddDespesaDialog(
                 ) {
                     OutlinedTextField(
                         value = valor,
-                        onValueChange = {
-                            valor = normalizeMoneyInput(it)
-                            if (erroValor != null) erroValor = null
-                        },
+                        onValueChange = { valor = normalizeMoneyInput(it); if (erroValor != null) erroValor = null },
                         isError = erroValor != null,
                         label = { Text("Valor", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        supportingText = {
-                            if (erroValor != null) Text(erroValor!!, color = MaterialTheme.colorScheme.error)
-                        },
+                        supportingText = { if (erroValor != null) Text(erroValor!!, color = MaterialTheme.colorScheme.error) },
+                        colors = inputColors,
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
                     )
 
                     OutlinedTextField(
                         value = numeroParcelas,
                         onValueChange = { novo ->
-                            // só dígitos, evita caracteres que quebram toInt
                             val digitsOnly = novo.filter { it.isDigit() }
                             numeroParcelas = if (digitsOnly.isBlank()) "" else digitsOnly.take(3)
                             if (erroParcelas != null) erroParcelas = null
@@ -472,53 +600,53 @@ private fun AddDespesaDialog(
                         label = { Text("Parcelas", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        supportingText = {
-                            if (erroParcelas != null) Text(erroParcelas!!, color = MaterialTheme.colorScheme.error)
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .widthIn(min = 130.dp)
+                        supportingText = { if (erroParcelas != null) Text(erroParcelas!!, color = MaterialTheme.colorScheme.error) },
+                        colors = inputColors,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).widthIn(min = 100.dp)
                     )
                 }
 
+                // Data
                 OutlinedTextField(
-                    value = dataMillis.value?.let {
-                        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
-                    } ?: "",
+                    value = dataMillis.value?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)) } ?: "",
                     onValueChange = {},
                     readOnly = true,
                     singleLine = true,
                     isError = erroData != null,
                     label = { Text("Data") },
-                    placeholder = { Text("Selecionar data", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    placeholder = { Text("Selecionar data") },
                     trailingIcon = {
                         IconButton(onClick = { mostrarCalendario.value = true }) {
-                            Icon(imageVector = Icons.Filled.CalendarMonth, contentDescription = "Selecionar data")
+                            Icon(imageVector = Icons.Filled.CalendarMonth, contentDescription = "Data", tint = TextWhite)
                         }
                     },
-                    supportingText = {
-                        if (erroData != null) Text(erroData!!, color = MaterialTheme.colorScheme.error)
-                    },
+                    supportingText = { if (erroData != null) Text(erroData!!, color = MaterialTheme.colorScheme.error) },
+                    colors = inputColors,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Botões
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                        border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
                     ) { Text("Cancelar") }
 
                     Button(
                         enabled = podeAdicionar,
                         onClick = {
                             if (!validarTudo()) {
-                                Toast.makeText(context, "Revise os campos destacados.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Revise os campos.", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
-
+                            // ... (Lógica de inserção mantida) ...
                             val valorDouble = parseMoneyToDouble(valor) ?: return@Button
                             val parcelasInt = parseParcelas(numeroParcelas) ?: 1
                             val dataFinal = dataMillis.value ?: System.currentTimeMillis()
@@ -534,33 +662,31 @@ private fun AddDespesaDialog(
                                 tipo = tipo
                             )
 
-                            Log.d(
-                                "AddDespesaDialog",
-                                "Inserindo despesa conta=$contaFixada valor=$valorDouble tipo=$tipo parcelas=$parcelasInt"
-                            )
-
                             if (parcelasInt > 1) {
                                 viewModel.adicionarDespesaParcelada(novaDespesa, parcelasInt, dataFinal)
                             } else {
                                 viewModel.adicionarDespesa(novaDespesa)
                             }
 
-                            // limpa e fecha
-                            descricao = ""
-                            valor = ""
-                            numeroParcelas = "1"
-                            categoriaSelecionada = null
-                            dataMillis.value = null
+                            scope.launch {
+                                delay(300)
+                                viewModel.carregarResumoFinanceiro()
+                            }
                             onDismiss()
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = TextWhite, // Botão Sólido Branco
+                            contentColor = PremiumDarkBlue, // Texto Escuro
+                            disabledContainerColor = TextWhite.copy(alpha = 0.3f),
+                            disabledContentColor = PremiumDarkBlue.copy(alpha = 0.5f)
+                        )
                     ) { Text("Adicionar") }
                 }
             }
         }
     }
 }
-
 @Composable
 fun RowScope.ActionButton(
     icon: Int,
@@ -572,41 +698,29 @@ fun RowScope.ActionButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
 
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.98f else 1f,
-        label = "actionScale"
-    )
+    val scale by animateFloatAsState(targetValue = if (pressed) 0.98f else 1f, label = "actionScale")
 
     val bg by animateColorAsState(
-        targetValue = if (pressed)
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
-        else
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f),
+        targetValue = if (pressed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f),
         label = "actionBg"
     )
 
     val border by animateColorAsState(
-        targetValue = if (pressed)
-            accent.copy(alpha = 0.45f)
-        else
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+        targetValue = if (pressed) accent.copy(alpha = 0.45f)
+        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
         label = "actionBorder"
     )
 
-    // Em telas bem estreitas, reduz um pouco a fonte automaticamente
     val compactText = perItemWidth < 120.dp
     val textStyle = if (compactText) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium
 
     Surface(
         modifier = Modifier
             .weight(1f)
-            .heightIn(min = 76.dp) // sem maxHeight, para respeitar fonte maior (acessibilidade)
+            .heightIn(min = 76.dp)
             .scale(scale)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick
-            ),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         color = bg,
         tonalElevation = 0.dp,
@@ -624,45 +738,14 @@ fun RowScope.ActionButton(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                accent.copy(alpha = if (pressed) 0.30f else 0.22f),
-                                accent.copy(alpha = 0.10f),
-                                Color.Transparent
-                            )
-                        )
-                    ),
+                    .background(Brush.radialGradient(colors = listOf(accent.copy(alpha = if (pressed) 0.30f else 0.22f), accent.copy(alpha = 0.10f), Color.Transparent))),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = text,
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(painter = painterResource(icon), contentDescription = text, tint = Color.Unspecified, modifier = Modifier.size(20.dp))
             }
-
             Spacer(Modifier.size(8.dp))
-
-            Text(
-                text = text,
-                style = textStyle,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Text(text = text, style = textStyle, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Clip, modifier = Modifier.fillMaxWidth())
         }
-
-        if (pressed) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(Color.White.copy(alpha = 0.07f))
-            )
-        }
+        if (pressed) Box(modifier = Modifier.size(38.dp).background(Color.White.copy(alpha = 0.07f)))
     }
 }

@@ -2,209 +2,145 @@ package com.meudinheiro.componentes
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.room.util.copy
 import com.meudinheiro.R
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
 
+// Cores
+private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.8f)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DespesasItem(
     item: DespesasDomain,
     onRemover: (Int) -> Unit,
-    onTogglePago: ((Int, Boolean) -> Unit)? = null,
+    onTogglePago: ((DespesasDomain) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
     var showDialog by remember { mutableStateOf(false) }
-
     val dataFormatada = remember(item.data) { DateUtils.formatarData(item.data) }
-
     val context = LocalContext.current
+
     val resId = remember(item.pic) {
         val id = context.resources.getIdentifier(item.pic, "drawable", context.packageName)
-        if (id != 0) id else R.drawable.user // fallback
+        if (id != 0) id else R.drawable.user
     }
 
     if (showDialog) {
+        // Dialog de remoção
         AlertDialog(
             onDismissRequest = { showDialog = false },
+            containerColor = Color(0xFF1E2B3E),
+            titleContentColor = TextWhite,
+            textContentColor = TextWhite.copy(0.8f),
             title = { Text("Remover despesa") },
-            text = {
-                Text(
-                    "Deseja remover esta despesa? " +
-                            "O valor será restituído ao saldo da conta."
-                )
-            },
+            text = { Text("Deseja remover esta despesa? O valor será restituído.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        onRemover(item.id)
-                        showDialog = false
-                    }
-                ) { Text("Remover") }
+                Button(onClick = { onRemover(item.id); showDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))) { Text("Remover") }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDialog = false }, colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)) { Text("Cancelar") }
             }
         )
     }
 
-    val cardColor =
-        if (item.pago)
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
-        else
-            MaterialTheme.colorScheme.surface
-
-    val valorColor =
-        if (item.pago)
-            MaterialTheme.colorScheme.onSurfaceVariant
-        else
-            MaterialTheme.colorScheme.onSurface
-
-    ElevatedCard(
+    // Visual Card
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .combinedClickable(
-                onClick = { onClick?.invoke() },
-                onLongClick = { showDialog = true }
-            ),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = cardColor
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+            .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = { showDialog = true }),
+        shape = RoundedCornerShape(18.dp),
+        color = ItemBg,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+        shadowElevation = 4.dp
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant
+            // Icone
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(Color.White.copy(alpha = 0.05f), CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     painter = painterResource(id = resId),
                     contentDescription = null,
-                    tint = Color.Unspecified,
-                    modifier = Modifier
-                        .padding(10.dp)
-                        .fillMaxSize()
+                    tint = Color.Unspecified, // Usa cor original do drawable
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(16.dp))
 
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 10.dp)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.descricao,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = TextWhite,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(2.dp))
                 Text(
                     text = dataFormatada,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = TextWhite.copy(alpha = 0.6f)
                 )
             }
 
-                Column(
-                    horizontalAlignment = Alignment.End
-                ) {
-                    Text(
-                        text = formatarMoedaBR(item.valor),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = valorColor
-                    )
-                    if(item.tipo == TipoDespesa.DEBITO){
+            Column(horizontalAlignment = Alignment.End) {
+                // Valor
+                val corValor = if (item.tipo == TipoDespesa.CREDITO) Color(0xFF69F0AE) else TextWhite
+                Text(
+                    text = formatarMoedaBR(item.valor),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = corValor
+                )
 
-                    Spacer(Modifier.height(4.dp))
+                if (item.tipo == TipoDespesa.DEBITO && onTogglePago != null) {
+                    Spacer(Modifier.height(8.dp))
 
-                    // Chip de status / ação "Marcar como pago"
-                    val chipBg: Color
-                    val chipBorder: Color
-                    val chipTextColor: Color
-                    val chipText: String
-                    val clickable = !item.pago && onTogglePago != null
-
-                    if (item.pago) {
-                        chipBg = Color(0xFF00C853).copy(alpha = 0.12f)
-                        chipBorder = Color(0xFF00C853)
-                        chipTextColor = Color(0xFF00C853)
-                        chipText = "Pago"
+                    val (bg, txtColor, txt) = if (item.pago) {
+                        Triple(Color(0xFF00C853).copy(alpha = 0.2f), Color(0xFF69F0AE), "Pago")
                     } else {
-                        chipBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        chipBorder = MaterialTheme.colorScheme.primary
-                        chipTextColor = MaterialTheme.colorScheme.primary
-                        chipText = "Marcar como pago"
+                        Triple(Color(0xFFFF3D00).copy(alpha = 0.15f), Color(0xFFFF9E80), "Pagar")
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = chipBg,
-                        border = BorderStroke(1.dp, chipBorder),
-                        modifier = if (clickable) {
-                            Modifier.clickable {
-                                onTogglePago?.invoke(item.id, !item.pago)
-//                                onTogglePago?.invoke(item.id, true)
-                            }
-                        } else {
-                            Modifier
-                        }
+                        color = bg,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.clickable { onTogglePago(item) }
                     ) {
                         Text(
-                            text = chipText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = chipTextColor,
-                            modifier = Modifier
-                                .padding(horizontal = 10.dp, vertical = 4.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = txt,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = txtColor,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }

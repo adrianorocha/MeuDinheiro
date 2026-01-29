@@ -25,11 +25,6 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         contaSelecionadaFlow.value = contaId.trim()
     }
 
-    fun marcarComoPaga(id: Int, pago: Boolean = true) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.marcarDespesaComoPaga(id, pago)
-        }
-    }
     val despesasLiveData: LiveData<List<DespesasDomain>> =
         contaSelecionadaFlow
             .filter { it.isNotBlank() }
@@ -38,20 +33,6 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
                 repository.obterDespesasPorContaFlow(contaId)
             }
             .asLiveData(viewModelScope.coroutineContext)
-
-    fun adicionarDespesa(despesa: Despesa) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.inserirDespesa(despesa)
-            // NÃO chama carregar; o Flow atualiza sozinho
-        }
-    }
-
-    fun removerDespesa(id: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.excluirDespesa(id)
-            // Flow atualiza sozinho
-        }
-    }
 
     fun removerDespesaComRestituicao(id: Int) {
         viewModelScope.launch(Dispatchers.IO) {

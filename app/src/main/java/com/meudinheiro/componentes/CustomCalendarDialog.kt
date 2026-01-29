@@ -5,11 +5,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -17,6 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Calendar
 import java.util.Locale
+
+// Cores Premium Locais
+private val CardBg = Color(0xFF1E2B3E)
 
 @Composable
 fun CustomCalendarDialog(
@@ -56,38 +60,43 @@ fun CustomCalendarDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = CardBg, // Fundo escuro
+        titleContentColor = TextWhite,
+        textContentColor = TextWhite,
         confirmButton = {
             TextButton(
                 onClick = {
                     selectedDay?.let { day ->
-                        // Configura o Calendar com a data selecionada
                         val selectedCalendar = Calendar.getInstance()
                         selectedCalendar.set(displayedYear, displayedMonth, day, 0, 0, 0)
                         selectedCalendar.set(Calendar.MILLISECOND, 0)
 
-                        // Passa os valores da data selecionada
                         onDateSelected(
                             selectedCalendar.get(Calendar.YEAR),
                             selectedCalendar.get(Calendar.MONTH),
                             selectedCalendar.get(Calendar.DAY_OF_MONTH)
                         )
                     }
-                }
+                },
+                colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)
             ) {
-                Text("OK")
+                Text("OK", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = TextWhite.copy(alpha = 0.7f))
+            ) {
                 Text("Cancelar")
             }
         },
         title = {
             Text(
-                text = "Seleciona a Data",
+                text = "Selecionar Data",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF6200EE)
+                color = TextWhite
             )
         },
         text = {
@@ -101,7 +110,7 @@ fun CustomCalendarDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = {
+                    IconButton(onClick = {
                         if (displayedMonth == 0) {
                             displayedMonth = 11
                             displayedYear -= 1
@@ -109,14 +118,17 @@ fun CustomCalendarDialog(
                             displayedMonth -= 1
                         }
                     }) {
-                        Text("<")
+                        Text("<", color = TextWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
+
                     Text(
                         text = "${calendar.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())?.replaceFirstChar { it.uppercase() }} $displayedYear",
                         fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = TextWhite
                     )
-                    TextButton(onClick = {
+
+                    IconButton(onClick = {
                         if (displayedMonth == 11) {
                             displayedMonth = 0
                             displayedYear += 1
@@ -124,17 +136,24 @@ fun CustomCalendarDialog(
                             displayedMonth += 1
                         }
                     }) {
-                        Text(">")
+                        Text(">", color = TextWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // Dias da semana
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     listOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb").forEach {
-                        Text(it, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                        Text(
+                            text = it,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            color = TextWhite.copy(alpha = 0.6f) // Dias da semana mais apagados
+                        )
                     }
                 }
 
@@ -144,29 +163,31 @@ fun CustomCalendarDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(300.dp)
-                        .padding(top = 8.dp)
                 ) {
                     items(days.size) { index ->
                         val day = days[index]
+                        val isSelected = (day == selectedDay)
+
+                        // Cores do item
+                        val bgColor = if (isSelected) Color.White else Color.Transparent
+                        val textColor = if (isSelected) PremiumDarkBlue else TextWhite
+
                         Box(
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .padding(2.dp)
-                                .background(
-                                    if (day == selectedDay) Color(0xFF6200EE).copy(alpha = 0.5f) else Color.Transparent,
-                                    shape = RoundedCornerShape(4.dp)
-                                )
-                                .clickable {
-                                    if (day != null) {
-                                        selectedDay = day // Atualiza o dia selecionado
-                                    }
+                                .padding(4.dp)
+                                .clip(CircleShape) // Forma circular fica mais moderna
+                                .background(bgColor)
+                                .clickable(enabled = day != null) {
+                                    if (day != null) selectedDay = day
                                 },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = day?.toString() ?: "",
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = textColor
                             )
                         }
                     }

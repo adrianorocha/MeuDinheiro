@@ -11,6 +11,7 @@ import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
@@ -106,12 +107,14 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
             // 2) Calcula novo saldo da conta informada
             val saldoAtual = repository.obterSaldoPorConta(despesa.conta)
             val novoSaldo = when (despesa.tipo) {
-                TipoDespesa.DEBITO -> saldoAtual - despesa.valor
+                TipoDespesa.DEBITO -> saldoAtual - 0
+//                TipoDespesa.DEBITO -> saldoAtual - despesa.valor
                 TipoDespesa.CREDITO -> saldoAtual + despesa.valor
             }
 
             // 3) Atualiza saldo somente dessa conta
             repository.atualizarSaldo(despesa.conta, novoSaldo)
+            carregarResumoFinanceiro()
         }
     }
 
@@ -140,15 +143,43 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
                 repository.inserirDespesa(despesaParcelada)
 
                 saldoTemp = when (despesa.tipo) {
-                    TipoDespesa.DEBITO -> saldoTemp - valorParcela
+                    TipoDespesa.DEBITO -> saldoTemp - 0
+//                    TipoDespesa.DEBITO -> saldoTemp - valorParcela
                     TipoDespesa.CREDITO -> saldoTemp + valorParcela
                 }
             }
 
             repository.atualizarSaldo(despesa.conta, saldoTemp)
+            carregarResumoFinanceiro()
         }
     }
 
+    fun alternarStatusDespesa(item: DespesasDomain) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val novoStatus = !item.pago // Inverte o status atual
+
+            // 1. Atualiza o status usando o ID que vem do Domain
+            repository.atualizarStatusPago(item.id.toLong(), novoStatus)
+
+            // 2. Busca o saldo atual da conta
+            val saldoAtual = repository.obterSaldoPorConta(item.conta)
+
+            // 3. Lógica de SOMA ou SUBTRAÇÃO
+            val novoSaldo = if (novoStatus) {
+                // Se virou "Pago", tira do saldo
+                saldoAtual - item.valor
+            } else {
+                // Se desmarcou (estorno), devolve ao saldo
+                saldoAtual + item.valor
+            }
+
+            // 4. Atualiza o saldo no banco
+            repository.atualizarSaldo(item.conta, novoSaldo)
+
+            // 5. Atualiza a UI
+            carregarResumoFinanceiro()
+        }
+    }
     /**
      * Define a conta selecionada (chamada pelo CardSection ao clicar em um cartão).
      */
@@ -168,9 +199,4 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
         }
     }
 
-    fun atualizarSaldo(conta: String, novoSaldo: Double) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.atualizarSaldo(conta, novoSaldo)
-        }
-    }
 }

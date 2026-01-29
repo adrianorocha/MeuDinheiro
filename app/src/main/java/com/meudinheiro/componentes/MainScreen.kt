@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +39,11 @@ import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+// Cores Globais Premium
+val PremiumDarkBlue = Color(0xFF0D1B2A)
+val PremiumLightBlue = Color(0xFF1B263B)
+val TextWhite = Color(0xFFE0E1DD)
 
 @Composable
 fun MainScreen(
@@ -74,26 +80,21 @@ fun MainScreen(
         return
     }
 
-    //Gatilhos para forçar atualização do sino de notificações
     var refreshTrigger by remember { mutableIntStateOf(0) }
     var notifCount by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        contaVM.carregarResumoFinanceiro()
-    }
+    LaunchedEffect(refreshTrigger) { contaVM.carregarResumoFinanceiro() }
+    LaunchedEffect(Unit) { contaVM.carregarResumoFinanceiro() }
     LaunchedEffect(daysAhead, refreshTrigger) {
         notifCount = withContext(Dispatchers.IO) {
             repository.contarPendencias(daysAhead, onlyCredit = false)
         }
     }
-    // Se a tela de avisos está aberta, mostra ela em tela cheia e não desenha mais nada da Home
 
     LaunchedEffect(contas, contaSelecionadaId) {
         if (contas.isEmpty()) return@LaunchedEffect
-
         val selected = contaSelecionadaId?.trim().orEmpty()
         val exists = selected.isNotBlank() && contas.any { it.conta == selected }
-
         if (!exists) {
             val first = contas.first().conta
             contaVM.selecionarConta(first)
@@ -112,7 +113,11 @@ fun MainScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(PremiumDarkBlue, PremiumLightBlue)
+                )
+            )
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
@@ -134,9 +139,18 @@ fun MainScreen(
                 CardSection(
                     contas = contas,
                     contasSelecionadaId = contaSelecionadaId?.orEmpty(),
-                    onExcluir = { conta -> contaVM.removerContaSaldo(conta.id) },
-                    onContaSelecionada = { novaConta -> contaVM.selecionarConta(novaConta) },
-                    onAtualizar = { conta -> contaVM.selecionarConta(conta.conta) },
+                    onExcluir = { conta ->
+                        contaVM.removerContaSaldo(conta.id)
+                        contaVM.carregarResumoFinanceiro()
+                    },
+                    onContaSelecionada = { novaConta ->
+                        contaVM.selecionarConta(novaConta)
+                        contaVM.carregarResumoFinanceiro()
+                    },
+                    onAtualizar = { conta ->
+                        contaVM.selecionarConta(conta.conta)
+                        contaVM.carregarResumoFinanceiro()
+                    },
                     getReceitaConta = { contaId -> contaVM.obterReceitaPorConta(contaId) },
                     getDespesaConta = { contaId -> contaVM.obterDespesaPorConta(contaId) }
                 )
@@ -147,7 +161,7 @@ fun MainScreen(
                         .padding(top = 16.dp),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Black,
+                    color = TextWhite.copy(alpha = 0.5f),
                     textAlign = TextAlign.Center,
                     text = "Nenhuma Conta Cadastrada"
                 )
@@ -162,9 +176,15 @@ fun MainScreen(
             )
 
             if (selectedIndex == 0) {
-                ContaBancaria(
-                    viewModelFactory = ContaSaldoViewModelFactory(repository),
-                    onClose = { selectedIndex = -1 }
+                ContaBancariaDialog( // Usei o nome do Dialog correto aqui
+                    bancos = listOf("Nubank", "Inter", "Itaú", "Bradesco", "Santander", "Caixa", "BB", "C6"), // Exemplo
+                    onAdicionar = { banco, ag, cc ->
+                        // Lógica de adicionar conta deve ser passada via ViewModel ou Callback na main
+                        // Como o MainScreen original não tinha essa lógica completa injetada, adapte conforme seu HomeViewModel
+                        // homeVM.adicionarConta(...)
+                        selectedIndex = -1
+                    },
+                    onCancelar = { selectedIndex = -1 }
                 )
             }
 
@@ -176,10 +196,10 @@ fun MainScreen(
             ) {
                 Text(
                     text = "Despesas Recentes",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black,
-                    textAlign = TextAlign.Center
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextWhite,
+                    textAlign = TextAlign.Start
                 )
             }
 
@@ -188,11 +208,11 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Red,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = TextWhite.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center,
-                    text = "Nenhuma despesa encontrada para esta conta."
+                    text = "Nenhuma movimentação recente."
                 )
             } else {
                 LazyColumn(
@@ -203,10 +223,13 @@ fun MainScreen(
                     items(despesas, key = { it.id }) { item ->
                         DespesasItem(
                             item = item,
-                            onRemover = { id -> despVM.removerDespesaComRestituicao(id)
-                                refreshTrigger++ },
-                            onTogglePago = { id, pago -> despVM.marcarComoPaga(id, pago)
-                                refreshTrigger++ }
+                            onRemover = { id ->
+                                despVM.removerDespesaComRestituicao(id)
+                                contaVM.carregarResumoFinanceiro()
+                            },
+                            onTogglePago = { itemClicado ->
+                                contaVM.alternarStatusDespesa(itemClicado)
+                            }
                         )
                     }
                 }

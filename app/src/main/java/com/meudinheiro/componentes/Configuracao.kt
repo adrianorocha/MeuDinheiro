@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,26 +21,35 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
 import kotlinx.coroutines.launch
+
+// Cores Premium
+private val CardBg = Color(0xFF1E2B3E)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,10 +84,22 @@ fun Configuracao(
     }
 
     Scaffold(
+        containerColor = Color.Transparent, // Transparente para ver o gradiente
+        modifier = Modifier
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(PremiumDarkBlue, PremiumLightBlue)
+                )
+            ),
         topBar = {
             TopAppBar(
-                title = { Text("Avisos e parâmetros") },
-                windowInsets = WindowInsets(0, 25, 0, 0) // evita “inset duplo” em alguns layouts
+                title = { Text("Avisos e parâmetros", color = TextWhite) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = TextWhite,
+                    actionIconContentColor = TextWhite
+                ),
+                windowInsets = WindowInsets(0, 25, 0, 0)
             )
         },
         bottomBar = {
@@ -90,7 +113,9 @@ fun Configuracao(
             ) {
                 OutlinedButton(
                     onClick = onBack,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                    border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.5f))
                 ) { Text("Voltar") }
 
                 Button(
@@ -101,24 +126,27 @@ fun Configuracao(
                         }
                         AgendadorNotifDespesas.runNow(context)
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = TextWhite,
+                        contentColor = PremiumDarkBlue
+                    )
                 ) { Text("Testar") }
             }
         },
-        // deixa o Scaffold não colocar padding extra automaticamente
         contentWindowInsets = WindowInsets(0, 40, 0, 0)
     ) { padding ->
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)              // respeita topBar/bottomBar
-                .padding(horizontal = 16.dp)   // sem padding vertical extra
+                .padding(padding)
+                .padding(horizontal = 16.dp)
                 .padding(top = 10.dp, bottom = 6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                PremiumCard {
                     Column(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -128,11 +156,15 @@ fun Configuracao(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Avisar despesas a vencer", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Avisar despesas a vencer",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextWhite
+                                )
                                 Text(
                                     "Envia um aviso diário no horário configurado.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = TextWhite.copy(alpha = 0.7f)
                                 )
                             }
                             Switch(
@@ -148,14 +180,22 @@ fun Configuracao(
                                     } else {
                                         AgendadorNotifDespesas.cancel(context)
                                     }
-                                }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = PremiumDarkBlue,
+                                    checkedTrackColor = TextWhite,
+                                    uncheckedThumbColor = TextWhite,
+                                    uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
+                                )
                             )
                         }
 
                         if (enabled && !hasNotificationPermission()) {
                             OutlinedButton(
                                 onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                                border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
                             ) { Text("Permitir notificações") }
                         }
                     }
@@ -163,12 +203,16 @@ fun Configuracao(
             }
 
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                PremiumCard {
                     Column(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Parâmetros", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Parâmetros",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextWhite
+                        )
 
                         StepperRow(
                             title = "Antecedência (dias)",
@@ -200,16 +244,26 @@ fun Configuracao(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Somente Crédito", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "Somente Crédito",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = TextWhite
+                                )
                                 Text(
                                     "Avisa só despesas do tipo Crédito.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = TextWhite.copy(alpha = 0.7f)
                                 )
                             }
                             Switch(
                                 checked = onlyCredit,
-                                onCheckedChange = { v -> scope.launch { userPrefs.saveNotifOnlyCredit(v) } }
+                                onCheckedChange = { v -> scope.launch { userPrefs.saveNotifOnlyCredit(v) } },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = PremiumDarkBlue,
+                                    checkedTrackColor = TextWhite,
+                                    uncheckedThumbColor = TextWhite,
+                                    uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
+                                )
                             )
                         }
                     }
@@ -220,15 +274,25 @@ fun Configuracao(
                 Text(
                     "Dica: “a vencer” = data entre hoje e a janela configurada.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = TextWhite.copy(alpha = 0.5f),
                     modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
                 )
             }
 
-            // Espaço mínimo (o bottomBar já garante área segura)
             item { Spacer(Modifier.height(2.dp)) }
         }
     }
+}
+
+// Wrapper para Cards Premium
+@Composable
+private fun PremiumCard(content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+        content = { content() }
+    )
 }
 
 @Composable
@@ -244,28 +308,42 @@ private fun StepperRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = TextWhite)
             Text(
                 "$value",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = TextWhite.copy(alpha = 0.7f)
             )
         }
 
         OutlinedButton(
-            onClick = { val newVal = (value - 1).coerceAtLeast(min)
-                onChange(newVal) },
+            onClick = {
+                val newVal = (value - 1).coerceAtLeast(min)
+                onChange(newVal)
+            },
             enabled = value > min,
-            modifier = Modifier.height(36.dp)
+            modifier = Modifier.height(36.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = TextWhite,
+                disabledContentColor = TextWhite.copy(alpha = 0.3f)
+            ),
+            border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
         ) { Text("-") }
 
         Spacer(Modifier.width(8.dp))
 
         OutlinedButton(
-            onClick = { val newVal = (value + 1).coerceAtLeast(max)
-                onChange(newVal) },
+            onClick = {
+                val newVal = (value + 1).coerceAtLeast(max)
+                onChange(newVal)
+            },
             enabled = value < max,
-            modifier = Modifier.height(36.dp)
+            modifier = Modifier.height(36.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = TextWhite,
+                disabledContentColor = TextWhite.copy(alpha = 0.3f)
+            ),
+            border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
         ) { Text("+") }
     }
 }
@@ -283,24 +361,28 @@ private fun TimeRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Horário", style = MaterialTheme.typography.bodyLarge)
+                Text("Horário", style = MaterialTheme.typography.bodyLarge, color = TextWhite)
                 Text(
                     String.format("%02d:%02d", hour, minute),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = TextWhite.copy(alpha = 0.7f)
                 )
             }
 
             OutlinedButton(
                 onClick = { onHourChange((hour + 23) % 24) },
-                modifier = Modifier.height(36.dp)
+                modifier = Modifier.height(36.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
             ) { Text("Hora -") }
 
             Spacer(Modifier.width(8.dp))
 
             OutlinedButton(
                 onClick = { onHourChange((hour + 1) % 24) },
-                modifier = Modifier.height(36.dp)
+                modifier = Modifier.height(36.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
             ) { Text("Hora +") }
         }
 
@@ -313,14 +395,18 @@ private fun TimeRow(
                 onClick = { onMinuteChange((minute + 55) % 60) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp)
+                    .height(36.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
             ) { Text("Min -") }
 
             OutlinedButton(
                 onClick = { onMinuteChange((minute + 1) % 60) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp)
+                    .height(36.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
             ) { Text("Min +") }
         }
     }
