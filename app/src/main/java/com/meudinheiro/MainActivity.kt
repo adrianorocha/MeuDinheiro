@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
             ShowApp()
         }
     }
+
     private fun scheduleExpenseNotificationWorker() {
         // Define a periodicidade do worker
         val workRequest = PeriodicWorkRequestBuilder<DespesasDevidas>(1, TimeUnit.DAYS)
@@ -63,11 +64,16 @@ fun ShowApp() {
 
     var nextAfterSplash by remember { mutableStateOf<AppStage?>(null) }
     var showExitDialog by remember { mutableStateOf(false) }
+
+    var hasUser by remember { mutableStateOf<Boolean?>(null) }
+
     // Carrega do DataStore uma vez (valor real), sem depender de "initial = """
     LaunchedEffect(Unit) {
         val u = userPrefs.userNameFlow.firstOrNull().orEmpty().trim()
         val p = userPrefs.userPassFlow.firstOrNull().orEmpty()
-        nextAfterSplash = if (u.isNotBlank() && p.isNotBlank()) AppStage.Login else AppStage.Cadastro
+        hasUser = u.isNotBlank() && p.isNotBlank()
+        nextAfterSplash =
+            if (u.isNotBlank() && p.isNotBlank()) AppStage.Login else AppStage.Cadastro
     }
 
 // Intercepta o botão voltar/gesture
@@ -77,7 +83,8 @@ fun ShowApp() {
             AppStage.Avisos -> stage = AppStage.Home
             AppStage.Login -> stage = AppStage.Cadastro
             AppStage.Cadastro -> showExitDialog = true
-            else -> { /* Splash não intercepta */ }
+            else -> { /* Splash não intercepta */
+            }
         }
     }
 
@@ -110,7 +117,12 @@ fun ShowApp() {
         AppStage.Splash -> {
             SplashScreen(
                 onTimeout = {
-                    stage = nextAfterSplash ?: AppStage.Cadastro
+                    if (hasUser == true) {
+                        stage = AppStage.Login
+                    } else if (hasUser == false) {
+                        stage = AppStage.Cadastro
+                    }
+                    //stage = nextAfterSplash ?: AppStage.Cadastro
                 }
             )
         }
@@ -134,26 +146,30 @@ fun ShowApp() {
         }
 
         AppStage.Home -> {
-            MainScreen(userPrefs,
-            onOpenAvisos = {
-                stage = AppStage.Avisos
-            },
-            onOpenPendencias = {
-                stage = AppStage.Pendencias
-            }
+            MainScreen(
+                userPrefs,
+                onOpenAvisos = {
+                    stage = AppStage.Avisos
+                },
+                onOpenPendencias = {
+                    stage = AppStage.Pendencias
+                }
             )
         }
+
         AppStage.Avisos -> {
             Configuracao(
                 userPrefs = userPrefs,
                 onBack = { stage = AppStage.Home }
             )
         }
+
         AppStage.Pendencias -> {
             PendenciasScreen(
                 userPrefs = userPrefs,
                 onBack = { stage = AppStage.Home }
             )
-        }    }
+        }
+    }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +63,7 @@ fun MainScreen(
     val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
 
-    val nome by homeVM.userName.collectAsState(initial = "")
+    val nomeState by homeVM.userName.collectAsState(initial = null)
     val fotoSalva by homeVM.userPhoto.collectAsState(initial = "")
     var emCadastro by remember { mutableStateOf(false) }
 
@@ -71,7 +72,19 @@ fun MainScreen(
 
     val dashboardState by contaVM.dashboardState.collectAsState()
 
-    if (nome.isBlank() || emCadastro) {
+    val nome = nomeState
+
+    if (nome == null) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.White),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = PremiumDarkBlue)
+        }
+        return // Interrompe a execução até carregar o nome
+    }
+
+    if (nome!!.isBlank() || emCadastro) {
         CadastroUsuarioScreen(
             userPrefs = userPrefs,
             onFinished = { emCadastro = false }
