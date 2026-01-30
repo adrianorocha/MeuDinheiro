@@ -1,6 +1,8 @@
 package com.meudinheiro.componentes
 
+import android.R
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +46,10 @@ import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.key
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 
 // Cores Globais Premium
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -53,7 +63,9 @@ fun MainScreen(
     onOpenPendencias: () -> Unit
 ) {
     var selectedIndex by remember { mutableStateOf(-1) }
-    fun onItemSelected(index: Int) { selectedIndex = index }
+    fun onItemSelected(index: Int) {
+        selectedIndex = index
+    }
 
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
 
@@ -76,7 +88,9 @@ fun MainScreen(
 
     if (nome == null) {
         Box(
-            modifier = Modifier.fillMaxSize().background(Color.White),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(color = PremiumDarkBlue)
@@ -148,24 +162,26 @@ fun MainScreen(
             )
 
             if (contas.isNotEmpty()) {
-                CardSection(
-                    contas = contas,
-                    contasSelecionadaId = contaSelecionadaId?.orEmpty(),
-                    onExcluir = { conta ->
-                        contaVM.removerContaSaldo(conta.id)
-                        contaVM.carregarResumoFinanceiro()
-                    },
-                    onContaSelecionada = { novaConta ->
-                        contaVM.selecionarConta(novaConta)
-                        contaVM.carregarResumoFinanceiro()
-                    },
-                    onAtualizar = { conta ->
-                        contaVM.selecionarConta(conta.conta)
-                        contaVM.carregarResumoFinanceiro()
-                    },
-                    getReceitaConta = { contaId -> contaVM.obterReceitaPorConta(contaId) },
-                    getDespesaConta = { contaId -> contaVM.obterDespesaPorConta(contaId) }
-                )
+                key(dashboardState) {
+                    CardSection(
+                        contas = contas,
+                        contasSelecionadaId = contaSelecionadaId?.orEmpty(),
+                        onExcluir = { conta ->
+                            contaVM.removerContaSaldo(conta.id)
+                            contaVM.carregarResumoFinanceiro()
+                        },
+                        onContaSelecionada = { novaConta ->
+                            contaVM.selecionarConta(novaConta)
+                            contaVM.carregarResumoFinanceiro()
+                        },
+                        onAtualizar = { conta ->
+                            contaVM.selecionarConta(conta.conta)
+                            contaVM.carregarResumoFinanceiro()
+                        },
+                        getReceitaConta = { contaId -> contaVM.obterReceitaPorConta(contaId) },
+                        getDespesaConta = { contaId -> contaVM.obterDespesaPorConta(contaId) }
+                    )
+                }
             } else {
                 Text(
                     modifier = Modifier
@@ -194,22 +210,65 @@ fun MainScreen(
                 )
             }
 
-            Row(
+/*            Row(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth()
                     .align(Alignment.CenterHorizontally)
-            ) {
-                Text(
-                    text = "Despesas Recentes",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextWhite,
-                    textAlign = TextAlign.Start
-                )
-            }
+            )
+            // --- SELETOR DE MÊS ---
+ */
+            val mesAtual by despVM.mesSelecionado.collectAsState()
+            val anoAtual by despVM.anoSelecionado.collectAsState()
 
-            if (despesas.isEmpty()) {
+            // Array auxiliar para nome dos meses
+            val meses = remember { listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro") }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp), // Padding ajustado
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Botão Voltar Mês
+                IconButton(onClick = { despVM.mesAnterior() }) {
+                    Icon(
+                        imageVector = Icons.Rounded.ChevronLeft, // Use um icone de seta esquerda (ou Icons.Rounded.ChevronLeft)
+                        contentDescription = "Anterior",
+                        tint = TextWhite
+                    )
+                }
+
+                // Texto Mês/Ano
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = meses.getOrElse(mesAtual) { "" },
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = TextWhite
+                    )
+                    Text(
+                        text = "$anoAtual",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextWhite.copy(alpha = 0.6f)
+                    )
+                }
+
+                // Botão Avançar Mês
+                IconButton(onClick = { despVM.proximoMes() }) {
+                    Icon(
+                        imageVector = Icons.Rounded.ChevronRight, // Use um icone de seta direita (ou Icons.Rounded.ChevronRight)
+                        contentDescription = "Próximo",
+                        tint = TextWhite
+                    )
+                }
+            }
+            // ---------------------
+
+            // OBSERVAÇÃO DA LISTA FILTRADA
+            val despesasFiltradas by despVM.despesasFiltradas.collectAsState()
+
+            if (despesasFiltradas.isEmpty()) {
                 Text(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -218,22 +277,18 @@ fun MainScreen(
                     fontWeight = FontWeight.Normal,
                     color = TextWhite.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center,
-                    text = "Nenhuma movimentação recente."
+                    text = "Nenhuma movimentação neste mês."
                 )
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize(),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 100.dp)
-                        //.padding(bottom = 80.dp)
-
                 ) {
-                    items(despesas, key = { it.id }) { item ->
+                    items(despesasFiltradas, key = { it.id }) { item ->
                         DespesasItem(
                             item = item,
                             onRemover = { id ->
-                                despVM.removerDespesaComRestituicao(id)
-                                contaVM.carregarResumoFinanceiro()
+                                contaVM.removerDespesa(id)
                             },
                             onTogglePago = { itemClicado ->
                                 contaVM.alternarStatusDespesa(itemClicado)
@@ -243,7 +298,6 @@ fun MainScreen(
                 }
             }
         }
-
         NavigationSection(
             selectedIndex = selectedIndex,
             onItemSelected = ::onItemSelected,

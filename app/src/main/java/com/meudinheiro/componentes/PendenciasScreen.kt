@@ -2,42 +2,17 @@ package com.meudinheiro.componentes
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -45,20 +20,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.Despesa
-import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.UserPreferences
+import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.repository.MainRepository
+import com.meudinheiro.viewModel.ContaSaldoViewModel
+import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.NumberFormat
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 // Cores Premium
-private val CardBg = Color(0xFF1E2B3E)
-private val ExpenseRed = Color(0xFFEF5350)
-private val IncomeGreen = Color(0xFF69F0AE)
+private val WarningColor = Color(0xFFFFAB40)
+private val DangerColor = Color(0xFFEF5350)
+private val SuccessColor = Color(0xFF00C853)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,108 +45,130 @@ fun PendenciasScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val repo = remember { MainRepository(context) }
+    val scope = rememberCoroutineScope()
+    val repository = remember { MainRepository(context) }
+    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
 
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
+    val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
 
-    // 1. Obtemos a lista de contas para poder descobrir o nome do banco
-    val listaContas by repo.obterContaSaldo().collectAsState(initial = emptyList())
+    var listaPendencias by remember { mutableStateOf<List<Despesa>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    var items by remember { mutableStateOf<List<Despesa>>(emptyList()) }
-
-    LaunchedEffect(daysAhead) {
-        items = withContext(Dispatchers.IO) {
-            repo.listarPendencias(daysAhead, onlyCredit = false)
+    suspend fun carregarDados() {
+        isLoading = true
+        listaPendencias = withContext(Dispatchers.IO) {
+            repository.listarPendencias(daysAhead, onlyCredit)
         }
+        isLoading = false
     }
 
-    val nf = remember { NumberFormat.getCurrencyInstance(Locale("pt", "BR")) }
-    val df = remember { SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")) }
-    val total = items.sumOf { it.valor }
+    LaunchedEffect(daysAhead, onlyCredit) {
+        carregarDados()
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(PremiumDarkBlue, PremiumLightBlue)
-                )
-            )
+            .background(Brush.verticalGradient(listOf(PremiumDarkBlue, PremiumLightBlue)))
     ) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = { Text("Pendências Próximas", color = TextWhite) },
+                    title = { Text("Pendências", color = TextWhite, fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = TextWhite)
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        titleContentColor = TextWhite
-                    ),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     windowInsets = WindowInsets(0, 25, 0, 0)
                 )
             },
-            contentWindowInsets = WindowInsets(0, 40, 0, 0)
-        ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Header com Resumo
-                PremiumSummaryCard(count = items.size, total = nf.format(total))
-
-                OutlinedButton(
-                    onClick = onBack,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
-                    border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
-                ) { Text("Voltar para Home") }
-
-                if (items.isEmpty()) {
+            // ADIÇÃO 1: Barra inferior fixa com botão VOLTAR grande
+            bottomBar = {
+                Surface(
+                    color = PremiumDarkBlue.copy(alpha = 0.9f),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 8.dp
+                ) {
                     Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .windowInsetsPadding(WindowInsets.navigationBars) // Respeita botões do Android
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = TextWhite.copy(alpha = 0.3f),
-                                modifier = Modifier.size(48.dp)
+                        Button(
+                            onClick = onBack,
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = TextWhite,
+                                contentColor = PremiumDarkBlue
                             )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = "Nenhuma pendência encontrada.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextWhite.copy(alpha = 0.5f)
-                            )
-                            Text(
-                                text = "Tudo em dia para os próximos $daysAhead dias.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextWhite.copy(alpha = 0.3f)
-                            )
+                        ) {
+                            Text("Voltar para Início", fontWeight = FontWeight.Bold)
                         }
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
-                    ) {
-                        items(items, key = { it.id }) { d ->
-                            // 2. Encontramos o nome do banco comparando o número da conta
-                            val nomeBanco = listaContas.find { it.conta == d.conta }?.banco ?: "Banco"
+                }
+            }
+        ) { padding ->
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = TextWhite)
+                }
+            } else if (listaPendencias.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            painter = androidx.compose.ui.res.painterResource(id = com.meudinheiro.R.drawable.sim_chip),
+                            contentDescription = null,
+                            tint = TextWhite.copy(0.3f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Tudo em dia!",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = TextWhite.copy(0.7f)
+                        )
+                        Text(
+                            "Nenhuma conta vencendo nos próximos $daysAhead dias.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextWhite.copy(0.4f)
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .padding(padding)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    item {
+                        Text(
+                            "Contas a Pagar",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TextWhite.copy(0.6f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
 
-                            // 3. Passamos o nomeBanco para o Card
-                            PremiumPendenciaCard(d, nf, df, nomeBanco)
-                        }
+                    items(listaPendencias, key = { it.id }) { item ->
+                        PendenciaItem(
+                            item = item,
+                            onBaixar = {
+                                scope.launch {
+                                    repository.atualizarStatusPago(item.id.toLong(), true)
+                                    repository.recalcularSaldoTotal(item.conta)
+                                    contaVM.carregarResumoFinanceiro()
+                                    carregarDados()
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -177,105 +177,97 @@ fun PendenciasScreen(
 }
 
 @Composable
-private fun PremiumSummaryCard(count: Int, total: String) {
+fun PendenciaItem(
+    item: Despesa,
+    onBaixar: () -> Unit
+) {
+    val hoje = remember { java.util.Date() }
+    val isAtrasada = item.data.before(hoje)
+
+    val corBorda = if (isAtrasada) DangerColor else WarningColor
+    val textoStatus = if (isAtrasada) "ATRASADO" else "VENCE EM BREVE"
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBg.copy(alpha = 0.6f)),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2B3E).copy(alpha = 0.9f)),
+        border = BorderStroke(1.dp, corBorda.copy(alpha = 0.5f))
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text("Quantidade", style = MaterialTheme.typography.labelMedium, color = TextWhite.copy(alpha = 0.7f))
-                Text("$count pendente(s)", style = MaterialTheme.typography.titleMedium, color = TextWhite, fontWeight = FontWeight.Bold)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Valor Total", style = MaterialTheme.typography.labelMedium, color = TextWhite.copy(alpha = 0.7f))
-                Text(total, style = MaterialTheme.typography.titleMedium, color = ExpenseRed, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PremiumPendenciaCard(
-    d: Despesa,
-    nf: NumberFormat,
-    df: SimpleDateFormat,
-    nomeBanco: String // Parâmetro novo
-) {
-    val valorColor = if (d.tipo == TipoDespesa.CREDITO) IncomeGreen else ExpenseRed
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Linha 1: Descrição e Valor
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(corBorda.copy(alpha = 0.1f), androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center
             ) {
+                Icon(
+                    imageVector = Icons.Rounded.Warning,
+                    contentDescription = null,
+                    tint = corBorda,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = d.descricao,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    text = item.descricao,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = TextWhite,
-                    modifier = Modifier.weight(1f)
+                    maxLines = 1 // Limita nome para não quebrar layout
                 )
                 Text(
-                    text = nf.format(d.valor),
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                    color = valorColor
+                    text = "${DateUtils.formatarData(item.data)} • ${item.conta}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextWhite.copy(alpha = 0.6f)
                 )
             }
 
-            // Linha 2: Data de Vencimento
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .background(valorColor.copy(alpha = 0.1f), CircleShape)
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = textoStatus,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = corBorda,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Text(
+                    text = formatarMoedaBR(item.valor),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = TextWhite
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // ADIÇÃO 2: Botão "Dar Baixa" MAIOR e mais VISÍVEL
+                Surface(
+                    color = SuccessColor.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, SuccessColor.copy(alpha = 0.5f)),
+                    modifier = Modifier.clickable { onBaixar() }
                 ) {
-                    Text(
-                        text = "Vence: ${df.format(d.data)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = valorColor
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), // Padding maior
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            tint = SuccessColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Dar Baixa",
+                            fontSize = 13.sp, // Fonte maior
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessColor
+                        )
+                    }
                 }
-            }
-
-            // Separador sutil
-            Spacer(modifier = Modifier.height(4.dp))
-            androidx.compose.material3.Divider(color = Color.White.copy(alpha = 0.1f))
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Linha 3: Detalhes (Banco, Conta e Categoria)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Aqui mostramos: "Nubank • 12345-6"
-                Text(
-                    text = "$nomeBanco • ${d.conta}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextWhite.copy(alpha = 0.6f)
-                )
-                Text(
-                    text = d.categoria,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextWhite.copy(alpha = 0.6f)
-                )
             }
         }
     }

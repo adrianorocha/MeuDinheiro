@@ -50,22 +50,17 @@ import com.meudinheiro.funcoes.formatarMoedaBR
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-// --- Funções Utilitárias Necessárias ---
+// Cores e Helpers
+private val Gold = Color(0xFFFFD700)
 private fun Dp.coerceInDp(min: Dp, max: Dp): Dp = if(this < min) min else if(this > max) max else this
 
-// Função para descobrir qual item está no meio da tela
 private fun LazyListState.findCenteredItemIndex(): Int? {
     val layoutInfo = this.layoutInfo
     val visible = layoutInfo.visibleItemsInfo
     if (visible.isEmpty()) return null
-
-    val viewportStart = layoutInfo.viewportStartOffset
-    val viewportEnd = layoutInfo.viewportEndOffset
-    val viewportCenter = (viewportStart + viewportEnd) / 2
-
+    val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
     var bestIndex: Int? = null
     var bestDistance = Int.MAX_VALUE
-
     for (item in visible) {
         val itemCenter = item.offset + (item.size / 2)
         val distance = kotlin.math.abs(itemCenter - viewportCenter)
@@ -76,9 +71,6 @@ private fun LazyListState.findCenteredItemIndex(): Int? {
     }
     return bestIndex
 }
-
-// Cores
-private val Gold = Color(0xFFFFD700)
 
 @Composable
 fun CardSection(
@@ -98,7 +90,7 @@ fun CardSection(
     val onContaSelecionadaAtual by rememberUpdatedState(onContaSelecionada)
     val onAtualizarAtual by rememberUpdatedState(onAtualizar)
 
-    // 1. Se a lista mudar ou seleção sumir, volta para o primeiro
+    // Scroll e Seleção
     LaunchedEffect(contas, contasSelecionadaId) {
         if (contas.isEmpty()) return@LaunchedEffect
         val exists = contasSelecionadaId != null && contas.any { it.conta == contasSelecionadaId }
@@ -110,28 +102,20 @@ fun CardSection(
         }
     }
 
-    // 2. Lógica de Auto-Seleção ao parar o Scroll
     LaunchedEffect(lazyListState) {
         var wasScrolling = false
-
         snapshotFlow { lazyListState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { inProgress ->
-                if (inProgress) {
-                    wasScrolling = true
-                } else {
-                    if (wasScrolling) {
-                        wasScrolling = false
-                        val centeredIndex = lazyListState.findCenteredItemIndex()
-                        if (centeredIndex != null) {
-                            val contaCentered = contasAtual.getOrNull(centeredIndex)
-                            if (contaCentered != null) {
-                                val targetId = contaCentered.conta
-                                if (selecionadaAtual != targetId) {
-                                    onContaSelecionadaAtual(targetId)
-                                    onAtualizarAtual(contaCentered)
-                                }
-                            }
+                if (inProgress) wasScrolling = true
+                else if (wasScrolling) {
+                    wasScrolling = false
+                    val centeredIndex = lazyListState.findCenteredItemIndex()
+                    if (centeredIndex != null) {
+                        val contaCentered = contasAtual.getOrNull(centeredIndex)
+                        if (contaCentered != null && selecionadaAtual != contaCentered.conta) {
+                            onContaSelecionadaAtual(contaCentered.conta)
+                            onAtualizarAtual(contaCentered)
                         }
                     }
                 }
@@ -141,9 +125,8 @@ fun CardSection(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 4.dp) // Reduzi levemente o padding externo também
+            .padding(top = 12.dp, bottom = 4.dp)
     ) {
-        // AJUSTE DE TAMANHO: Reduzi a altura para 175.dp (era 210.dp)
         val cardWidth = (maxWidth * 0.85f).coerceInDp(280.dp, 400.dp)
         val cardHeight = 175.dp
 
@@ -153,20 +136,23 @@ fun CardSection(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             flingBehavior = rememberSnapFlingBehavior(lazyListState)
         ) {
-            items(contas, key = { it.conta }) { conta ->
+            items(contas) { conta ->
                 val selected = conta.conta == contasSelecionadaId
+
+                // Captura os valores atualizados
+                val receitaValor = getReceitaConta(conta.conta)
+                val despesaValor = getDespesaConta(conta.conta)
+
                 ContaCard(
                     conta = conta,
                     width = cardWidth,
                     height = cardHeight,
                     selected = selected,
-                    receita = getReceitaConta(conta.conta),
-                    despesa = getDespesaConta(conta.conta),
+                    receita = receitaValor,
+                    despesa = despesaValor,
                     onClick = {
                         val idx = contas.indexOfFirst { it.conta == conta.conta }
-                        if (idx >= 0) {
-                            scope.launch { lazyListState.animateScrollToItem(idx) }
-                        }
+                        if (idx >= 0) scope.launch { lazyListState.animateScrollToItem(idx) }
                         onContaSelecionada(conta.conta)
                         onAtualizar(conta)
                     },
@@ -188,9 +174,9 @@ private fun ContaCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(22.dp) // Levemente ajustado
+    val shape = RoundedCornerShape(22.dp)
     val borderCol by animateColorAsState(if (selected) Gold else Color.Transparent, label = "border")
-    val scale by animateFloatAsState(if (selected) 1.02f else 1f, label = "scale") // Zoom mais sutil
+    val scale by animateFloatAsState(if (selected) 1.02f else 1f, label = "scale")
 
     val context = LocalContext.current
     val resId = remember(conta.pic) {
@@ -217,40 +203,37 @@ private fun ContaCard(
             )
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
 
-            // AJUSTE: Reduzi o padding interno de 20.dp para 16.dp
             Column(
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Topo: Banco e Chip
+                // Topo
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = conta.banco,
-                        // AJUSTE: Fonte titleMedium para ocupar menos espaço
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = TextWhite
                     )
                     Image(
                         painter = painterResource(resId),
                         contentDescription = null,
-                        // AJUSTE: Chip levemente menor (32.dp)
                         modifier = Modifier.size(32.dp)
                     )
                 }
 
-                // Centro: Numero Conta
+                // Centro
                 Text(
                     text = "Ag: ${conta.agencia}   CC: ${conta.conta}",
                     style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.5.sp),
                     color = TextWhite.copy(alpha = 0.8f)
                 )
 
-                // Base: Saldo e Totais
+                // Base
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Bottom,
@@ -260,16 +243,12 @@ private fun ContaCard(
                         Text("Saldo", fontSize = 11.sp, color = TextWhite.copy(0.6f))
                         Text(
                             text = formatarMoedaBR(conta.saldo),
-                            // AJUSTE: Fonte 20.sp (era 22)
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Gold
                         )
                     }
-
-                    // Mini Resumo no Cartão
                     Column(horizontalAlignment = Alignment.End) {
-                        // AJUSTE: Fontes 10.sp
                         Text("▲ ${formatarMoedaBR(receita)}", fontSize = 10.sp, color = Color(0xFF69F0AE))
                         Text("▼ ${formatarMoedaBR(despesa)}", fontSize = 10.sp, color = Color(0xFFFF8A80))
                     }

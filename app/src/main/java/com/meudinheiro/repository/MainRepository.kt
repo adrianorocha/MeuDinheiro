@@ -56,6 +56,26 @@ class MainRepository(private val context: Context) {
     suspend fun atualizarStatusPago(id: Long, status: Boolean) {
         despesaDao.atualizarStatusPago(id, status)
     }
+
+    suspend fun recalcularSaldoTotal(contaNome: String) {
+        // Busca todas as movimentações dessa conta
+        val movimentacoes = despesaDao.obterDespesasPorConta(contaNome)
+
+        var novoSaldo = 0.0
+
+        movimentacoes.forEach { item ->
+            // Assume que DespesasDomain ou Despesa tem 'pago', 'tipo' e 'valor'
+            if (item.pago) {
+                when (item.tipo) {
+                    TipoDespesa.CREDITO -> novoSaldo += item.valor
+                    TipoDespesa.DEBITO -> novoSaldo -= item.valor
+                }
+            }
+        }
+
+        // Atualiza a tabela de contas com o valor calculado
+        contaSaldoDao.atualizarSaldo(contaNome, novoSaldo)
+    }
     /**
      * Exclui a despesa e ajusta o saldo da conta devolvendo/removendo o valor.
      * Tudo feito em transação para não deixar dados inconsistentes.

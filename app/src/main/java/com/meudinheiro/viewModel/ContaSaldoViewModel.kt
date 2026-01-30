@@ -54,6 +54,25 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
     private val _contaSelecionadaId = MutableLiveData<String?>(null)
     val contaSelecionadaId: LiveData<String?> = _contaSelecionadaId
 
+// No ContaSaldoViewModel.kt
+
+    fun removerDespesa(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Busca a despesa antes de excluir para saber a conta
+            val despesa = repository.obterDespesaPorId(id)
+
+            if (despesa != null) {
+                // 2. Exclui
+                repository.excluirDespesa(id)
+
+                // 3. Atualiza o saldo da conta específica (Corrige o CardSection)
+                repository.recalcularSaldoTotal(despesa.conta)
+
+                // 4. Atualiza o resumo global (Corrige o HeaderSection)
+                carregarResumoFinanceiro()
+            }
+        }
+    }
     fun carregarResumoFinanceiro() {
         viewModelScope.launch(Dispatchers.IO) {
             // Define o período: Mês atual

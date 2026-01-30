@@ -160,15 +160,15 @@ fun DespesasItem(
 
                     Surface(
                         color = bg,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.clickable { onTogglePago(item) }
                     ) {
                         Text(
                             text = txt,
-                            fontSize = 9.sp, // Fonte micro para o botão
+                            fontSize = 12.sp, // Fonte micro para o botão
                             fontWeight = FontWeight.Bold,
                             color = txtColor,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
                 }
