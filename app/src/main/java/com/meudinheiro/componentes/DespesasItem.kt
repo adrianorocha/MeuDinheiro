@@ -45,8 +45,9 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
 
-// Cores
+// Cores Premium Locais
 private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.8f)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DespesasItem(
@@ -65,7 +66,6 @@ fun DespesasItem(
     }
 
     if (showDialog) {
-        // Dialog de remoção
         AlertDialog(
             onDismissRequest = { showDialog = false },
             containerColor = Color(0xFF1E2B3E),
@@ -74,33 +74,41 @@ fun DespesasItem(
             title = { Text("Remover despesa") },
             text = { Text("Deseja remover esta despesa? O valor será restituído.") },
             confirmButton = {
-                Button(onClick = { onRemover(item.id); showDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))) { Text("Remover") }
+                Button(
+                    onClick = { onRemover(item.id); showDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))
+                ) { Text("Remover") }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }, colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)) { Text("Cancelar") }
+                TextButton(
+                    onClick = { showDialog = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)
+                ) { Text("Cancelar") }
             }
         )
     }
 
-    // Visual Card
+    // Visual Card Compacto
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            // REDUÇÃO: Padding vertical externo de 6dp para 3dp
+            .padding(horizontal = 16.dp, vertical = 3.dp)
             .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = { showDialog = true }),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = ItemBg,
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-        shadowElevation = 4.dp
+        shadowElevation = 2.dp
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            // REDUÇÃO: Padding interno de 16dp para 12dp
+            modifier = Modifier.padding(all = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icone
+            // REDUÇÃO: Ícone de 48dp para 40dp
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(40.dp)
                     .background(Color.White.copy(alpha = 0.05f), CircleShape)
                     .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
                 contentAlignment = Alignment.Center
@@ -108,39 +116,41 @@ fun DespesasItem(
                 Icon(
                     painter = painterResource(id = resId),
                     contentDescription = null,
-                    tint = Color.Unspecified, // Usa cor original do drawable
-                    modifier = Modifier.size(24.dp)
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.descricao,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    // AJUSTE: Fonte levemente menor e compacta
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = TextWhite,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = dataFormatada,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextWhite.copy(alpha = 0.6f)
+                    style = MaterialTheme.typography.labelSmall, // Fonte menor para data
+                    color = TextWhite.copy(alpha = 0.5f)
                 )
             }
 
             Column(horizontalAlignment = Alignment.End) {
-                // Valor
                 val corValor = if (item.tipo == TipoDespesa.CREDITO) Color(0xFF69F0AE) else TextWhite
                 Text(
                     text = formatarMoedaBR(item.valor),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    // AJUSTE: Fonte de valor um pouco mais compacta
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                     color = corValor
                 )
 
                 if (item.tipo == TipoDespesa.DEBITO && onTogglePago != null) {
-                    Spacer(Modifier.height(8.dp))
+                    // REDUÇÃO: Spacer de 8dp para 4dp
+                    Spacer(Modifier.height(4.dp))
 
                     val (bg, txtColor, txt) = if (item.pago) {
                         Triple(Color(0xFF00C853).copy(alpha = 0.2f), Color(0xFF69F0AE), "Pago")
@@ -150,15 +160,15 @@ fun DespesasItem(
 
                     Surface(
                         color = bg,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(6.dp),
                         modifier = Modifier.clickable { onTogglePago(item) }
                     ) {
                         Text(
                             text = txt,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp, // Fonte micro para o botão
                             fontWeight = FontWeight.Bold,
                             color = txtColor,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }

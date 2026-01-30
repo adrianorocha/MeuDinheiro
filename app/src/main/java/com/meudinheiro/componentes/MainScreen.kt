@@ -58,7 +58,6 @@ fun MainScreen(
 
     val context = LocalContext.current
     val repository = remember { MainRepository(context) }
-
     val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
     val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
@@ -211,8 +210,10 @@ fun MainScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 80.dp)
+                        .fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 100.dp)
+                        //.padding(bottom = 80.dp)
+
                 ) {
                     items(despesas, key = { it.id }) { item ->
                         DespesasItem(

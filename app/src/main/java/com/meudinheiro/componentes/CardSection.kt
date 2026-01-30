@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -77,6 +79,7 @@ private fun LazyListState.findCenteredItemIndex(): Int? {
 
 // Cores
 private val Gold = Color(0xFFFFD700)
+
 @Composable
 fun CardSection(
     contas: List<ContaSaldoDomain>,
@@ -90,7 +93,6 @@ fun CardSection(
     val lazyListState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Estados atualizados para uso dentro do Flow (evita bugs de recomposição)
     val contasAtual by rememberUpdatedState(contas)
     val selecionadaAtual by rememberUpdatedState(contasSelecionadaId)
     val onContaSelecionadaAtual by rememberUpdatedState(onContaSelecionada)
@@ -108,27 +110,23 @@ fun CardSection(
         }
     }
 
-    // 2. Lógica de Auto-Seleção ao parar o Scroll [IMPORTANTE]
+    // 2. Lógica de Auto-Seleção ao parar o Scroll
     LaunchedEffect(lazyListState) {
         var wasScrolling = false
 
-        // Monitora se o scroll está em progresso
         snapshotFlow { lazyListState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { inProgress ->
                 if (inProgress) {
                     wasScrolling = true
                 } else {
-                    // O scroll acabou de parar?
                     if (wasScrolling) {
                         wasScrolling = false
-                        // Acha quem está no centro
                         val centeredIndex = lazyListState.findCenteredItemIndex()
                         if (centeredIndex != null) {
                             val contaCentered = contasAtual.getOrNull(centeredIndex)
                             if (contaCentered != null) {
                                 val targetId = contaCentered.conta
-                                // Se for diferente do atual, seleciona!
                                 if (selecionadaAtual != targetId) {
                                     onContaSelecionadaAtual(targetId)
                                     onAtualizarAtual(contaCentered)
@@ -143,10 +141,11 @@ fun CardSection(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 8.dp)
+            .padding(top = 12.dp, bottom = 4.dp) // Reduzi levemente o padding externo também
     ) {
+        // AJUSTE DE TAMANHO: Reduzi a altura para 175.dp (era 210.dp)
         val cardWidth = (maxWidth * 0.85f).coerceInDp(280.dp, 400.dp)
-        val cardHeight = 210.dp
+        val cardHeight = 175.dp
 
         LazyRow(
             state = lazyListState,
@@ -164,7 +163,6 @@ fun CardSection(
                     receita = getReceitaConta(conta.conta),
                     despesa = getDespesaConta(conta.conta),
                     onClick = {
-                        // Clique também deve animar o scroll para centralizar
                         val idx = contas.indexOfFirst { it.conta == conta.conta }
                         if (idx >= 0) {
                             scope.launch { lazyListState.animateScrollToItem(idx) }
@@ -190,23 +188,26 @@ private fun ContaCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(24.dp)
-    // Animação da borda Dourada quando selecionado
+    val shape = RoundedCornerShape(22.dp) // Levemente ajustado
     val borderCol by animateColorAsState(if (selected) Gold else Color.Transparent, label = "border")
-    // Animação de escala (leve zoom) quando selecionado
-    val scale by animateFloatAsState(if (selected) 1.05f else 1f, label = "scale")
+    val scale by animateFloatAsState(if (selected) 1.02f else 1f, label = "scale") // Zoom mais sutil
+
+    val context = LocalContext.current
+    val resId = remember(conta.pic) {
+        val id = context.resources.getIdentifier(conta.pic, "drawable", context.packageName)
+        if (id != 0) id else R.drawable.sim_chip_2
+    }
 
     Card(
         modifier = Modifier
             .size(width, height)
-            .scale(scale) // Aplica o zoom visual
+            .scale(scale)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = shape,
         border = BorderStroke(2.dp, borderCol),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 12.dp else 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 8.dp else 4.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Fundo Gradiente Tecnológico
             Image(
                 painter = painterResource(id = R.drawable.card_tecno),
                 contentDescription = null,
@@ -214,13 +215,12 @@ private fun ContaCard(
                 modifier = Modifier.fillMaxSize(),
                 alpha = 0.8f
             )
-            // Overlay escuro para garantir legibilidade do texto branco
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
 
-            // Conteúdo
+            // AJUSTE: Reduzi o padding interno de 20.dp para 16.dp
             Column(
                 modifier = Modifier
-                    .padding(20.dp)
+                    .padding(16.dp)
                     .fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -231,20 +231,22 @@ private fun ContaCard(
                 ) {
                     Text(
                         text = conta.banco,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        // AJUSTE: Fonte titleMedium para ocupar menos espaço
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = TextWhite
                     )
                     Image(
-                        painter = painterResource(id = R.drawable.sim_chip_2),
+                        painter = painterResource(resId),
                         contentDescription = null,
-                        modifier = Modifier.size(36.dp)
+                        // AJUSTE: Chip levemente menor (32.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
 
                 // Centro: Numero Conta
                 Text(
                     text = "Ag: ${conta.agencia}   CC: ${conta.conta}",
-                    style = MaterialTheme.typography.bodyMedium.copy(letterSpacing = 2.sp),
+                    style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.5.sp),
                     color = TextWhite.copy(alpha = 0.8f)
                 )
 
@@ -255,10 +257,11 @@ private fun ContaCard(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text("Saldo", fontSize = 12.sp, color = TextWhite.copy(0.6f))
+                        Text("Saldo", fontSize = 11.sp, color = TextWhite.copy(0.6f))
                         Text(
                             text = formatarMoedaBR(conta.saldo),
-                            fontSize = 22.sp,
+                            // AJUSTE: Fonte 20.sp (era 22)
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Gold
                         )
@@ -266,8 +269,9 @@ private fun ContaCard(
 
                     // Mini Resumo no Cartão
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("▲ ${formatarMoedaBR(receita)}", fontSize = 11.sp, color = Color(0xFF69F0AE))
-                        Text("▼ ${formatarMoedaBR(despesa)}", fontSize = 11.sp, color = Color(0xFFFF8A80))
+                        // AJUSTE: Fontes 10.sp
+                        Text("▲ ${formatarMoedaBR(receita)}", fontSize = 10.sp, color = Color(0xFF69F0AE))
+                        Text("▼ ${formatarMoedaBR(despesa)}", fontSize = 10.sp, color = Color(0xFFFF8A80))
                     }
                 }
             }

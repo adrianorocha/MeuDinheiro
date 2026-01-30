@@ -33,7 +33,7 @@ import java.io.File
 import java.text.NumberFormat
 import java.util.Locale
 
-// Definições de Cores Locais (Garanta que combinem com seu MainScreen)
+// Definições de Cores
 private val CardBg = Color(0xFF1E2B3E)
 private val BadgeRed = Color(0xFFFF3D00)
 
@@ -58,7 +58,7 @@ fun HeaderSection(
     receitaTotal: Double = 0.0,
     despesaTotal: Double = 0.0
 ) {
-    val containerShape = RoundedCornerShape(24.dp)
+    val containerShape = RoundedCornerShape(22.dp) // Reduzi levemente o raio
     val containerBg = CardBg.copy(alpha = 0.60f)
     val containerBorder = Color.White.copy(alpha = 0.1f)
 
@@ -66,7 +66,8 @@ fun HeaderSection(
         modifier = modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            // REDUÇÃO: Padding vertical externo de 12dp para 8dp
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         shape = containerShape,
         color = containerBg,
         tonalElevation = 0.dp,
@@ -74,7 +75,8 @@ fun HeaderSection(
         border = BorderStroke(1.dp, containerBorder)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            // REDUÇÃO: Padding interno de 16dp para 14dp
+            modifier = Modifier.padding(all = 14.dp)
         ) {
             // --- Linha Superior ---
             Row(
@@ -86,21 +88,21 @@ fun HeaderSection(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = 8.dp) // Espaço para não colar nos ícones
+                        .padding(end = 8.dp)
                 ) {
                     Text(
                         text = "Olá, $nome",
-                        style = MaterialTheme.typography.headlineSmall.copy(
+                        style = MaterialTheme.typography.titleLarge.copy( // Mudei de HeadlineSmall para TitleLarge
                             fontWeight = FontWeight.Bold,
-                            lineHeight = 32.sp // Altura de linha para quando quebrar
+                            lineHeight = 28.sp // Reduzi altura de linha
                         ),
                         color = TextWhite,
-                        // AJUSTE 1: Permitir 2 linhas para nomes longos
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.height(4.dp))
+
                     if (!chipText.isNullOrBlank()) {
+                        Spacer(Modifier.height(2.dp)) // Reduzi espaçamento
                         PremiumChip(
                             text = chipText,
                             style = chipStyle
@@ -124,18 +126,19 @@ fun HeaderSection(
                                 imageVector = Icons.Outlined.Notifications,
                                 contentDescription = null,
                                 tint = TextWhite,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp) // Ícone levemente menor
                             )
                         }
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(8.dp)) // Reduzi espaçamento horizontal
                     }
                     PremiumAvatarButton(fotoUri = fotoUri, onClick = onProfileClick)
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            // REDUÇÃO: Espaçamento central drástico
+            Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // --- Resumo Global ---
             Row(
@@ -149,7 +152,7 @@ fun HeaderSection(
                     iconUp = true
                 )
 
-                Box(modifier = Modifier.width(1.dp).height(30.dp).background(Color.White.copy(alpha = 0.1f)))
+                Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.1f))) // Altura divisor reduzida
 
                 MiniSummaryItem(
                     label = "Saídas",
@@ -166,9 +169,10 @@ fun HeaderSection(
 private fun MiniSummaryItem(label: String, value: Double, color: Color, iconUp: Boolean) {
     val nf = remember { NumberFormat.getCurrencyInstance(Locale("pt", "BR")) }
     Row(verticalAlignment = Alignment.CenterVertically) {
+        // REDUÇÃO: Ícone de seta menor (32dp -> 28dp)
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(28.dp)
                 .background(color.copy(alpha = 0.15f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
@@ -176,19 +180,19 @@ private fun MiniSummaryItem(label: String, value: Double, color: Color, iconUp: 
                 imageVector = if (iconUp) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
                 contentDescription = null,
                 tint = color,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(10.dp))
         Column {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall, // Fonte menor
                 color = TextWhite.copy(alpha = 0.7f)
             )
             Text(
                 text = nf.format(value),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), // TitleMedium -> BodyLarge
                 color = TextWhite
             )
         }
@@ -197,7 +201,7 @@ private fun MiniSummaryItem(label: String, value: Double, color: Color, iconUp: 
 
 @Composable
 private fun PremiumChip(text: String, style: HeaderChipStyle, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(6.dp)
     val (bg, txtColor) = when (style) {
         HeaderChipStyle.SUCCESS -> Color(0xFF00C853).copy(alpha = 0.2f) to Color(0xFF69F0AE)
         else -> Color.White.copy(alpha = 0.1f) to TextWhite
@@ -210,9 +214,9 @@ private fun PremiumChip(text: String, style: HeaderChipStyle, modifier: Modifier
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp), // Fonte menor
             color = txtColor,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) // Padding menor
         )
     }
 }
@@ -225,12 +229,11 @@ private fun PremiumIconButton(
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    // Container clicável
     Box(modifier = Modifier.clickable(onClick = onClick)) {
-        // Círculo de fundo do ícone
+        // REDUÇÃO: Tamanho do botão de 44dp para 40dp
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(40.dp)
                 .background(Color.White.copy(alpha = 0.05f), CircleShape)
                 .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
             contentAlignment = Alignment.Center
@@ -238,7 +241,6 @@ private fun PremiumIconButton(
             content()
         }
 
-        // AJUSTE 2: Lógica do Badge Numérico
         if (showBadge || badgeCount > 0) {
             val badgeText = if (badgeCount > 99) "99+" else badgeCount.toString()
             val hasCount = badgeCount > 0
@@ -246,13 +248,13 @@ private fun PremiumIconButton(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 4.dp, y = (-4).dp) // Desloca levemente para fora para ficar igual a imagem
+                    .offset(x = 2.dp, y = (-2).dp)
                     .then(
-                        if (hasCount) Modifier.defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
-                        else Modifier.size(10.dp) // Bolinha pequena se não tiver numero (só aviso)
+                        if (hasCount) Modifier.defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+                        else Modifier.size(8.dp)
                     )
                     .background(BadgeRed, CircleShape)
-                    .border(2.dp, PremiumDarkBlue, CircleShape), // Borda da cor do fundo para "recortar" visualmente
+                    .border(2.dp, PremiumDarkBlue, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (hasCount) {
@@ -260,11 +262,11 @@ private fun PremiumIconButton(
                         text = badgeText,
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         ),
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 3.dp)
+                        modifier = Modifier.padding(horizontal = 2.dp)
                     )
                 }
             }
@@ -275,9 +277,10 @@ private fun PremiumIconButton(
 @Composable
 private fun PremiumAvatarButton(fotoUri: String?, onClick: () -> Unit) {
     val context = LocalContext.current
+    // REDUÇÃO: Tamanho do avatar de 48dp para 42dp
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(42.dp)
             .clip(CircleShape)
             .border(2.dp, Color.White.copy(alpha = 0.2f), CircleShape)
             .clickable(onClick = onClick)

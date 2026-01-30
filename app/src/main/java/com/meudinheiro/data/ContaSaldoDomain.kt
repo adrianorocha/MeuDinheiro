@@ -4,6 +4,7 @@ data class ContaSaldoDomain(
     val id: Int,
     val saldo: Double,
     val banco: String,
+    val pic: String,
     val agencia: String,
     val conta: String,
     val titular: String

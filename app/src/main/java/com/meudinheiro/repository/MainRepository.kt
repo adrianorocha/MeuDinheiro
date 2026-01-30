@@ -104,27 +104,32 @@ class MainRepository(private val context: Context) {
     )
 
     val bancos: List<BancoDomain> = listOf(
-        BancoDomain(id = 1, nome = "Banco do Brasil"),
-        BancoDomain(id = 2, nome = "Bradesco"),
-        BancoDomain(id = 3, nome = "Santander"),
-        BancoDomain(id = 4, nome = "Caixa Econômica"),
-        BancoDomain(id = 5, nome = "Itaú"),
-        BancoDomain(id = 6, nome = "HSBC"),
-        BancoDomain(id = 7, nome = "Nubank"),
-        BancoDomain(id = 8, nome = "C6"),
-        BancoDomain(id = 9, nome = "MercadoPago"),
-        BancoDomain(id = 10, nome = "Sicoob"),
-        BancoDomain(id = 11, nome = "Banco Original"),
-        BancoDomain(id = 12, nome = "Banco Pan"),
-        BancoDomain(id = 13, nome = "Banco do Nordeste"),
-        BancoDomain(id = 14, nome = "Banco Inter"),
-        BancoDomain(id = 15, nome = "Banco Itaú BBA"),
-        BancoDomain(id = 16, nome = "Banco BMG")
+        BancoDomain(id = 1, nome = "Banco do Brasil", pic = "banco_do_brasil"),
+        BancoDomain(id = 2, nome = "Bradesco", pic = "bradesco"),
+        BancoDomain(id = 3, nome = "Santander", pic = "santander"),
+        BancoDomain(id = 4, nome = "Caixa Econômica", pic = "caixa_economica"),
+        BancoDomain(id = 5, nome = "Itaú", pic = "itaú"),
+        BancoDomain(id = 6, nome = "HSBC", pic = "hsbc"),
+        BancoDomain(id = 7, nome = "Nubank", pic = "nubank"),
+        BancoDomain(id = 8, nome = "C6", pic = "c6"),
+        BancoDomain(id = 9, nome = "MercadoPago", pic = "mercado_pago"),
+        BancoDomain(id = 10, nome = "Sicoob", pic = "sicoob"),
+        BancoDomain(id = 11, nome = "Banco Original", pic = "banco_original"),
+        BancoDomain(id = 12, nome = "Banco Pan", pic = "banco_pan"),
+        BancoDomain(id = 13, nome = "Banco do Nordeste", pic = "banco_do_nordeste"),
+        BancoDomain(id = 14, nome = "Banco Inter", pic = "banco_inter"),
+        BancoDomain(id = 15, nome = "Banco Itaú BBA", pic = "banco_itaú_bba"),
+        BancoDomain(id = 16, nome = "Banco BMG", pic = "banco_bmg")
     )
 
     fun getPicCategoria(titulo: String): String {
         val categoria = categorias.find { it.title == titulo }
         return categoria?.pic ?: "default_pic"
+    }
+
+    fun getPicBanco(titulo: String): String {
+        val banco = bancos.find { it.nome == titulo }
+        return banco?.pic ?: "default_pic"
     }
 
     /* ======================= SALDO DE CONTAS ======================= */

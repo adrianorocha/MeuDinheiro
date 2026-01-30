@@ -4,9 +4,11 @@ import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.ContaSaldo
+import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
 
@@ -18,6 +20,7 @@ fun ContaBancaria(
     val viewModel: ContaSaldoViewModel = viewModel(factory = viewModelFactory)
     val contasExistentes by viewModel.contaSaldo.observeAsState(emptyList())
     val context = LocalContext.current
+    val repository = remember { MainRepository(context) }
 
     val bancosNomes = viewModel.bancos.value.map { it.nome }
 
@@ -44,6 +47,7 @@ fun ContaBancaria(
                 banco = banco.trim(),
                 agencia = agencia.trim(),
                 conta = contaCorrente.trim(),
+                pic = repository.getPicBanco(banco.trim()) ,
                 saldo = 0.00,
                 titular = ""
             )

@@ -8,6 +8,7 @@ data class ContaSaldo(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val saldo: Double,
     val banco: String,
+    val pic: String,
     val agencia: String,
     val conta: String,
     val titular: String
