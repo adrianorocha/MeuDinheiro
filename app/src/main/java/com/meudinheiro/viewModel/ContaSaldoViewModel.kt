@@ -20,13 +20,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
+import kotlin.math.floor
+import kotlin.math.roundToInt
 
 data class DashboardFinanceiroState(
     val receitaGlobal: Double = 0.0,
     val despesaGlobal: Double = 0.0,
-    // Mapa: Chave = NomeDaConta -> Valor = Par(Receita, Despesa)
     val dadosPorConta: Map<String, Pair<Double, Double>> = emptyMap()
 )
+
 class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() {
 
     val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
@@ -37,11 +39,7 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
     private var _saldo = mutableStateOf(0.0)
     val saldo: State<Double> get() = _saldo
 
-    private var _descricao = mutableStateOf("")
-
-    private val _data = MutableLiveData<Long?>(null)
-    val data: LiveData<Long?> = _data
-
+    // Carrega dados iniciais
     init {
         bancos.value = repository.bancos
         carregarResumoFinanceiro()
@@ -54,43 +52,21 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
     private val _contaSelecionadaId = MutableLiveData<String?>(null)
     val contaSelecionadaId: LiveData<String?> = _contaSelecionadaId
 
-// No ContaSaldoViewModel.kt
+    // --- CARREGAMENTO DE DADOS ---
 
-    fun removerDespesa(id: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // 1. Busca a despesa antes de excluir para saber a conta
-            val despesa = repository.obterDespesaPorId(id)
-
-            if (despesa != null) {
-                // 2. Exclui
-                repository.excluirDespesa(id)
-
-                // 3. Atualiza o saldo da conta específica (Corrige o CardSection)
-                repository.recalcularSaldoTotal(despesa.conta)
-
-                // 4. Atualiza o resumo global (Corrige o HeaderSection)
-                carregarResumoFinanceiro()
-            }
-        }
-    }
     fun carregarResumoFinanceiro() {
         viewModelScope.launch(Dispatchers.IO) {
-            // Define o período: Mês atual
             val (inicio, fim) = repository.getDatesCurrentMonth()
-
             val listaResumo = repository.obterResumoFinanceiro(inicio, fim)
 
             var recGlobal = 0.0
             var despGlobal = 0.0
             val mapaContas = mutableMapOf<String, Pair<Double, Double>>()
 
-            // Consolida os dados em memória (extremamente rápido)
             listaResumo.forEach { dto ->
-                // Soma nos globais
                 if (dto.tipo == TipoDespesa.CREDITO) recGlobal += dto.valorTotal
                 else despGlobal += dto.valorTotal
 
-                // Soma por conta
                 val (recAtual, despAtual) = mapaContas.getOrDefault(dto.conta, 0.0 to 0.0)
                 if (dto.tipo == TipoDespesa.CREDITO) {
                     mapaContas[dto.conta] = (recAtual + dto.valorTotal) to despAtual
@@ -107,6 +83,97 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
         }
     }
 
+    // --- AÇÕES DE DESPESAS (COM LÓGICA SEGURA) ---
+
+    fun adicionarDespesa(despesa: Despesa) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Insere
+            repository.inserirDespesa(despesa)
+
+            // 2. Recalcula o saldo total da conta consultando todo o histórico (Seguro)
+            repository.recalcularSaldoTotal(despesa.conta)
+
+            // 3. Atualiza UI
+            carregarResumoFinanceiro()
+        }
+    }
+
+    /**
+     * Lógica Corrigida de Parcelamento
+     */
+    fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val valorTotal = despesa.valor
+
+            // Formata o valor total para exibir na descrição (Ex: "Total: R$ 1.000,00")
+            val formatador = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
+            val textoTotal = formatador.format(valorTotal)
+
+            // 1. Lógica dos Centavos: Calcula base e diferença
+            // Ex: 100 / 3 = 33.33 (base). Sobra 0.01 (diferença).
+            val valorParcelaBase = floor((valorTotal / numeroParcelas) * 100) / 100.0
+            val totalBase = (valorParcelaBase * 100).roundToInt() * numeroParcelas
+            val totalReal = (valorTotal * 100).roundToInt()
+            val diferenca = (totalReal - totalBase) / 100.0
+
+            val calendar = Calendar.getInstance()
+            calendar.timeInMillis = dataSelecionada
+
+            for (i in 1..numeroParcelas) {
+                // 2. A última parcela absorve a diferença
+                val valorFinal = if (i == numeroParcelas) {
+                    valorParcelaBase + diferenca
+                } else {
+                    valorParcelaBase
+                }
+
+                val novaDescricao = "${despesa.descricao} ($i/$numeroParcelas) • Total: $textoTotal"
+
+                val despesaParcelada = despesa.copy(
+                    id = 0, // Importante: Zera ID para criar novo registro
+                    descricao = novaDescricao,
+                    valor = valorFinal,
+                    data = calendar.time
+                )
+
+                repository.inserirDespesa(despesaParcelada)
+
+                // Avança 1 mês
+                calendar.add(Calendar.MONTH, 1)
+            }
+
+            // 3. Atualização Segura: Recalcula saldo total baseado no banco
+            repository.recalcularSaldoTotal(despesa.conta)
+            carregarResumoFinanceiro()
+        }
+    }
+
+    fun removerDespesa(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val despesa = repository.obterDespesaPorId(id)
+            if (despesa != null) {
+                repository.excluirDespesa(id)
+                repository.recalcularSaldoTotal(despesa.conta)
+                carregarResumoFinanceiro()
+            }
+        }
+    }
+
+    fun alternarStatusDespesa(item: DespesasDomain) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Atualiza status
+            repository.atualizarStatusPago(item.id.toLong(), !item.pago)
+
+            // 2. Recalcula saldo total da conta
+            repository.recalcularSaldoTotal(item.conta)
+
+            // 3. Atualiza UI
+            carregarResumoFinanceiro()
+        }
+    }
+
+    // --- GETTERS E AUXILIARES ---
+
     fun obterReceitaPorConta(conta: String): Double {
         return _dashboardState.value.dadosPorConta[conta]?.first ?: 0.0
     }
@@ -115,93 +182,6 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
         return _dashboardState.value.dadosPorConta[conta]?.second ?: 0.0
     }
 
-    /**
-     * Adiciona uma despesa na conta informada, sem alterar a seleção atual.
-     */
-    fun adicionarDespesa(despesa: Despesa) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // 1) Insere a despesa
-            repository.inserirDespesa(despesa)
-
-            // 2) Calcula novo saldo da conta informada
-            val saldoAtual = repository.obterSaldoPorConta(despesa.conta)
-            val novoSaldo = when (despesa.tipo) {
-                TipoDespesa.DEBITO -> saldoAtual - 0
-//                TipoDespesa.DEBITO -> saldoAtual - despesa.valor
-                TipoDespesa.CREDITO -> saldoAtual + despesa.valor
-            }
-
-            // 3) Atualiza saldo somente dessa conta
-            repository.atualizarSaldo(despesa.conta, novoSaldo)
-            carregarResumoFinanceiro()
-        }
-    }
-
-    /**
-     * Adiciona despesas parceladas na conta informada, sem alterar a seleção atual.
-     */
-    fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val saldoAtual = repository.obterSaldoPorConta(despesa.conta)
-            var saldoTemp = saldoAtual
-
-            val valorParcela = despesa.valor / numeroParcelas
-
-            for (i in 1..numeroParcelas) {
-                val dataParcelaCal = Calendar.getInstance().apply {
-                    timeInMillis = dataSelecionada
-                    add(Calendar.MONTH, i - 1) // Melhor usar MONTH ao invés de 30 dias fixos
-                }
-
-                val despesaParcelada = despesa.copy(
-                    descricao = "${despesa.descricao} - $i de $numeroParcelas",
-                    valor = valorParcela,
-                    data = Date(dataParcelaCal.timeInMillis)
-                )
-
-                repository.inserirDespesa(despesaParcelada)
-
-                saldoTemp = when (despesa.tipo) {
-                    TipoDespesa.DEBITO -> saldoTemp - 0
-//                    TipoDespesa.DEBITO -> saldoTemp - valorParcela
-                    TipoDespesa.CREDITO -> saldoTemp + valorParcela
-                }
-            }
-
-            repository.atualizarSaldo(despesa.conta, saldoTemp)
-            carregarResumoFinanceiro()
-        }
-    }
-
-    fun alternarStatusDespesa(item: DespesasDomain) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val novoStatus = !item.pago // Inverte o status atual
-
-            // 1. Atualiza o status usando o ID que vem do Domain
-            repository.atualizarStatusPago(item.id.toLong(), novoStatus)
-
-            // 2. Busca o saldo atual da conta
-            val saldoAtual = repository.obterSaldoPorConta(item.conta)
-
-            // 3. Lógica de SOMA ou SUBTRAÇÃO
-            val novoSaldo = if (novoStatus) {
-                // Se virou "Pago", tira do saldo
-                saldoAtual - item.valor
-            } else {
-                // Se desmarcou (estorno), devolve ao saldo
-                saldoAtual + item.valor
-            }
-
-            // 4. Atualiza o saldo no banco
-            repository.atualizarSaldo(item.conta, novoSaldo)
-
-            // 5. Atualiza a UI
-            carregarResumoFinanceiro()
-        }
-    }
-    /**
-     * Define a conta selecionada (chamada pelo CardSection ao clicar em um cartão).
-     */
     fun selecionarConta(contaId: String) {
         _contaSelecionadaId.value = contaId
     }
@@ -217,5 +197,4 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
             repository.excluirConta(id)
         }
     }
-
 }
