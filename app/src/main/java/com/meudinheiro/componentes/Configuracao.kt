@@ -10,10 +10,16 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,9 +31,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
+import com.meudinheiro.repository.MainRepository
+import com.meudinheiro.viewModel.CategoriaViewModel
+import com.meudinheiro.viewModel.CategoriaViewModelFactory
+import com.meudinheiro.viewModel.DespesasViewModel
+import com.meudinheiro.viewModel.DespesasViewModelFactory
 import kotlinx.coroutines.launch
 
 // Cores locais mantendo o padrão Premium
@@ -39,6 +53,7 @@ fun Configuracao(
     userPrefs: UserPreferences,
     onBack: () -> Unit
 ) {
+    var isExporting by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -48,6 +63,17 @@ fun Configuracao(
     val hour by userPrefs.notifHourFlow.collectAsState(initial = 9)
     val minute by userPrefs.notifMinuteFlow.collectAsState(initial = 0)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
+    val mainRepository = remember { MainRepository(context) }
+    val categoriaVm: CategoriaViewModel =
+        viewModel(factory = CategoriaViewModelFactory(mainRepository))
+    val despesasVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(mainRepository))
+    var exibirGerenciadorCategorias by remember { mutableStateOf(false) }
+
+    val listaDespesas by despesasVM.despesasFiltradas.collectAsState()
+    val mesIndex by despesasVM.mesSelecionado.collectAsState()
+    val anoAtual by despesasVM.anoSelecionado.collectAsState()
+
+    val nomesMeses = remember { listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro") }
 
     // Launcher de Permissão
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -92,7 +118,13 @@ fun Configuracao(
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = { Text("Configurar Alertas", color = TextWhite, fontWeight = FontWeight.Bold) },
+                    title = {
+                        Text(
+                            "Configurar Alertas",
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.Default.ArrowBack, "Voltar", tint = TextWhite)
@@ -120,7 +152,11 @@ fun Configuracao(
                                     permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 } else {
                                     AgendadorNotifDespesas.runNow(context)
-                                    Toast.makeText(context, "Notificação enviada!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        "Notificação enviada!",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             }
                         },
@@ -133,7 +169,11 @@ fun Configuracao(
                         ),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Icon(Icons.Default.NotificationsActive, null, modifier = Modifier.size(20.dp))
+                        Icon(
+                            Icons.Default.NotificationsActive,
+                            null,
+                            modifier = Modifier.size(20.dp)
+                        )
                         Spacer(Modifier.width(8.dp))
                         Text("Testar Notificação Agora", fontWeight = FontWeight.Bold)
                     }
@@ -154,6 +194,7 @@ fun Configuracao(
             },
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { padding ->
+
 
             LazyColumn(
                 modifier = Modifier
@@ -193,7 +234,11 @@ fun Configuracao(
                                             if (!hasNotificationPermission()) {
                                                 permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                             } else {
-                                                AgendadorNotifDespesas.scheduleDaily(context, hour, minute)
+                                                AgendadorNotifDespesas.scheduleDaily(
+                                                    context,
+                                                    hour,
+                                                    minute
+                                                )
                                             }
                                         } else {
                                             AgendadorNotifDespesas.cancel(context)
@@ -210,7 +255,12 @@ fun Configuracao(
                 if (enabled) {
                     item {
                         PremiumConfigCard {
-                            Text("Personalização", style = MaterialTheme.typography.titleMedium, color = TextWhite, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Personalização",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextWhite,
+                                fontWeight = FontWeight.SemiBold
+                            )
                             Spacer(Modifier.height(20.dp))
 
                             // Dias de Antecedência
@@ -253,7 +303,11 @@ fun Configuracao(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Filtro Inteligente", style = MaterialTheme.typography.bodyLarge, color = TextWhite)
+                                    Text(
+                                        "Filtro Inteligente",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = TextWhite
+                                    )
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         "Ignorar Débitos, avisar apenas Cartão de Crédito.",
@@ -264,10 +318,69 @@ fun Configuracao(
                                 }
                                 Switch(
                                     checked = onlyCredit,
-                                    onCheckedChange = { v -> scope.launch { userPrefs.saveNotifOnlyCredit(v) } },
+                                    onCheckedChange = { v ->
+                                        scope.launch {
+                                            userPrefs.saveNotifOnlyCredit(
+                                                v
+                                            )
+                                        }
+                                    },
                                     colors = premiumSwitchColors
                                 )
                             }
+                        }
+                    }
+                }
+
+                item {
+                    PremiumConfigCard {
+                        Text(
+                            "Ferramentas de Dados",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextWhite
+                        )
+                        Spacer(Modifier.height(16.dp))
+
+                        // Botão Categorias
+                        OutlinedButton(
+                            onClick = { exibirGerenciadorCategorias = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                            border = BorderStroke(1.dp, TextWhite.copy(0.2f))
+                        ) {
+                            Icon(Icons.Default.Category, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Personalizar Categorias")
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        // Botão Exportar
+                        Button(
+                            onClick = {
+                                // Verifica se há dados para exportar
+                                if (listaDespesas.isNotEmpty()) {
+                                    val nomeMes = nomesMeses.getOrElse(mesIndex) { "Mes_Atual" }
+
+                                    // Chama a função do Repositório (que criamos anteriormente)
+                                    // Certifique-se de que a função 'exportarExtratoPDF' está no MainRepository
+                                    mainRepository.exportarExtratoPDF(
+                                        context = context,
+                                        mes = nomeMes,
+                                        ano = anoAtual,
+                                        despesas = listaDespesas
+                                    )
+                                } else {
+                                    Toast.makeText(context, "Não há despesas para exportar neste mês.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                            shape = RoundedCornerShape(12.dp) // Mantendo padrão visual
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Exportar PDF de ${nomesMeses.getOrElse(mesIndex) { "" }}")
                         }
                     }
                 }
@@ -278,11 +391,20 @@ fun Configuracao(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextWhite.copy(alpha = 0.4f),
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
                     )
                 }
             }
         }
+        if (exibirGerenciadorCategorias) {
+            GerenciarCategoriasDialog(
+                viewModel = categoriaVm, // A variável que inicializamos no passo anterior
+                onDismiss = { exibirGerenciadorCategorias = false }
+            )
+        }
+
     }
 }
 
@@ -345,7 +467,11 @@ private fun PremiumTimeRow(
     onMinuteChange: (Int) -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-        Text("Horário do Alerta", style = MaterialTheme.typography.bodyMedium, color = TextWhite.copy(alpha = 0.8f))
+        Text(
+            "Horário do Alerta",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextWhite.copy(alpha = 0.8f)
+        )
         Spacer(Modifier.height(16.dp))
 
         Row(
@@ -359,7 +485,9 @@ private fun PremiumTimeRow(
                 " : ",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextWhite.copy(alpha = 0.5f),
-                modifier = Modifier.padding(horizontal = 8.dp).offset(y = (-4).dp)
+                modifier = Modifier
+                    .padding(horizontal = 8.dp)
+                    .offset(y = (-4).dp)
             )
 
             // Minutos (Pulo de 5 em 5)
@@ -413,8 +541,120 @@ private fun StepperButton(text: String, onClick: () -> Unit, enabled: Boolean = 
             disabledContentColor = TextWhite.copy(alpha = 0.2f),
             containerColor = if (enabled) Color.White.copy(alpha = 0.05f) else Color.Transparent
         ),
-        border = BorderStroke(1.dp, if(enabled) TextWhite.copy(alpha = 0.3f) else TextWhite.copy(alpha = 0.1f))
+        border = BorderStroke(
+            1.dp,
+            if (enabled) TextWhite.copy(alpha = 0.3f) else TextWhite.copy(alpha = 0.1f)
+        )
     ) {
         Text(text, fontSize = 20.sp, fontWeight = FontWeight.Light)
+    }
+}
+
+@Composable
+fun GerenciarCategoriasDialog(
+    viewModel: CategoriaViewModel,
+    onDismiss: () -> Unit
+) {
+    var novoNome by remember { mutableStateOf("") }
+    val categorias by viewModel.categorias.collectAsState()
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp), // Padding de segurança das bordas da tela
+            contentAlignment = Alignment.Center // Centraliza o conteúdo (o Card)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth() // Ocupa a largura disponível dentro do Box (respeitando o padding de 16dp)
+                    .heightIn(min = 200.dp, max = 500.dp), // Define limites de altura para o diálogo
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = CardBg),
+                border = BorderStroke(1.dp, Color.White.copy(0.1f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp) // Padding interno do conteúdo do Card
+                        .fillMaxWidth()
+                ) {
+                    // Cabeçalho
+                    Text("Minhas Categorias", style = MaterialTheme.typography.headlineSmall, color = TextWhite, fontWeight = FontWeight.Bold)
+                    Text("Adicione ou remova categorias personalizadas.", style = MaterialTheme.typography.bodySmall, color = TextWhite.copy(0.6f))
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Input
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = novoNome,
+                            onValueChange = { novoNome = it },
+                            label = { Text("Nova Categoria") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TextWhite,
+                                unfocusedBorderColor = TextWhite.copy(0.3f),
+                                focusedLabelColor = TextWhite,
+                                unfocusedLabelColor = TextWhite.copy(0.6f),
+                                focusedTextColor = TextWhite,
+                                unfocusedTextColor = TextWhite,
+                                cursorColor = TextWhite // Adicionado para garantir visibilidade do cursor
+                            )
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(
+                            onClick = {
+                                if (novoNome.isNotBlank()) {
+                                    viewModel.adicionarCategoria(novoNome.trim(), "ic_default")
+                                    novoNome = ""
+                                }
+                            },
+                            modifier = Modifier.background(Color(0xFF4CAF50), CircleShape)
+                        ) {
+                            Icon(Icons.Default.Add, null, tint = TextWhite)
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Lista de Categorias
+                    LazyColumn(
+                        modifier = Modifier.weight(1f, fill = false), // Scrollável mas não expande infinitamente
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(categorias) { cat ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White.copy(0.05f), RoundedCornerShape(8.dp))
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(cat.title, color = TextWhite, fontWeight = FontWeight.Medium)
+                                IconButton(onClick = { viewModel.excluirCategoria(cat) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFEF5350))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Botão Concluído
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = TextWhite, contentColor = PremiumDarkBlue)
+                    ) {
+                        Text("Concluído", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }

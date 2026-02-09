@@ -4,21 +4,48 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.formatarMoedaBR
+
+private val ChartColors = listOf(
+    Color(0xFF69F0AE), // Verde Neon
+    Color(0xFF40C4FF), // Azul Claro
+    Color(0xFFFFD54F), // Amarelo
+    Color(0xFFFF8A80), // Vermelho Claro
+    Color(0xFFB388FF), // Roxo
+    Color(0xFF80D8FF), // Ciano
+    Color(0xFFA1887F), // Marrom
+    Color(0xFF90A4AE)  // Cinza Azulado
+)
 
 @Composable
 fun ResumoGeralCard(
@@ -159,4 +186,103 @@ private fun IndicatorDot(color: Color) {
             .size(6.dp)
             .background(color, RoundedCornerShape(2.dp))
     )
+}
+
+@Composable
+fun PremiumPieChart(
+    despesas: List<DespesasDomain>,
+    isPrivate: Boolean = false
+) {
+    // 1. Agrupar despesas por categoria e somar valores (apenas débitos)
+    val gastosPorCategoria = despesas
+        .filter { it.tipo == TipoDespesa.DEBITO }
+        .groupBy { it.categoria } // ou item.categoria
+        .mapValues { entry -> entry.value.sumOf { it.valor } }
+
+    val totalGeral = gastosPorCategoria.values.sum()
+
+    // Cores para as fatias
+    val listaCores = listOf(
+        Color(0xFF69F0AE), Color(0xFF40C4FF), Color(0xFFFFD54F),
+        Color(0xFFFF8A80), Color(0xFFB388FF), Color(0xFF80D8FF)
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Distribuição de Gastos",
+            style = MaterialTheme.typography.titleMedium,
+            color = TextWhite,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.size(200.dp)) {
+                var startAngle = -90f
+
+                gastosPorCategoria.entries.forEachIndexed { index, entry ->
+                    val sweepAngle = (entry.value / totalGeral).toFloat() * 360f
+                    val cor = listaCores[index % listaCores.size]
+
+                    drawArc(
+                        color = cor,
+                        startAngle = startAngle,
+                        sweepAngle = sweepAngle,
+                        useCenter = true
+                    )
+                    startAngle += sweepAngle
+                }
+
+                // Desenha o círculo central para transformar em Donut (opcional)
+                drawCircle(
+                    color = PremiumDarkBlue,
+                    radius = size.minDimension / 4
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // Legendas dinâmicas
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            maxItemsInEachRow = 3
+        ) {
+            gastosPorCategoria.entries.forEachIndexed { index, entry ->
+                ChartLegendItem(
+                    color = listaCores[index % listaCores.size],
+                    label = entry.key,
+                    value = entry.value,
+                    isPrivate = isPrivate
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ChartLegendItem(color: Color, label: String, value: Double, isPrivate: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(8.dp)
+    ) {
+        Box(modifier = Modifier.size(10.dp).background(color, CircleShape))
+        Spacer(Modifier.width(6.dp))
+        Column {
+            Text(label, fontSize = 11.sp, color = TextWhite.copy(0.6f))
+            Text(
+                text = formatarMoedaBR(value, isPrivate),
+                fontSize = 12.sp,
+                color = TextWhite,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.BancoDomain
+import com.meudinheiro.data.Categoria
 import com.meudinheiro.data.CategoriaDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
@@ -14,6 +15,7 @@ import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.Calendar
 import java.util.Date
 
@@ -25,6 +27,7 @@ class MainRepository(private val context: Context) {
     private val contaSaldoDao = db.contaSaldoDao()
     private val despesaFixaDao = db.despesaFixaDao()
 
+    private val categoriaDao = db.categoriaDao()
 
     /* ======================= DESPESAS ======================= */
 
@@ -324,6 +327,74 @@ class MainRepository(private val context: Context) {
         }
     }
 
+    fun exportarExtratoPDF(context: Context, mes: String, ano: Int, despesas: List<DespesasDomain>) {
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val paint = android.graphics.Paint()
+        val titlePaint = android.graphics.Paint().apply {
+            isFakeBoldText = true
+            textSize = 18f
+            color = android.graphics.Color.BLACK
+        }
+
+        // Configuração da Página (A4: 595 x 842 pts)
+        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+
+        // Cabeçalho
+        canvas.drawText("Extrato Mensal - $mes / $ano", 40f, 50f, titlePaint)
+        canvas.drawText("Gerado pelo Meu Dinheiro App", 40f, 75f, paint.apply { textSize = 12f })
+
+        var yPosition = 120f
+        paint.textSize = 10f
+
+        // Cabeçalho da Tabela
+        canvas.drawText("Data", 40f, yPosition, titlePaint.apply { textSize = 10f })
+        canvas.drawText("Descrição", 120f, yPosition, titlePaint)
+        canvas.drawText("Valor", 450f, yPosition, titlePaint)
+
+        canvas.drawLine(40f, yPosition + 5f, 550f, yPosition + 5f, paint)
+        yPosition += 25f
+
+        // Itens
+        despesas.forEach { item ->
+            val dataStr = java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault()).format(item.data)
+            canvas.drawText(dataStr, 40f, yPosition, paint)
+            canvas.drawText(item.descricao, 120f, yPosition, paint)
+
+            val valorStr = if (item.tipo == TipoDespesa.CREDITO) "+ ${item.valor}" else "- ${item.valor}"
+            canvas.drawText(valorStr, 450f, yPosition, paint)
+
+            yPosition += 20f
+
+            // Se a página encher, você precisaria criar uma nova (lógica simplificada aqui)
+        }
+
+        pdfDocument.finishPage(page)
+
+        // Salvar e Compartilhar
+        val fileName = "Extrato_${mes}_${ano}.pdf"
+        val file = java.io.File(context.cacheDir, fileName)
+
+        try {
+            pdfDocument.writeTo(java.io.FileOutputStream(file))
+            pdfDocument.close()
+
+            // Intent para compartilhar
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.provider", file
+            )
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, "Compartilhar Extrato"))
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
     // Busca todas as assinaturas ativas para a tela de gerenciamento
 
     suspend fun obterTodasRecorrencias(): List<DespesaFixa> {
@@ -332,5 +403,24 @@ class MainRepository(private val context: Context) {
     // Remove a regra (cancela a assinatura futura)
     suspend fun excluirRecorrencia(id: Int) {
         despesaFixaDao.excluir(id)
+    }
+
+    fun obterCategoriasCustom(): Flow<List<CategoriaDomain>> {
+        return categoriaDao.obterTodas().map { entities ->
+            entities.map { entity ->
+                CategoriaDomain(
+                    pic = entity.pic,   // String do ícone
+                    title = entity.title // Nome da categoria
+                )
+            }
+        }
+    }
+
+    suspend fun salvarCategoria(categoria: Categoria) {
+        categoriaDao.inserir(categoria)
+    }
+
+    suspend fun excluirCategoriaPorNome(nome: String) {
+        categoriaDao.excluirPorNome(nome)
     }
 }

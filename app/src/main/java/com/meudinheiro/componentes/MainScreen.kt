@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
@@ -228,7 +229,6 @@ fun MainScreen(
                     Icon(Icons.Rounded.ChevronRight, "Próximo", tint = TextWhite)
                 }
             }
-
             // 6. LISTA DE DESPESAS (FILTRADA)
             val despesasFiltradas by despVM.despesasFiltradas.collectAsState()
 

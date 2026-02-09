@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.meudinheiro.dao.CategoriaDao
 import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.dao.DespesaDao
 import com.meudinheiro.dao.DespesaFixaDao
@@ -17,13 +18,17 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
-@Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class], version = 2)
+@Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class, Categoria::class], version = 1)
 @TypeConverters(Converters::class)
 
 abstract class AppDatabase : RoomDatabase() {
     abstract fun despesaDao(): DespesaDao
     abstract fun contaSaldoDao(): ContaSaldoDao
     abstract fun despesaFixaDao(): DespesaFixaDao
+
+    abstract fun categoriaDao(): CategoriaDao
+
+
 
     companion object{
         @Volatile private var INSTANCE: AppDatabase? = null

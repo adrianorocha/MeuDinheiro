@@ -65,7 +65,6 @@ import com.meudinheiro.viewModel.AuthViewModelFactory
 
 // Cores "Premium" Locais
 private val PremiumAccent = Color(0xFF415A77)
-
 @Composable
 fun LoginScreen(
     userPrefs: UserPreferences,
