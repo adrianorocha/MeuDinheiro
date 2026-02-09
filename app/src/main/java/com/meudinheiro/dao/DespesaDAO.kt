@@ -104,6 +104,13 @@ ORDER BY data ASC
 """)
     suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): List<ResumoFinanceiroDto>
 
+    // No DespesasDao.kt
+    @Query("""
+    SELECT conta, tipo, SUM(valor) as valorTotal 
+    FROM despesas 
+    GROUP BY conta, tipo
+""")
+    fun obterResumoGlobalPorConta(): List<ResumoFinanceiroDto>
 @Query("UPDATE Despesas SET pago = :status WHERE id = :id")
 suspend fun atualizarStatusPago(id: Long, status: Boolean)
 }

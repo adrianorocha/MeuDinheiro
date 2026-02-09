@@ -1,31 +1,15 @@
 package com.meudinheiro.componentes
 
-import android.R
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -45,11 +29,8 @@ import com.meudinheiro.viewModel.DespesasViewModelFactory
 import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.runtime.key
-import androidx.compose.ui.res.painterResource
-import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.ChevronRight
 
 // Cores Globais Premium
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -62,91 +43,86 @@ fun MainScreen(
     onOpenAvisos: () -> Unit,
     onOpenPendencias: () -> Unit
 ) {
-    var selectedIndex by remember { mutableStateOf(-1) }
-    fun onItemSelected(index: Int) {
-        selectedIndex = index
-    }
-
-    val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
-
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // --- ViewModels ---
     val repository = remember { MainRepository(context) }
     val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
     val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
 
+    // --- Estados (Preferences & User) ---
+    val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
+    val isPrivate by userPrefs.privateModeFlow.collectAsState(initial = false)
+
     val nomeState by homeVM.userName.collectAsState(initial = null)
     val fotoSalva by homeVM.userPhoto.collectAsState(initial = "")
     var emCadastro by remember { mutableStateOf(false) }
 
+    // --- Estados de Dados (Conta, Despesa, Dashboard) ---
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
-    val contaSelecionadaId by contaVM.contaSelecionadaId.observeAsState(null)
-
+    val contaSelecionadaId by contaVM.contaSelecionadaId.observeAsState(null) // ID da conta atual
     val dashboardState by contaVM.dashboardState.collectAsState()
 
-    val nome = nomeState
+    val mesAtual by despVM.mesSelecionado.collectAsState()
+    val anoAtual by despVM.anoSelecionado.collectAsState()
 
-    if (nome == null) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White),
-            contentAlignment = Alignment.Center
-        ) {
+    var selectedIndex by remember { mutableStateOf(-1) }
+    fun onItemSelected(index: Int) { selectedIndex = index }
+
+    // --- Verificações de Inicialização ---
+    if (nomeState == null) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = PremiumDarkBlue)
         }
-        return // Interrompe a execução até carregar o nome
-    }
-
-    if (nome!!.isBlank() || emCadastro) {
-        CadastroUsuarioScreen(
-            userPrefs = userPrefs,
-            onFinished = { emCadastro = false }
-        )
         return
     }
 
-    var refreshTrigger by remember { mutableIntStateOf(0) }
-    var notifCount by remember { mutableStateOf(0) }
+    val nome = nomeState
+    if (nome!!.isBlank() || emCadastro) {
+        CadastroUsuarioScreen(userPrefs = userPrefs, onFinished = { emCadastro = false })
+        return
+    }
 
-    LaunchedEffect(refreshTrigger) { contaVM.carregarResumoFinanceiro() }
-    LaunchedEffect(Unit) { contaVM.carregarResumoFinanceiro() }
-    LaunchedEffect(daysAhead, refreshTrigger) {
+    // --- Lógica de Notificações ---
+    var notifCount by remember { mutableStateOf(0) }
+    LaunchedEffect(daysAhead) {
         notifCount = withContext(Dispatchers.IO) {
             repository.contarPendencias(daysAhead, onlyCredit = false)
         }
     }
 
-    LaunchedEffect(contas, contaSelecionadaId) {
-        if (contas.isEmpty()) return@LaunchedEffect
-        val selected = contaSelecionadaId?.trim().orEmpty()
-        val exists = selected.isNotBlank() && contas.any { it.conta == selected }
-        if (!exists) {
-            val first = contas.first().conta
-            contaVM.selecionarConta(first)
+    // --- LÓGICA CRÍTICA DE SELEÇÃO DE CONTA ---
+    // 1. Se carregar contas e nenhuma estiver selecionada, seleciona a primeira.
+    LaunchedEffect(contas) {
+        if (contas.isNotEmpty()) {
+            val current = contaSelecionadaId
+            // Se nulo ou se a conta selecionada não existe mais na lista
+            if (current.isNullOrBlank() || contas.none { it.conta == current }) {
+                contaVM.selecionarConta(contas.first().conta)
+            }
         }
     }
 
+    // 2. A PONTE: Sempre que o ID da conta mudar (no ContaVM), avisa o DespesasVM para filtrar
     LaunchedEffect(contaSelecionadaId) {
-        val id = contaSelecionadaId?.trim().orEmpty()
-        if (id.isNotBlank()) {
-            despVM.setContaSelecionada(contaSelecionadaId.orEmpty())
-        }
+        val idParaFiltro = contaSelecionadaId?.trim().orEmpty()
+        despVM.setContaSelecionada(idParaFiltro)
+
+        // Opcional: Recarrega o resumo se necessário, embora o ContaVM já deva fazer isso nas ações
+        contaVM.carregarSaldosGlobais()
     }
 
-    val despesas by despVM.despesasLiveData.observeAsState(emptyList())
-
+    // --- UI Principal ---
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(PremiumDarkBlue, PremiumLightBlue)
-                )
-            )
+            .background(Brush.verticalGradient(colors = listOf(PremiumDarkBlue, PremiumLightBlue)))
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
+            // 1. HEADER
             HeaderSection(
                 nome = nome,
                 fotoUri = fotoSalva.takeIf { it.isNotBlank() },
@@ -157,36 +133,47 @@ fun MainScreen(
                 hasUnreadNotifications = (notifCount > 0),
                 notificationCount = notifCount,
                 onNotificationsClick = onOpenPendencias,
+                // Passamos totais globais
                 receitaTotal = dashboardState.receitaGlobal,
-                despesaTotal = dashboardState.despesaGlobal
+                despesaTotal = dashboardState.despesaGlobal,
+                // Modo Privado
+                isPrivateMode = isPrivate,
+                onTogglePrivate = { scope.launch { userPrefs.togglePrivateMode() } }
             )
 
+            // 2. RESUMO GERAL (Patrimônio)
+            ResumoGeralCard(
+                receitaTotal = dashboardState.receitaGlobal,
+                despesaTotal = dashboardState.despesaGlobal,
+                isPrivate = isPrivate // Conectado ao Modo Privado
+            )
+
+            // 3. CARDS DE CONTAS (Carrossel)
             if (contas.isNotEmpty()) {
-                key(dashboardState) {
+                // Key força recomposição se o dashboard mudar
+                key(dashboardState, contaSelecionadaId) {
                     CardSection(
                         contas = contas,
-                        contasSelecionadaId = contaSelecionadaId?.orEmpty(),
+                        contasSelecionadaId = contaSelecionadaId,
+                        isPrivate = isPrivate,
                         onExcluir = { conta ->
                             contaVM.removerContaSaldo(conta.id)
-                            contaVM.carregarResumoFinanceiro()
+                            contaVM.carregarSaldosGlobais()
                         },
-                        onContaSelecionada = { novaConta ->
-                            contaVM.selecionarConta(novaConta)
-                            contaVM.carregarResumoFinanceiro()
+                        onContaSelecionada = { novaContaId ->
+                            // Atualiza no VM de Conta -> Dispara o LaunchedEffect acima -> Atualiza Filtro
+                            contaVM.selecionarConta(novaContaId)
                         },
-                        onAtualizar = { conta ->
-                            contaVM.selecionarConta(conta.conta)
-                            contaVM.carregarResumoFinanceiro()
+                        onAtualizar = {
+                            // Apenas para garantir UI update
                         },
-                        getReceitaConta = { contaId -> contaVM.obterReceitaPorConta(contaId) },
-                        getDespesaConta = { contaId -> contaVM.obterDespesaPorConta(contaId) }
+                        getReceitaConta = { id -> contaVM.obterReceitaPorConta(id) },
+                        getDespesaConta = { id -> contaVM.obterDespesaPorConta(id) }
                     )
                 }
             } else {
                 Text(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextWhite.copy(alpha = 0.5f),
@@ -195,6 +182,7 @@ fun MainScreen(
                 )
             }
 
+            // 4. AÇÕES RÁPIDAS
             ActionButtonRow(
                 categorias = repository.categorias.map { it.title },
                 getPicCategoria = { nomeCategoria -> repository.getPicCategoria(nomeCategoria) },
@@ -203,6 +191,7 @@ fun MainScreen(
                 onConfigClick = onOpenAvisos
             )
 
+            // Janela de Cadastro de Conta (se selecionado no menu inferior)
             if (selectedIndex == 0) {
                 ContaBancaria(
                     viewModelFactory = ContaSaldoViewModelFactory(repository),
@@ -210,37 +199,19 @@ fun MainScreen(
                 )
             }
 
-/*            Row(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth()
-                    .align(Alignment.CenterHorizontally)
-            )
-            // --- SELETOR DE MÊS ---
- */
-            val mesAtual by despVM.mesSelecionado.collectAsState()
-            val anoAtual by despVM.anoSelecionado.collectAsState()
-
-            // Array auxiliar para nome dos meses
+            // 5. SELETOR DE MÊS
             val meses = remember { listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro") }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp), // Padding ajustado
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Botão Voltar Mês
                 IconButton(onClick = { despVM.mesAnterior() }) {
-                    Icon(
-                        imageVector = Icons.Rounded.ChevronLeft, // Use um icone de seta esquerda (ou Icons.Rounded.ChevronLeft)
-                        contentDescription = "Anterior",
-                        tint = TextWhite
-                    )
+                    Icon(Icons.Rounded.ChevronLeft, "Anterior", tint = TextWhite)
                 }
-
-                // Texto Mês/Ano
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = meses.getOrElse(mesAtual) { "" },
@@ -253,26 +224,17 @@ fun MainScreen(
                         color = TextWhite.copy(alpha = 0.6f)
                     )
                 }
-
-                // Botão Avançar Mês
                 IconButton(onClick = { despVM.proximoMes() }) {
-                    Icon(
-                        imageVector = Icons.Rounded.ChevronRight, // Use um icone de seta direita (ou Icons.Rounded.ChevronRight)
-                        contentDescription = "Próximo",
-                        tint = TextWhite
-                    )
+                    Icon(Icons.Rounded.ChevronRight, "Próximo", tint = TextWhite)
                 }
             }
-            // ---------------------
 
-            // OBSERVAÇÃO DA LISTA FILTRADA
+            // 6. LISTA DE DESPESAS (FILTRADA)
             val despesasFiltradas by despVM.despesasFiltradas.collectAsState()
 
             if (despesasFiltradas.isEmpty()) {
                 Text(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Normal,
                     color = TextWhite.copy(alpha = 0.6f),
@@ -282,13 +244,15 @@ fun MainScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 100.dp)
+                    contentPadding = PaddingValues(bottom = 100.dp)
                 ) {
                     items(despesasFiltradas, key = { it.id }) { item ->
                         DespesasItem(
                             item = item,
-                            onRemover = { id ->
-                                contaVM.removerDespesa(id)
+                            isPrivate = isPrivate, // Conectado ao Modo Privado
+                            onRemover = { despesa ->
+                                contaVM.removerDespesa(despesa)
+                                // Pequeno delay ou refresh pode ser necessário dependendo da velocidade do banco
                             },
                             onTogglePago = { itemClicado ->
                                 contaVM.alternarStatusDespesa(itemClicado)
@@ -298,6 +262,8 @@ fun MainScreen(
                 }
             }
         }
+
+        // MENU INFERIOR
         NavigationSection(
             selectedIndex = selectedIndex,
             onItemSelected = ::onItemSelected,

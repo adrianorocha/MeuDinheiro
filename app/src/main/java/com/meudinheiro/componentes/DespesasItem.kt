@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -46,13 +48,16 @@ import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
 
 // Cores Premium Locais
-private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.8f)
-
+private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.9f)
+private val GreenColor = Color(0xFF69F0AE)
+private val RedColor = Color(0xFFEF5350)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DespesasItem(
     item: DespesasDomain,
-    onRemover: (Int) -> Unit,
+    isPrivate: Boolean = false,
+    // MUDANÇA 1: Passamos o objeto inteiro para o ViewModel decidir a lógica
+    onRemover: (DespesasDomain) -> Unit,
     onTogglePago: ((DespesasDomain) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -62,53 +67,68 @@ fun DespesasItem(
 
     val resId = remember(item.pic) {
         val id = context.resources.getIdentifier(item.pic, "drawable", context.packageName)
-        if (id != 0) id else R.drawable.user
+        if (id != 0) id else R.drawable.ic_launcher_foreground
     }
 
     if (showDialog) {
+        // MUDANÇA 2: Texto dinâmico baseado no status de pagamento
+        val mensagemAviso = remember(item) {
+            if (item.tipo == TipoDespesa.DEBITO) {
+                if (item.pago) "O valor será restituído ao saldo."
+                else "O saldo não será afetado (não estava pago)."
+            } else {
+                // Para receitas (Crédito)
+                if (item.pago) "O valor será deduzido do saldo."
+                else "O saldo não será afetado."
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showDialog = false },
             containerColor = Color(0xFF1E2B3E),
-            titleContentColor = TextWhite,
-            textContentColor = TextWhite.copy(0.8f),
-            title = { Text("Remover despesa") },
-            text = { Text("Deseja remover esta despesa? O valor será restituído.") },
+            title = { Text("Remover movimentação", color = TextWhite) },
+            text = {
+                Column {
+                    Text("Deseja remover '${item.descricao}'?", color = TextWhite.copy(0.9f))
+                    Spacer(Modifier.height(8.dp))
+                    Text(mensagemAviso, color = TextWhite.copy(0.6f), fontSize = 13.sp)
+                }
+            },
             confirmButton = {
                 Button(
-                    onClick = { onRemover(item.id); showDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))
+                    // MUDANÇA 3: Passa o item completo
+                    onClick = { onRemover(item); showDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = RedColor)
                 ) { Text("Remover") }
             },
             dismissButton = {
-                TextButton(
-                    onClick = { showDialog = false },
-                    colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)
-                ) { Text("Cancelar") }
+                TextButton(onClick = { showDialog = false }) { Text("Cancelar", color = TextWhite) }
             }
         )
     }
 
-    // Visual Card Compacto
-    Surface(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            // REDUÇÃO: Padding vertical externo de 6dp para 3dp
-            .padding(horizontal = 16.dp, vertical = 3.dp)
-            .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = { showDialog = true }),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .combinedClickable(
+                onClick = { onClick?.invoke() },
+                onLongClick = { showDialog = true }
+            ),
         shape = RoundedCornerShape(16.dp),
-        color = ItemBg,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-        shadowElevation = 2.dp
+        colors = CardDefaults.cardColors(containerColor = ItemBg),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            // REDUÇÃO: Padding interno de 16dp para 12dp
-            modifier = Modifier.padding(all = 12.dp),
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // REDUÇÃO: Ícone de 48dp para 40dp
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .background(Color.White.copy(alpha = 0.05f), CircleShape)
                     .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
                 contentAlignment = Alignment.Center
@@ -117,7 +137,7 @@ fun DespesasItem(
                     painter = painterResource(id = resId),
                     contentDescription = null,
                     tint = Color.Unspecified,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
@@ -126,49 +146,47 @@ fun DespesasItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.descricao,
-                    // AJUSTE: Fonte levemente menor e compacta
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color = TextWhite,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = dataFormatada,
-                    style = MaterialTheme.typography.labelSmall, // Fonte menor para data
+                    style = MaterialTheme.typography.labelSmall,
                     color = TextWhite.copy(alpha = 0.5f)
                 )
             }
 
             Column(horizontalAlignment = Alignment.End) {
-                val corValor = if (item.tipo == TipoDespesa.CREDITO) Color(0xFF69F0AE) else TextWhite
+                val corValor = if (item.tipo == TipoDespesa.CREDITO) GreenColor else TextWhite
+
                 Text(
-                    text = formatarMoedaBR(item.valor),
-                    // AJUSTE: Fonte de valor um pouco mais compacta
+                    text = formatarMoedaBR(item.valor, isPrivate),
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                     color = corValor
                 )
 
                 if (item.tipo == TipoDespesa.DEBITO && onTogglePago != null) {
-                    // REDUÇÃO: Spacer de 8dp para 4dp
                     Spacer(Modifier.height(4.dp))
 
-                    val (bg, txtColor, txt) = if (item.pago) {
-                        Triple(Color(0xFF00C853).copy(alpha = 0.2f), Color(0xFF69F0AE), "Pago")
+                    val (bgStatus, txtColor, txtStatus) = if (item.pago) {
+                        Triple(GreenColor.copy(alpha = 0.2f), GreenColor, "Pago")
                     } else {
-                        Triple(Color(0xFFFF3D00).copy(alpha = 0.15f), Color(0xFFFF9E80), "Pagar")
+                        Triple(RedColor.copy(alpha = 0.15f), RedColor.copy(alpha = 0.8f), "Pagar")
                     }
 
                     Surface(
-                        color = bg,
-                        shape = RoundedCornerShape(8.dp),
+                        color = bgStatus,
+                        shape = RoundedCornerShape(6.dp),
                         modifier = Modifier.clickable { onTogglePago(item) }
                     ) {
                         Text(
-                            text = txt,
-                            fontSize = 12.sp, // Fonte micro para o botão
+                            text = txtStatus,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = txtColor,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
                 }

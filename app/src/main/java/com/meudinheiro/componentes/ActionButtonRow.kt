@@ -1,6 +1,7 @@
 package com.meudinheiro.componentes
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -13,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.Update
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.room.util.copy
 import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
@@ -42,7 +46,11 @@ import java.util.Locale
 // Cores locais
 private val DialogBg = Color(0xFF1E2B3E)
 private val TextColor = Color(0xFFE0E1DD)
-private val CardBg = Color(0xFF1E2B3E)
+private enum class Frequencia {
+    UNICA,
+    PARCELADA,
+    FIXA // Recorrente Automática
+}
 
 @Composable
 fun ActionButtonRow(
@@ -53,14 +61,11 @@ fun ActionButtonRow(
     onConfigClick: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-
-    // CORREÇÃO ESSENCIAL: O Scope é criado AQUI (no pai), para sobreviver ao fechamento do Dialog
     val parentScope = rememberCoroutineScope()
 
     var exibirFormulario by remember { mutableStateOf(false) }
     var exibirDeposito by remember { mutableStateOf(false) }
 
-    // Container que centraliza e limita a largura em telas muito grandes
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
@@ -112,7 +117,7 @@ fun ActionButtonRow(
             contaSelecionada = contaSelecionada,
             getPicCategoria = getPicCategoria,
             viewModel = viewModel,
-            parentScope = parentScope, // Passando o escopo do pai
+            parentScope = parentScope,
             onDismiss = { exibirFormulario = false }
         )
     }
@@ -121,12 +126,14 @@ fun ActionButtonRow(
         DepositDialog(
             contaSelecionada = contaSelecionada,
             viewModel = viewModel,
-            parentScope = parentScope, // Passando o escopo do pai
+            parentScope = parentScope,
             onDismiss = { exibirDeposito = false }
         )
     }
 }
 
+// ... (ActionButton, PremiumDialogCard, PremiumTextField e DepositDialog mantidos iguais para economizar espaço) ...
+// ... Copie eles do código anterior se necessário ...
 @Composable
 fun ActionButton(
     icon: Int,
@@ -221,16 +228,15 @@ fun PremiumTextField(
         )
     )
 }
-
+// ... (DepositDialog Code) ...
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DepositDialog(
     contaSelecionada: String,
     viewModel: ContaSaldoViewModel,
-    parentScope: CoroutineScope, // Recebe Scope
+    parentScope: CoroutineScope,
     onDismiss: () -> Unit
 ) {
-    // Removemos o 'val scope' interno
     var valor by rememberSaveable { mutableStateOf("") }
     val dataMillis = remember { mutableStateOf(System.currentTimeMillis()) }
     var mostrarCalendario by remember { mutableStateOf(false) }
@@ -292,7 +298,6 @@ private fun DepositDialog(
                                 pago = true
                             )
                             viewModel.adicionarDespesa(dep)
-                            // Usa o parentScope para garantir execução
                             parentScope.launch {
                                 delay(200)
                                 viewModel.carregarResumoFinanceiro()
@@ -308,6 +313,10 @@ private fun DepositDialog(
     }
 }
 
+
+// -----------------------------------------------------------
+// ADICIONAR DESPESA - COM LÓGICA DE RECORRÊNCIA AUTOMÁTICA
+// -----------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddDespesaDialog(
@@ -315,27 +324,26 @@ private fun AddDespesaDialog(
     contaSelecionada: String,
     getPicCategoria: (String) -> String,
     viewModel: ContaSaldoViewModel,
-    parentScope: CoroutineScope, // Recebe Scope
+    parentScope: CoroutineScope,
     onDismiss: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    // Removemos o 'val scope' interno
-
-    val contaFixada = remember { contaSelecionada.trim() }
+    val contaAtual by rememberUpdatedState(contaSelecionada.trim())
 
     var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
     var expandido by remember { mutableStateOf(false) }
+
+    // Estados
     var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) }
+    var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
 
     var descricao by rememberSaveable { mutableStateOf("") }
     var valor by rememberSaveable { mutableStateOf("") }
-    var numeroParcelas by rememberSaveable { mutableStateOf("1") }
+    var numeroParcelas by rememberSaveable { mutableStateOf("1") } // Usado apenas se Frequencia.PARCELADA
 
     val mostrarCalendario = remember { mutableStateOf(false) }
-    val dataMillis = remember { mutableStateOf<Long?>(null) }
+    val dataMillis = remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
 
-    // Erros (UI) - Mantidos
-    var erroConta by remember { mutableStateOf<String?>(null) }
+    // Validações
     var erroCategoria by remember { mutableStateOf<String?>(null) }
     var erroDescricao by remember { mutableStateOf<String?>(null) }
     var erroValor by remember { mutableStateOf<String?>(null) }
@@ -363,35 +371,26 @@ private fun AddDespesaDialog(
         return trimmed.replace(",", ".").toDoubleOrNull()
     }
 
-    fun parseParcelas(text: String): Int? {
-        val t = text.trim()
-        if (t.isBlank()) return null
-        return t.toIntOrNull()
-    }
-
     fun validarTudo(): Boolean {
         val desc = descricao.trim()
         val cat = categoriaSelecionada?.trim().orEmpty()
         val valorDouble = parseMoneyToDouble(valor)
-        val parcelasInt = parseParcelas(numeroParcelas)
         val data = dataMillis.value
 
-        erroConta = null; erroCategoria = null; erroDescricao = null
-        erroValor = null; erroParcelas = null; erroData = null
-
+        erroCategoria = null; erroDescricao = null; erroValor = null; erroParcelas = null; erroData = null
         var ok = true
 
-        if (contaFixada.isBlank()) { erroConta = "Conta inválida."; ok = false }
-        if (cat.isBlank()) { erroCategoria = "Selecione uma categoria."; ok = false }
-        else if (categorias.isNotEmpty() && !categorias.contains(cat)) { erroCategoria = "Categoria inválida."; ok = false }
+        if (contaAtual.isBlank()) ok = false
+        if (cat.isBlank()) { erroCategoria = "Obrigatório"; ok = false }
+        if (desc.isBlank()) { erroDescricao = "Obrigatório"; ok = false }
+        if (valorDouble == null || valorDouble <= 0.0) { erroValor = "Inválido"; ok = false }
+        if (data == null) { erroData = "Obrigatório"; ok = false }
 
-        if (desc.isBlank()) { erroDescricao = "Descrição obrigatória."; ok = false }
-        else if (desc.length < 3) { erroDescricao = "Descrição muito curta."; ok = false }
-        else if (desc.length > 60) { erroDescricao = "Máximo de 60 caracteres."; ok = false }
-
-        if (valorDouble == null || valorDouble <= 0.0) { erroValor = "Valor inválido."; ok = false }
-        if (parcelasInt == null || parcelasInt < 1 || parcelasInt > 360) { erroParcelas = "Mínimo 1."; ok = false }
-        if (data == null) { erroData = "Selecione uma data."; ok = false }
+        // Valida parcelas apenas se for parcelado
+        if (frequencia == Frequencia.PARCELADA) {
+            val p = numeroParcelas.toIntOrNull()
+            if (p == null || p < 2) { erroParcelas = "Mín 2"; ok = false }
+        }
 
         return ok
     }
@@ -420,28 +419,45 @@ private fun AddDespesaDialog(
     Dialog(onDismissRequest = onDismiss) {
         PremiumDialogCard {
             Text("Nova Movimentação", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = TextWhite)
-            Text("Conta: $contaFixada", color = TextWhite.copy(alpha = 0.6f), fontSize = 13.sp)
-            if (erroConta != null) Text(text = erroConta!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            Text("Conta: $contaAtual", color = TextWhite.copy(alpha = 0.6f), fontSize = 13.sp)
 
+            // 1. Frequência (Novo Layout Compacto)
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
-                    selected = tipo == TipoDespesa.DEBITO,
-                    onClick = { tipo = TipoDespesa.DEBITO },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    selected = frequencia == Frequencia.UNICA,
+                    onClick = { frequencia = Frequencia.UNICA },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
                     colors = segmentColors,
-                    border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
-                ) { Text("Débito") }
-
+                    label = { Text("Única", fontSize = 11.sp) }
+                )
                 SegmentedButton(
-                    selected = tipo == TipoDespesa.CREDITO,
-                    onClick = { tipo = TipoDespesa.CREDITO },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    selected = frequencia == Frequencia.PARCELADA,
+                    onClick = { frequencia = Frequencia.PARCELADA },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
                     colors = segmentColors,
-                    border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
-                ) { Text("Crédito") }
+                    label = { Text("Parcelada", fontSize = 11.sp) }
+                )
+                SegmentedButton(
+                    selected = frequencia == Frequencia.FIXA,
+                    onClick = { frequencia = Frequencia.FIXA },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                    colors = segmentColors,
+                    label = { Text("Fixa", fontSize = 11.sp) },
+                    icon = { Icon(Icons.Rounded.Repeat, null, Modifier.size(14.dp)) }
+                )
             }
 
-            // Categoria
+            // Explicação Dinâmica
+            AnimatedVisibility(visible = frequencia == Frequencia.FIXA) {
+                Box(Modifier.background(Color.White.copy(0.05f), RoundedCornerShape(8.dp)).padding(8.dp)) {
+                    Text(
+                        "Será lançada automaticamente todo mês no dia escolhido abaixo. Para parar, exclua a recorrência nas configurações.",
+                        style = MaterialTheme.typography.bodySmall, color = TextWhite.copy(0.7f), fontSize = 11.sp
+                    )
+                }
+            }
+
+            // Dropdown de Categoria (Compactado)
             ExposedDropdownMenuBox(
                 expanded = expandido,
                 onExpandedChange = { expandido = !expandido },
@@ -453,7 +469,7 @@ private fun AddDespesaDialog(
                     readOnly = true,
                     label = "Categoria",
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
                 ExposedDropdownMenu(
                     expanded = expandido,
@@ -463,7 +479,11 @@ private fun AddDespesaDialog(
                     categorias.forEach { categoria ->
                         DropdownMenuItem(
                             text = { Text(categoria, color = TextWhite) },
-                            onClick = { categoriaSelecionada = categoria; expandido = false; erroCategoria = null }
+                            onClick = {
+                                categoriaSelecionada = categoria
+                                expandido = false
+                                erroCategoria = null
+                            }
                         )
                     }
                 }
@@ -488,22 +508,28 @@ private fun AddDespesaDialog(
                     )
                     if (erroValor != null) Text(erroValor!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
-                Column(Modifier.weight(1f)) {
-                    PremiumTextField(
-                        value = numeroParcelas,
-                        onValueChange = { numeroParcelas = it.filter { c -> c.isDigit() } },
-                        label = "Parcelas",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-                    if (erroParcelas != null) Text(erroParcelas!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+
+                // Parcelas (Só aparece se for parcelado)
+                if (frequencia == Frequencia.PARCELADA) {
+                    Column(Modifier.weight(1f)) {
+                        PremiumTextField(
+                            value = numeroParcelas,
+                            onValueChange = { numeroParcelas = it.filter { c -> c.isDigit() } },
+                            label = "Parcelas",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        if (erroParcelas != null) Text(erroParcelas!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                 }
             }
 
+            // Data (O Rótulo muda se for fixa)
+            val labelData = if (frequencia == Frequencia.FIXA) "Dia do Vencimento" else "Data"
             PremiumTextField(
                 value = dataMillis.value?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)) } ?: "",
                 onValueChange = {},
                 readOnly = true,
-                label = "Data",
+                label = labelData,
                 trailingIcon = {
                     IconButton(onClick = { mostrarCalendario.value = true }) {
                         Icon(Icons.Default.CalendarMonth, null, tint = TextWhite)
@@ -525,7 +551,6 @@ private fun AddDespesaDialog(
                     onClick = {
                         if (validarTudo()) {
                             val v = parseMoneyToDouble(valor)!!
-                            val p = parseParcelas(numeroParcelas)!!
                             val d = Date(dataMillis.value!!)
 
                             val desp = Despesa(
@@ -534,15 +559,31 @@ private fun AddDespesaDialog(
                                 data = d,
                                 categoria = categoriaSelecionada!!,
                                 pic = getPicCategoria(categoriaSelecionada!!),
-                                conta = contaFixada,
+                                conta = contaAtual,
                                 tipo = tipo
                             )
-                            if (p > 1) viewModel.adicionarDespesaParcelada(desp, p, dataMillis.value!!)
-                            else viewModel.adicionarDespesa(desp)
 
                             parentScope.launch {
+                                when (frequencia) {
+                                    Frequencia.UNICA -> {
+                                        viewModel.adicionarDespesa(desp)
+                                    }
+                                    Frequencia.PARCELADA -> {
+                                        val p = numeroParcelas.toIntOrNull() ?: 1
+                                        viewModel.adicionarDespesaParcelada(desp, p, dataMillis.value!!)
+                                    }
+                                    Frequencia.FIXA -> {
+                                        // Extrai o dia do vencimento da data selecionada
+                                        val cal = Calendar.getInstance()
+                                        cal.time = d
+                                        val diaVencimento = cal.get(Calendar.DAY_OF_MONTH)
+
+                                        viewModel.salvarDespesaRecorrente(desp, diaVencimento)
+                                    }
+                                }
+
                                 delay(500)
-                                viewModel.carregarResumoFinanceiro()
+                                viewModel.carregarSaldosGlobais()
                             }
                             onDismiss()
                         }

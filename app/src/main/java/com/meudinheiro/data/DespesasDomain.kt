@@ -25,6 +25,5 @@ data class DespesaAviso(
 data class ResumoFinanceiroDto(
     val conta: String,
     val tipo: TipoDespesa,
-    val pago: Boolean,
     val valorTotal: Double
 )

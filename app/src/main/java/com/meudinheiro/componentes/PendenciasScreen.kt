@@ -235,7 +235,7 @@ fun PendenciaItem(
                     modifier = Modifier.padding(bottom = 2.dp)
                 )
                 Text(
-                    text = formatarMoedaBR(item.valor),
+                    text = formatarMoedaBR(item.valor, false),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = TextWhite
                 )

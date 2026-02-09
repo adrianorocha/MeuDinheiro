@@ -9,6 +9,7 @@ import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaAviso
+import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
@@ -22,6 +23,8 @@ class MainRepository(private val context: Context) {
     // DAOs
     private val despesaDao = db.despesaDao()
     private val contaSaldoDao = db.contaSaldoDao()
+    private val despesaFixaDao = db.despesaFixaDao()
+
 
     /* ======================= DESPESAS ======================= */
 
@@ -128,7 +131,7 @@ class MainRepository(private val context: Context) {
         BancoDomain(id = 2, nome = "Bradesco", pic = "bradesco"),
         BancoDomain(id = 3, nome = "Santander", pic = "santander"),
         BancoDomain(id = 4, nome = "Caixa Econômica", pic = "caixa_economica"),
-        BancoDomain(id = 5, nome = "Itaú", pic = "itaú"),
+        BancoDomain(id = 5, nome = "Itaú", pic = "itau"),
         BancoDomain(id = 6, nome = "HSBC", pic = "hsbc"),
         BancoDomain(id = 7, nome = "Nubank", pic = "nubank"),
         BancoDomain(id = 8, nome = "C6", pic = "c6"),
@@ -138,7 +141,7 @@ class MainRepository(private val context: Context) {
         BancoDomain(id = 12, nome = "Banco Pan", pic = "banco_pan"),
         BancoDomain(id = 13, nome = "Banco do Nordeste", pic = "banco_do_nordeste"),
         BancoDomain(id = 14, nome = "Banco Inter", pic = "banco_inter"),
-        BancoDomain(id = 15, nome = "Banco Itaú BBA", pic = "banco_itaú_bba"),
+        BancoDomain(id = 15, nome = "Banco Itaú BBA", pic = "banco_itau_bba"),
         BancoDomain(id = 16, nome = "Banco BMG", pic = "banco_bmg")
     )
 
@@ -236,6 +239,11 @@ class MainRepository(private val context: Context) {
         return db.despesaDao().obterResumoPorPeriodo(inicio, fim)
     }
 
+
+    suspend fun obterResumoGlobalPorConta(): List<ResumoFinanceiroDto> {
+        return despesaDao.obterResumoGlobalPorConta()
+    }
+
     // Função auxiliar para pegar o primeiro e último dia do Mês Atual (para o painel ser útil)
     fun getDatesCurrentMonth(): Pair<Date, Date> {
         val cal = Calendar.getInstance()
@@ -248,5 +256,81 @@ class MainRepository(private val context: Context) {
         val end = cal.time
 
         return Pair(start, end)
+    }
+
+// Adicione esses métodos no seu MainRepository
+
+    // 1. Salvar a regra da recorrência
+    suspend fun salvarDespesaFixa(despesaFixa: DespesaFixa) {
+        despesaFixaDao.inserir(despesaFixa)
+        // Tenta processar imediatamente caso o dia já tenha chegado
+        processarRecorrencias()
+    }
+
+    // 2. O Cérebro da Operação: Verifica e Lança
+    suspend fun processarRecorrencias() {
+        val recorrencias = despesaFixaDao.obterTodas()
+        val hoje = Calendar.getInstance()
+
+        // Zera hora/minuto para comparação limpa de datas
+        hoje.set(Calendar.HOUR_OF_DAY, 0)
+        hoje.set(Calendar.MINUTE, 0)
+        hoje.set(Calendar.SECOND, 0)
+        hoje.set(Calendar.MILLISECOND, 0)
+
+        recorrencias.forEach { regra ->
+            val calUltimoLancamento = Calendar.getInstance()
+
+            // Se nunca foi lançada, assumimos uma data bem antiga
+            val ultimaData = regra.ultimaDataLancamento ?: Date(0)
+            calUltimoLancamento.time = ultimaData
+
+            // Verifica se o mês atual da regra já foi processado
+            // Se o mês/ano da última vez for diferente do mês/ano atual (ou se nunca foi lançada)
+            val jaLancouNesteMes = (calUltimoLancamento.get(Calendar.MONTH) == hoje.get(Calendar.MONTH)) &&
+                    (calUltimoLancamento.get(Calendar.YEAR) == hoje.get(Calendar.YEAR))
+
+            // Se ainda não lançou neste mês E hoje já é (ou passou) do dia de vencimento
+            if (!jaLancouNesteMes && hoje.get(Calendar.DAY_OF_MONTH) >= regra.diaVencimento) {
+
+                // Cria a data de vencimento para ESTE mês
+                val dataDesteMes = Calendar.getInstance().apply {
+                    set(Calendar.DAY_OF_MONTH, regra.diaVencimento)
+                    set(Calendar.HOUR_OF_DAY, 12) // Meio dia para evitar fuso
+                }
+
+                // Cria a despesa real na tabela principal
+                val novaDespesa = Despesa(
+                    descricao = regra.descricao,
+                    valor = regra.valor,
+                    conta = regra.conta,
+                    categoria = regra.categoria,
+                    pic = regra.pic,
+                    tipo = regra.tipo,
+                    data = dataDesteMes.time,
+                    pago = false // Nasce como não paga (pendente)
+                )
+
+                // Insere na tabela de extrato
+                despesaDao.inserirDespesa(novaDespesa)
+
+                // Recalcula saldo da conta (importante!)
+                recalcularSaldoTotal(regra.conta)
+
+                // Atualiza a regra dizendo: "Já lancei a de Mês X / Ano Y"
+                val regraAtualizada = regra.copy(ultimaDataLancamento = dataDesteMes.time)
+                despesaFixaDao.atualizar(regraAtualizada)
+            }
+        }
+    }
+
+    // Busca todas as assinaturas ativas para a tela de gerenciamento
+
+    suspend fun obterTodasRecorrencias(): List<DespesaFixa> {
+        return despesaFixaDao.obterTodas()
+    }
+    // Remove a regra (cancela a assinatura futura)
+    suspend fun excluirRecorrencia(id: Int) {
+        despesaFixaDao.excluir(id)
     }
 }

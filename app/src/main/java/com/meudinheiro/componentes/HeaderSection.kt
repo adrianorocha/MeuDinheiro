@@ -12,6 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.PriorityHigh
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.meudinheiro.R
+import com.meudinheiro.funcoes.formatarMoedaBR
 import java.io.File
 import java.text.NumberFormat
 import java.util.Locale
@@ -36,13 +40,11 @@ import java.util.Locale
 // Definições de Cores
 private val CardBg = Color(0xFF1E2B3E)
 private val BadgeRed = Color(0xFFFF3D00)
-
 enum class HeaderChipStyle {
     PRIMARY,
     SUCCESS,
     NEUTRAL
 }
-
 @Composable
 fun HeaderSection(
     nome: String,
@@ -56,9 +58,11 @@ fun HeaderSection(
     notificationCount: Int = 0,
     onNotificationsClick: () -> Unit = {},
     receitaTotal: Double = 0.0,
-    despesaTotal: Double = 0.0
+    despesaTotal: Double = 0.0,
+    isPrivateMode: Boolean = false,
+    onTogglePrivate: () -> Unit = {}
 ) {
-    val containerShape = RoundedCornerShape(22.dp) // Reduzi levemente o raio
+    val containerShape = RoundedCornerShape(22.dp)
     val containerBg = CardBg.copy(alpha = 0.60f)
     val containerBorder = Color.White.copy(alpha = 0.1f)
 
@@ -66,7 +70,6 @@ fun HeaderSection(
         modifier = modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.statusBars)
-            // REDUÇÃO: Padding vertical externo de 12dp para 8dp
             .padding(horizontal = 16.dp, vertical = 8.dp),
         shape = containerShape,
         color = containerBg,
@@ -75,7 +78,6 @@ fun HeaderSection(
         border = BorderStroke(1.dp, containerBorder)
     ) {
         Column(
-            // REDUÇÃO: Padding interno de 16dp para 14dp
             modifier = Modifier.padding(all = 14.dp)
         ) {
             // --- Linha Superior ---
@@ -92,9 +94,9 @@ fun HeaderSection(
                 ) {
                     Text(
                         text = "Olá, $nome",
-                        style = MaterialTheme.typography.titleLarge.copy( // Mudei de HeadlineSmall para TitleLarge
+                        style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            lineHeight = 28.sp // Reduzi altura de linha
+                            lineHeight = 28.sp
                         ),
                         color = TextWhite,
                         maxLines = 2,
@@ -102,19 +104,33 @@ fun HeaderSection(
                     )
 
                     if (!chipText.isNullOrBlank()) {
-                        Spacer(Modifier.height(2.dp)) // Reduzi espaçamento
-                        PremiumChip(
-                            text = chipText,
-                            style = chipStyle
-                        )
+                        Spacer(Modifier.height(2.dp))
+                        PremiumChip(text = chipText, style = chipStyle)
                     }
                 }
 
-                // Ícones (Sino e Avatar)
+                // Ícones (Olho, Sino e Avatar)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End
                 ) {
+                    // Botão Modo Privado
+                    PremiumIconButton(
+                        contentDescription = if (isPrivateMode) "Mostrar" else "Ocultar",
+                        showBadge = false,
+                        badgeCount = 0,
+                        onClick = onTogglePrivate
+                    ) {
+                        Icon(
+                            imageVector = if (isPrivateMode) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                            contentDescription = null,
+                            tint = TextWhite,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
                     if (showNotifications) {
                         PremiumIconButton(
                             contentDescription = "Notificações",
@@ -126,19 +142,21 @@ fun HeaderSection(
                                 imageVector = Icons.Outlined.Notifications,
                                 contentDescription = null,
                                 tint = TextWhite,
-                                modifier = Modifier.size(22.dp) // Ícone levemente menor
+                                modifier = Modifier.size(22.dp)
                             )
                         }
-                        Spacer(Modifier.width(8.dp)) // Reduzi espaçamento horizontal
+                        Spacer(Modifier.width(8.dp))
                     }
                     PremiumAvatarButton(fotoUri = fotoUri, onClick = onProfileClick)
                 }
             }
 
-            // REDUÇÃO: Espaçamento central drástico
             Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Alerta se as saídas forem maiores que as entradas (apenas se não estiver privado)
+            val orcamentoNegativo = despesaTotal > receitaTotal && receitaTotal > 0
 
             // --- Resumo Global ---
             Row(
@@ -147,18 +165,22 @@ fun HeaderSection(
             ) {
                 MiniSummaryItem(
                     label = "Entradas",
-                    value = receitaTotal,
+                    valorTexto = formatarMoedaBR(receitaTotal, isPrivateMode),
                     color = Color(0xFF4CAF50),
                     iconUp = true
                 )
 
-                Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.1f))) // Altura divisor reduzida
+                Box(modifier = Modifier
+                    .width(1.dp)
+                    .height(24.dp)
+                    .background(Color.White.copy(alpha = 0.1f)))
 
                 MiniSummaryItem(
                     label = "Saídas",
-                    value = despesaTotal,
+                    valorTexto = formatarMoedaBR(despesaTotal, isPrivateMode),
                     color = Color(0xFFEF5350),
-                    iconUp = false
+                    iconUp = false,
+                    isAlert = orcamentoNegativo && !isPrivateMode
                 )
             }
         }
@@ -166,20 +188,28 @@ fun HeaderSection(
 }
 
 @Composable
-private fun MiniSummaryItem(label: String, value: Double, color: Color, iconUp: Boolean) {
-    val nf = remember { NumberFormat.getCurrencyInstance(Locale("pt", "BR")) }
+private fun MiniSummaryItem(
+    label: String,
+    valorTexto: String, // Recebe a String formatada
+    color: Color,
+    iconUp: Boolean,
+    isAlert: Boolean = false
+) {
+    val finalColor = if (isAlert) Color(0xFFFF5252) else color
+    val backgroundColor = if (isAlert) Color(0xFFFF5252).copy(alpha = 0.25f) else color.copy(alpha = 0.15f)
+
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // REDUÇÃO: Ícone de seta menor (32dp -> 28dp)
         Box(
             modifier = Modifier
                 .size(28.dp)
-                .background(color.copy(alpha = 0.15f), CircleShape),
+                .background(backgroundColor, CircleShape)
+                .then(if (isAlert) Modifier.border(1.dp, finalColor, CircleShape) else Modifier),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (iconUp) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                imageVector = if (isAlert) Icons.Rounded.PriorityHigh else (if (iconUp) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward),
                 contentDescription = null,
-                tint = color,
+                tint = finalColor,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -187,13 +217,14 @@ private fun MiniSummaryItem(label: String, value: Double, color: Color, iconUp: 
         Column {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelSmall, // Fonte menor
-                color = TextWhite.copy(alpha = 0.7f)
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isAlert) finalColor else TextWhite.copy(alpha = 0.7f),
+                fontWeight = if (isAlert) FontWeight.Bold else FontWeight.Normal
             )
             Text(
-                text = nf.format(value),
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), // TitleMedium -> BodyLarge
-                color = TextWhite
+                text = valorTexto,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                color = if (isAlert) finalColor else TextWhite
             )
         }
     }
@@ -214,9 +245,9 @@ private fun PremiumChip(text: String, style: HeaderChipStyle, modifier: Modifier
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp), // Fonte menor
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
             color = txtColor,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp) // Padding menor
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }
@@ -230,7 +261,6 @@ private fun PremiumIconButton(
     content: @Composable () -> Unit
 ) {
     Box(modifier = Modifier.clickable(onClick = onClick)) {
-        // REDUÇÃO: Tamanho do botão de 44dp para 40dp
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -277,7 +307,6 @@ private fun PremiumIconButton(
 @Composable
 private fun PremiumAvatarButton(fotoUri: String?, onClick: () -> Unit) {
     val context = LocalContext.current
-    // REDUÇÃO: Tamanho do avatar de 48dp para 42dp
     Box(
         modifier = Modifier
             .size(42.dp)

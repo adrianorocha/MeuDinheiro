@@ -3,6 +3,7 @@ package com.meudinheiro.componentes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -13,13 +14,15 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -31,7 +34,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,34 +50,17 @@ import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.funcoes.formatarMoedaBR
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 
-// Cores e Helpers
+// Cores
 private val Gold = Color(0xFFFFD700)
-private fun Dp.coerceInDp(min: Dp, max: Dp): Dp = if(this < min) min else if(this > max) max else this
-
-private fun LazyListState.findCenteredItemIndex(): Int? {
-    val layoutInfo = this.layoutInfo
-    val visible = layoutInfo.visibleItemsInfo
-    if (visible.isEmpty()) return null
-    val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-    var bestIndex: Int? = null
-    var bestDistance = Int.MAX_VALUE
-    for (item in visible) {
-        val itemCenter = item.offset + (item.size / 2)
-        val distance = kotlin.math.abs(itemCenter - viewportCenter)
-        if (distance < bestDistance) {
-            bestDistance = distance
-            bestIndex = item.index
-        }
-    }
-    return bestIndex
-}
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CardSection(
     contas: List<ContaSaldoDomain>,
     contasSelecionadaId: String?,
+    isPrivate: Boolean = false,
     onExcluir: (ContaSaldoDomain) -> Unit,
     onContaSelecionada: (String) -> Unit,
     onAtualizar: (ContaSaldoDomain) -> Unit,
@@ -85,61 +70,80 @@ fun CardSection(
     val lazyListState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    val contasAtual by rememberUpdatedState(contas)
-    val selecionadaAtual by rememberUpdatedState(contasSelecionadaId)
-    val onContaSelecionadaAtual by rememberUpdatedState(onContaSelecionada)
-    val onAtualizarAtual by rememberUpdatedState(onAtualizar)
-
-    // Scroll e Seleção
-    LaunchedEffect(contas, contasSelecionadaId) {
-        if (contas.isEmpty()) return@LaunchedEffect
-        val exists = contasSelecionadaId != null && contas.any { it.conta == contasSelecionadaId }
-        if (!exists) {
-            val first = contas.first()
-            onContaSelecionada(first.conta)
-            onAtualizar(first)
-            lazyListState.scrollToItem(0)
+    // 1. Scroll Inicial para a conta selecionada (apenas uma vez)
+    LaunchedEffect(Unit) {
+        if (contas.isNotEmpty() && !contasSelecionadaId.isNullOrBlank()) {
+            val index = contas.indexOfFirst { it.conta == contasSelecionadaId }
+            if (index >= 0) {
+                lazyListState.scrollToItem(index)
+            }
         }
     }
 
+    // 2. Lógica de "Auto-Select" ao parar o Scroll
     LaunchedEffect(lazyListState) {
-        var wasScrolling = false
-        snapshotFlow { lazyListState.isScrollInProgress }
-            .distinctUntilChanged()
-            .collect { inProgress ->
-                if (inProgress) wasScrolling = true
-                else if (wasScrolling) {
-                    wasScrolling = false
-                    val centeredIndex = lazyListState.findCenteredItemIndex()
-                    if (centeredIndex != null) {
-                        val contaCentered = contasAtual.getOrNull(centeredIndex)
-                        if (contaCentered != null && selecionadaAtual != contaCentered.conta) {
-                            onContaSelecionadaAtual(contaCentered.conta)
-                            onAtualizarAtual(contaCentered)
-                        }
+        snapshotFlow { lazyListState.layoutInfo }
+            .mapNotNull { layoutInfo ->
+                // Calcula o centro da viewport
+                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                // Encontra o item mais próximo do centro
+                layoutInfo.visibleItemsInfo.minByOrNull { item ->
+                    kotlin.math.abs((item.offset + item.size / 2) - viewportCenter)
+                }?.index
+            }
+            .distinctUntilChanged() // Só reage se o índice central mudar
+            .collect { centeredIndex ->
+                // Verifica se o scroll parou (isScrollInProgress == false)
+                if (!lazyListState.isScrollInProgress) {
+                    val contaCentral = contas.getOrNull(centeredIndex)
+                    if (contaCentral != null && contaCentral.conta != contasSelecionadaId) {
+                        onContaSelecionada(contaCentral.conta)
+                        onAtualizar(contaCentral)
                     }
                 }
             }
     }
 
+    // 3. Garantia extra para o final do Fling (Snap)
+    LaunchedEffect(lazyListState.isScrollInProgress) {
+        if (!lazyListState.isScrollInProgress) {
+            val layoutInfo = lazyListState.layoutInfo
+            if (layoutInfo.visibleItemsInfo.isNotEmpty()) {
+                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                val centeredItem = layoutInfo.visibleItemsInfo.minByOrNull { item ->
+                    kotlin.math.abs((item.offset + item.size / 2) - viewportCenter)
+                }
+
+                if (centeredItem != null) {
+                    val conta = contas.getOrNull(centeredItem.index)
+                    if (conta != null && conta.conta != contasSelecionadaId) {
+                        onContaSelecionada(conta.conta)
+                        onAtualizar(conta)
+                    }
+                }
+            }
+        }
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 4.dp)
+            .padding(vertical = 8.dp)
     ) {
-        val cardWidth = (maxWidth * 0.85f).coerceInDp(280.dp, 400.dp)
+        // Largura dinâmica (igual ao ResumoGeral)
+        val cardWidth = maxWidth - 32.dp
         val cardHeight = 175.dp
 
         LazyRow(
             state = lazyListState,
-            contentPadding = PaddingValues(horizontal = 24.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             flingBehavior = rememberSnapFlingBehavior(lazyListState)
         ) {
-            items(contas) { conta ->
+            itemsIndexed(contas) { index, conta ->
                 val selected = conta.conta == contasSelecionadaId
 
-                // Captura os valores atualizados
+                // Captura valores
                 val receitaValor = getReceitaConta(conta.conta)
                 val despesaValor = getDespesaConta(conta.conta)
 
@@ -148,13 +152,15 @@ fun CardSection(
                     width = cardWidth,
                     height = cardHeight,
                     selected = selected,
+                    isPrivate = isPrivate,
                     receita = receitaValor,
                     despesa = despesaValor,
                     onClick = {
-                        val idx = contas.indexOfFirst { it.conta == conta.conta }
-                        if (idx >= 0) scope.launch { lazyListState.animateScrollToItem(idx) }
                         onContaSelecionada(conta.conta)
                         onAtualizar(conta)
+                        scope.launch {
+                            lazyListState.animateScrollToItem(index)
+                        }
                     },
                     onLongClick = { onExcluir(conta) }
                 )
@@ -163,20 +169,28 @@ fun CardSection(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContaCard(
     conta: ContaSaldoDomain,
     width: Dp,
     height: Dp,
     selected: Boolean,
+    isPrivate: Boolean,
     receita: Double,
     despesa: Double,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(22.dp)
-    val borderCol by animateColorAsState(if (selected) Gold else Color.Transparent, label = "border")
-    val scale by animateFloatAsState(if (selected) 1.02f else 1f, label = "scale")
+    val borderCol by animateColorAsState(
+        targetValue = if (selected) Gold else Color.Transparent,
+        label = "border"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.0f else 0.95f,
+        label = "scale"
+    )
 
     val context = LocalContext.current
     val resId = remember(conta.pic) {
@@ -186,12 +200,19 @@ private fun ContaCard(
 
     Card(
         modifier = Modifier
-            .size(width, height)
+            .width(width)
+            .height(height)
             .scale(scale)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = shape,
         border = BorderStroke(2.dp, borderCol),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 8.dp else 4.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (selected) 8.dp else 2.dp
+        ),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Image(
@@ -199,58 +220,103 @@ private fun ContaCard(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
-                alpha = 0.8f
+                alpha = 0.5f
             )
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF1E2B3E).copy(alpha = 0.85f))
+            )
 
             Column(
                 modifier = Modifier
-                    .padding(16.dp)
+                    .padding(20.dp)
                     .fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Topo
+                // TOPO
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = conta.banco,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = TextWhite
+                        color = TextWhite,
+                        fontSize = 18.sp
                     )
                     Image(
                         painter = painterResource(resId),
                         contentDescription = null,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp),
+                        contentScale = ContentScale.Fit
                     )
                 }
 
-                // Centro
-                Text(
-                    text = "Ag: ${conta.agencia}   CC: ${conta.conta}",
-                    style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.5.sp),
-                    color = TextWhite.copy(alpha = 0.8f)
-                )
+                // MEIO
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        painter = painterResource(id = R.drawable.sim_chip),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp).padding(end = 8.dp),
+                        alpha = 0.8f
+                    )
+                    Text(
+                        text = "Ag ${conta.agencia}   CC ${conta.conta}",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            letterSpacing = 1.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = TextWhite.copy(alpha = 0.9f)
+                    )
+                }
 
-                // Base
+                // RODAPÉ
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text("Saldo", fontSize = 11.sp, color = TextWhite.copy(0.6f))
                         Text(
-                            text = formatarMoedaBR(conta.saldo),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Gold
+                            text = "Saldo Atual",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextWhite.copy(alpha = 0.6f)
+                        )
+                        // AQUI ESTÁ O OLHINHO FUNCIONANDO
+                        Text(
+                            text = formatarMoedaBR(conta.saldo, isPrivate),
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Gold,
+                            fontSize = 24.sp
                         )
                     }
+
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("▲ ${formatarMoedaBR(receita)}", fontSize = 10.sp, color = Color(0xFF69F0AE))
-                        Text("▼ ${formatarMoedaBR(despesa)}", fontSize = 10.sp, color = Color(0xFFFF8A80))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("▲", fontSize = 10.sp, color = Color(0xFF69F0AE))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = formatarMoedaBR(receita, isPrivate),
+                                fontSize = 12.sp,
+                                color = TextWhite.copy(0.9f),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("▼", fontSize = 10.sp, color = Color(0xFFFF8A80))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = formatarMoedaBR(despesa, isPrivate),
+                                fontSize = 12.sp,
+                                color = TextWhite.copy(0.9f),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }

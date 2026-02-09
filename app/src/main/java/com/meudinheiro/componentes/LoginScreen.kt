@@ -1,8 +1,20 @@
 package com.meudinheiro.componentes
 
 import android.widget.Toast
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,12 +25,30 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.rounded.AttachMoney
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,14 +56,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.viewModel.AuthViewModel
 import com.meudinheiro.viewModel.AuthViewModelFactory
 
-// Cores "Premium" para o tema bancário (Azul Profundo e Dourado/Branco)
+// Cores "Premium" Locais
 private val PremiumAccent = Color(0xFF415A77)
+
 @Composable
 fun LoginScreen(
     userPrefs: UserPreferences,
@@ -43,7 +75,15 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
 
+    // Estado para o Dialog de Recuperação
+    var showRecoveryDialog by remember { mutableStateOf(false) }
+    var recoveryStep by remember { mutableIntStateOf(0) } // 0=Auth, 1=ShowPass
+    var recoveredPassword by remember { mutableStateOf("") }
+
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Verificação de Activity para Biometria
     val activity = remember {
         (context as? FragmentActivity)
             ?: throw IllegalStateException("LoginScreen precisa estar hospedado em uma FragmentActivity.")
@@ -57,9 +97,105 @@ fun LoginScreen(
     val biometricEnabled by userPrefs.biometricEnabledFlow.collectAsState(initial = false)
 
     val hasUser = savedUser.isNotBlank() && savedPass.isNotBlank()
-    val canBiometric = biometricEnabled && hasUser && authVm.canUseBiometric(activity)
 
-    // Fundo com Gradiente Elegante
+    // Verifica se pode usar biometria
+    val canBiometric = remember(biometricEnabled, hasUser) {
+        biometricEnabled && hasUser && authVm.canUseBiometric(context)
+    }
+
+    // Função de Autenticação Biométrica para Recuperação
+    fun authenticateForRecovery() {
+        if (!canBiometric) {
+            Toast.makeText(context, "Biometria não disponível para recuperação.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val executor = ContextCompat.getMainExecutor(context)
+        val biometricPrompt = BiometricPrompt(activity, executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    // Sucesso: Mostra a senha recuperada
+                    recoveredPassword = savedPass
+                    recoveryStep = 1
+                }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    Toast.makeText(context, "Erro: $errString", Toast.LENGTH_SHORT).show()
+                }
+            })
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Recuperar Senha")
+            .setSubtitle("Use sua biometria para ver sua senha")
+            .setNegativeButtonText("Cancelar")
+            .build()
+
+        biometricPrompt.authenticate(promptInfo)
+    }
+
+    // --- DIALOG DE RECUPERAÇÃO ---
+    if (showRecoveryDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showRecoveryDialog = false
+                recoveryStep = 0
+                recoveredPassword = ""
+            },
+            containerColor = Color(0xFF1E2B3E),
+            title = { Text("Recuperar Acesso", color = TextWhite) },
+            text = {
+                Column {
+                    if (recoveryStep == 0) {
+                        Text(
+                            "Para sua segurança, autentique-se com a biometria para visualizar sua senha salva.",
+                            color = TextWhite.copy(0.8f)
+                        )
+                    } else {
+                        Text("Sua senha atual é:", color = TextWhite.copy(0.6f))
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = recoveredPassword,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color(0xFF69F0AE),
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text("Anote-a em local seguro.", color = TextWhite.copy(0.5f), fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                if (recoveryStep == 0) {
+                    Button(
+                        onClick = { authenticateForRecovery() },
+                        colors = ButtonDefaults.buttonColors(containerColor = PremiumAccent)
+                    ) {
+                        Icon(Icons.Default.Fingerprint, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Autenticar")
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            showRecoveryDialog = false
+                            recoveryStep = 0
+                            // Preenche automaticamente para facilitar
+                            password = recoveredPassword
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PremiumAccent)
+                    ) { Text("Fechar e Usar") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecoveryDialog = false }) {
+                    Text("Cancelar", color = TextWhite.copy(0.7f))
+                }
+            }
+        )
+    }
+
+    // --- TELA PRINCIPAL ---
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -77,15 +213,12 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center
         ) {
 
-            // --- LOGO E CABEÇALHO ---
+            // --- LOGO ---
             Surface(
                 modifier = Modifier.size(80.dp),
                 shape = CircleShape,
                 color = PremiumAccent.copy(alpha = 0.2f),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    Color.White.copy(alpha = 0.1f)
-                )
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
             ) {
                 Icon(
                     imageVector = Icons.Rounded.AttachMoney,
@@ -112,9 +245,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            // --- CAMPOS DE ENTRADA (Card "Flutuante" ou direto no fundo) ---
-            // Optei por direto no fundo para visual mais limpo (Clean UI)
-
+            // --- INPUTS ---
             PremiumTextField(
                 value = username,
                 onValueChange = { username = it },
@@ -134,33 +265,36 @@ fun LoginScreen(
                 onVisibilityChange = { isPasswordVisible = !isPasswordVisible }
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            // Link de "Esqueci minha senha"
+            if (canBiometric) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text(
+                        text = "Esqueci minha senha",
+                        color = TextWhite.copy(alpha = 0.6f),
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clickable { showRecoveryDialog = true }
+                            .padding(4.dp)
+                    )
+                }
+            }
 
-            // --- BOTÃO PRINCIPAL ---
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- BOTÃO ENTRAR ---
             Button(
                 onClick = {
                     when {
                         !hasUser -> {
-                            Toast.makeText(
-                                context,
-                                "Nenhum usuário cadastrado. Faça o cadastro primeiro.",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            Toast.makeText(context, "Nenhum usuário cadastrado.", Toast.LENGTH_SHORT).show()
                         }
-
                         username.isBlank() || password.isBlank() -> {
-                            Toast.makeText(context, "Preencha todos os campos!", Toast.LENGTH_SHORT)
-                                .show()
+                            Toast.makeText(context, "Preencha todos os campos!", Toast.LENGTH_SHORT).show()
                         }
-
                         username.trim() != savedUser.trim() || password != savedPass -> {
-                            Toast.makeText(
-                                context,
-                                "Usuário ou senha inválidos.",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            Toast.makeText(context, "Usuário ou senha inválidos.", Toast.LENGTH_SHORT).show()
                         }
-
                         else -> onLoginSuccess()
                     }
                 },
@@ -174,43 +308,32 @@ fun LoginScreen(
                 ),
                 elevation = ButtonDefaults.buttonElevation(8.dp)
             ) {
-                Text(
-                    text = "ENTRAR",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text(text = "ENTRAR", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
 
-            // --- BIOMETRIA ---
+            // --- BOTÃO BIOMETRIA ---
             if (canBiometric) {
                 Spacer(modifier = Modifier.height(24.dp))
-
                 TextButton(
                     onClick = {
                         authVm.promptBiometric(
                             activity = activity,
                             onAuthenticated = { onLoginSuccess() },
-                            onError = { msg ->
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            }
+                            onError = { msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
                         )
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)
                 ) {
-                    Icon(
-                        Icons.Default.Fingerprint,
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Icon(Icons.Default.Fingerprint, null, Modifier.size(28.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Usar biometria", fontSize = 16.sp)
+                    Text("Entrar com biometria", fontSize = 16.sp)
                 }
             }
         }
 
         // --- RODAPÉ ---
         Text(
-            text = "Meu Dinheiro App v1.0",
+            text = "Meu Dinheiro App v1.1",
             color = TextWhite.copy(alpha = 0.3f),
             fontSize = 12.sp,
             modifier = Modifier
@@ -220,13 +343,13 @@ fun LoginScreen(
     }
 }
 
-// Componente auxiliar para padronizar os Inputs Premium
+// Componente TextField Premium (Mantido igual)
 @Composable
 fun PremiumTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     isPassword: Boolean = false,
     isVisible: Boolean = false,
     onVisibilityChange: () -> Unit = {}
@@ -235,13 +358,7 @@ fun PremiumTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        leadingIcon = {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.7f)
-            )
-        },
+        leadingIcon = { Icon(icon, null, tint = Color.White.copy(alpha = 0.7f)) },
         trailingIcon = if (isPassword) {
             {
                 IconButton(onClick = onVisibilityChange) {
