@@ -13,6 +13,7 @@ import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaAviso
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.Orcamento
 import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +30,8 @@ class MainRepository(private val context: Context) {
     private val despesaFixaDao = db.despesaFixaDao()
 
     private val categoriaDao = db.categoriaDao()
+    private val orcamentoDao = db.orcamentoDao()
+
 
     /* ======================= DESPESAS ======================= */
 
@@ -450,5 +453,23 @@ class MainRepository(private val context: Context) {
             despesaDao.inserirLista(backup.despesas)
             despesaFixaDao.inserirLista(backup.despesasFixas)
         }
+    }
+
+    // --- LÓGICA DE ORÇAMENTOS (BUDGETS) ---
+
+    fun obterOrcamentosFlow(): kotlinx.coroutines.flow.Flow<List<Orcamento>> {
+        return orcamentoDao.obterTodosFlow()
+    }
+
+    suspend fun salvarOrcamento(categoria: String, valor: Double) {
+        val orcamento = Orcamento(
+            categoria = categoria,
+            valorLimite = valor
+        )
+        orcamentoDao.salvarOrcamento(orcamento)
+    }
+
+    suspend fun excluirOrcamento(orcamento: Orcamento) {
+        orcamentoDao.excluirOrcamento(orcamento)
     }
 }

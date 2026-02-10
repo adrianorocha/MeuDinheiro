@@ -11,6 +11,7 @@ import com.meudinheiro.dao.CategoriaDao
 import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.dao.DespesaDao
 import com.meudinheiro.dao.DespesaFixaDao
+import com.meudinheiro.dao.OrcamentoDao
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -18,17 +19,15 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
-@Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class, Categoria::class], version = 1)
+@Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class, Categoria::class, Orcamento::class], version = 2)
 @TypeConverters(Converters::class)
 
 abstract class AppDatabase : RoomDatabase() {
     abstract fun despesaDao(): DespesaDao
     abstract fun contaSaldoDao(): ContaSaldoDao
     abstract fun despesaFixaDao(): DespesaFixaDao
-
     abstract fun categoriaDao(): CategoriaDao
-
-
+    abstract fun orcamentoDao(): OrcamentoDao
 
     companion object{
         @Volatile private var INSTANCE: AppDatabase? = null
