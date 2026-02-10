@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation("androidx.work:work-runtime-ktx:2.7.1")
     implementation(libs.androidx.ui)
+    implementation("com.google.code.gson:gson:2.10.1")
 
 
     ksp("androidx.room:room-compiler:2.8.4")

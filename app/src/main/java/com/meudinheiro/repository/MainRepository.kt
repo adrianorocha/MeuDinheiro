@@ -3,6 +3,7 @@ package com.meudinheiro.repository
 import android.content.Context
 import androidx.room.withTransaction
 import com.meudinheiro.data.AppDatabase
+import com.meudinheiro.data.BackupData
 import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.Categoria
 import com.meudinheiro.data.CategoriaDomain
@@ -422,5 +423,32 @@ class MainRepository(private val context: Context) {
 
     suspend fun excluirCategoriaPorNome(nome: String) {
         categoriaDao.excluirPorNome(nome)
+    }
+
+    // 1. Coleta tudo do banco para o Backup
+    suspend fun gerarBackup(): String {
+        val backup = BackupData(
+            categorias = categoriaDao.obterTodasStatic(),
+            despesas = despesaDao.obterTodasStatic(),
+            despesasFixas = despesaFixaDao.obterTodasStatic(),
+            contas = contaSaldoDao.obterTodasStatic()
+        )
+        return com.google.gson.Gson().toJson(backup)
+    }
+
+    // 2. Limpa o banco atual e restaura o backup
+    suspend fun restaurarBackupCompleto(json: String) {
+        val backup = com.google.gson.Gson().fromJson(json, BackupData::class.java)
+
+        db.withTransaction { // Executa tudo ou nada
+            // 1. Limpa o que for necessário (Opcional)
+            despesaDao.limparTudo()
+
+            // 2. Restaura em massa
+            categoriaDao.inserirLista(backup.categorias)
+            contaSaldoDao.inserirLista(backup.contas)
+            despesaDao.inserirLista(backup.despesas)
+            despesaFixaDao.inserirLista(backup.despesasFixas)
+        }
     }
 }

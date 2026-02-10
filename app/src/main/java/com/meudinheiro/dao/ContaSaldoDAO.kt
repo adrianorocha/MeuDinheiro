@@ -25,4 +25,10 @@ interface ContaSaldoDao {
 
     @Query("UPDATE contasaldo SET saldo = :novoSaldo WHERE conta = :conta")
     suspend fun atualizarSaldo(conta: String, novoSaldo: Double)
+
+    @Query("SELECT * FROM contasaldo")
+    suspend fun obterTodasStatic(): List<ContaSaldo>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirLista(contas: List<ContaSaldo>)
 }

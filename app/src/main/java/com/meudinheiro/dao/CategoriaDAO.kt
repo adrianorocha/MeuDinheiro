@@ -24,4 +24,12 @@ interface CategoriaDao {
 
     @Query("DELETE FROM categorias WHERE nome = :nome")
     suspend fun excluirPorNome(nome: String)
+
+    // Para o Backup: Busca todas as categorias de uma vez
+    @Query("SELECT * FROM categorias ORDER BY nome ASC")
+    suspend fun obterTodasStatic(): List<Categoria>
+
+    // Para a Restauração: Insere uma lista completa de uma vez
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirLista(categorias: List<Categoria>)
 }

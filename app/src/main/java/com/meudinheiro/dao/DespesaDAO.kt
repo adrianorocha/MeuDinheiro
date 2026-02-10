@@ -113,4 +113,14 @@ ORDER BY data ASC
     fun obterResumoGlobalPorConta(): List<ResumoFinanceiroDto>
 @Query("UPDATE Despesas SET pago = :status WHERE id = :id")
 suspend fun atualizarStatusPago(id: Long, status: Boolean)
+
+    @Query("SELECT * FROM despesas")
+    suspend fun obterTodasStatic(): List<Despesa>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirLista(despesas: List<Despesa>)
+
+    // Opcional: Limpar antes de restaurar para evitar lixo de dados antigos
+    @Query("DELETE FROM despesas")
+    suspend fun limparTudo()
 }
