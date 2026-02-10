@@ -19,7 +19,8 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
-@Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class, Categoria::class, Orcamento::class], version = 2)
+@Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class,
+    Categoria::class, Orcamento::class,OrcamentoProgresso::class], version = 2)
 @TypeConverters(Converters::class)
 
 abstract class AppDatabase : RoomDatabase() {
