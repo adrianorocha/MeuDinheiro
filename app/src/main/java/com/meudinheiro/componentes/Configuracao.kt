@@ -14,12 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,32 +37,37 @@ import com.meudinheiro.viewModel.CategoriaViewModel
 import com.meudinheiro.viewModel.CategoriaViewModelFactory
 import com.meudinheiro.viewModel.DespesasViewModel
 import com.meudinheiro.viewModel.DespesasViewModelFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // Cores locais mantendo o padrão Premium
 private val CardBg = Color(0xFF1E2B3E)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Configuracao(
     userPrefs: UserPreferences,
     onBack: () -> Unit
 ) {
-    var isExporting by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Estados
+    // --- ESTADOS DE CONTROLE ---
+    var isExporting by remember { mutableStateOf(false) }
+    var exibirGerenciadorCategorias by remember { mutableStateOf(false) }
+
+    // --- VIEWMODELS & REPOSITORY ---
+    val mainRepository = remember { MainRepository(context) }
+    val categoriaVm: CategoriaViewModel = viewModel(factory = CategoriaViewModelFactory(mainRepository))
+    val despesasVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(mainRepository))
+
+    // --- DADOS ---
     val enabled by userPrefs.notifEnabledFlow.collectAsState(initial = false)
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
     val hour by userPrefs.notifHourFlow.collectAsState(initial = 9)
     val minute by userPrefs.notifMinuteFlow.collectAsState(initial = 0)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
-    val mainRepository = remember { MainRepository(context) }
-    val categoriaVm: CategoriaViewModel =
-        viewModel(factory = CategoriaViewModelFactory(mainRepository))
-    val despesasVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(mainRepository))
-    var exibirGerenciadorCategorias by remember { mutableStateOf(false) }
 
     val listaDespesas by despesasVM.despesasFiltradas.collectAsState()
     val mesIndex by despesasVM.mesSelecionado.collectAsState()
@@ -75,7 +75,7 @@ fun Configuracao(
 
     val nomesMeses = remember { listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro") }
 
-    // Launcher de Permissão
+    // --- PERMISSÕES ---
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -89,62 +89,37 @@ fun Configuracao(
 
     fun hasNotificationPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         } else true
     }
 
-    // Cores do Switch
-    val premiumSwitchColors = SwitchDefaults.colors(
-        checkedThumbColor = PremiumDarkBlue,
-        checkedTrackColor = TextWhite,
-        uncheckedThumbColor = TextWhite.copy(alpha = 0.8f),
-        uncheckedTrackColor = Color.Transparent,
-        uncheckedBorderColor = TextWhite.copy(alpha = 0.4f)
-    )
-
+    // --- LAYOUT PRINCIPAL ---
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(PremiumDarkBlue, PremiumLightBlue)
-                )
-            )
+            .background(Brush.verticalGradient(colors = listOf(PremiumDarkBlue, PremiumLightBlue)))
     ) {
+        // CAMADA 1: CONTEÚDO DA TELA
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = {
-                        Text(
-                            "Configurar Alertas",
-                            color = TextWhite,
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
+                    title = { Text("Configurar Alertas", color = TextWhite, fontWeight = FontWeight.Bold) },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, "Voltar", tint = TextWhite)
-                        }
+                        IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Voltar", tint = TextWhite) }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    windowInsets = WindowInsets(0, 0, 0, 0) // Controlado manualmente se precisar
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
             },
             bottomBar = {
-                // --- REFATORADO: BOTÕES EMPILHADOS PARA MELHOR RESPONSIVIDADE ---
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(PremiumDarkBlue.copy(alpha = 0.95f)) // Fundo para contraste no fim da lista
+                        .background(PremiumDarkBlue.copy(alpha = 0.95f))
                         .windowInsetsPadding(WindowInsets.navigationBars)
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Botão Principal: Testar
                     Button(
                         onClick = {
                             scope.launch {
@@ -152,59 +127,39 @@ fun Configuracao(
                                     permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 } else {
                                     AgendadorNotifDespesas.runNow(context)
-                                    Toast.makeText(
-                                        context,
-                                        "Notificação enviada!",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    Toast.makeText(context, "Notificação enviada!", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp), // Altura maior para toque fácil
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = TextWhite,
-                            contentColor = PremiumDarkBlue
-                        ),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TextWhite, contentColor = PremiumDarkBlue),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Icon(
-                            Icons.Default.NotificationsActive,
-                            null,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Icon(Icons.Default.NotificationsActive, null, Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Testar Notificação Agora", fontWeight = FontWeight.Bold)
                     }
 
-                    // Botão Secundário: Voltar
                     OutlinedButton(
                         onClick = onBack,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
                         border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f)),
                         shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("Voltar")
-                    }
+                    ) { Text("Voltar") }
                 }
-            },
-            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+            }
         ) { padding ->
-
 
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp), // Reduzi espaçamento entre cards
                 contentPadding = PaddingValues(top = 16.dp, bottom = 20.dp)
             ) {
-                // 1. CARD DE ATIVAÇÃO
+                // CARD 1: Ativação
                 item {
                     PremiumConfigCard {
                         Row(
@@ -222,7 +177,7 @@ fun Configuracao(
                                 Text(
                                     if (enabled) "Ativado" else "Desativado",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (enabled) Color(0xFF69F0AE) else TextWhite.copy(alpha = 0.6f)
+                                    color = if (enabled) Color(0xFF69F0AE) else TextWhite.copy(0.6f)
                                 )
                             }
                             Switch(
@@ -231,37 +186,29 @@ fun Configuracao(
                                     scope.launch {
                                         userPrefs.saveNotifEnabled(isChecked)
                                         if (isChecked) {
-                                            if (!hasNotificationPermission()) {
-                                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                            } else {
-                                                AgendadorNotifDespesas.scheduleDaily(
-                                                    context,
-                                                    hour,
-                                                    minute
-                                                )
-                                            }
-                                        } else {
-                                            AgendadorNotifDespesas.cancel(context)
-                                        }
+                                            if (!hasNotificationPermission()) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            else AgendadorNotifDespesas.scheduleDaily(context, hour, minute)
+                                        } else AgendadorNotifDespesas.cancel(context)
                                     }
                                 },
-                                colors = premiumSwitchColors
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = PremiumDarkBlue,
+                                    checkedTrackColor = TextWhite,
+                                    uncheckedThumbColor = TextWhite.copy(0.8f),
+                                    uncheckedTrackColor = Color.Transparent,
+                                    uncheckedBorderColor = TextWhite.copy(0.4f)
+                                )
                             )
                         }
                     }
                 }
 
-                // 2. CARD DE CONFIGURAÇÕES (Só mostra se ativado)
+                // CARD 2: Configurações (Compactado)
                 if (enabled) {
                     item {
                         PremiumConfigCard {
-                            Text(
-                                "Personalização",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextWhite,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.height(20.dp))
+                            Text("Personalização", style = MaterialTheme.typography.titleMedium, color = TextWhite, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(16.dp))
 
                             // Dias de Antecedência
                             PremiumStepperRow(
@@ -272,12 +219,12 @@ fun Configuracao(
                                 onPlus = { scope.launch { userPrefs.saveNotifDaysAhead(daysAhead + 1) } }
                             )
 
-                            Spacer(Modifier.height(20.dp))
-                            Divider(color = TextWhite.copy(alpha = 0.1f))
-                            Spacer(Modifier.height(20.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Divider(color = TextWhite.copy(0.1f))
+                            Spacer(Modifier.height(12.dp))
 
-                            // Horário
-                            PremiumTimeRow(
+                            // Horário (Agora Horizontal e Compacto)
+                            PremiumTimeRowCompact(
                                 hour = hour,
                                 minute = minute,
                                 onHourChange = { h ->
@@ -303,45 +250,26 @@ fun Configuracao(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Filtro Inteligente",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = TextWhite
-                                    )
+                                    Text("Filtro Inteligente", style = MaterialTheme.typography.bodyLarge, color = TextWhite)
                                     Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        "Ignorar Débitos, avisar apenas Cartão de Crédito.",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextWhite.copy(alpha = 0.6f),
-                                        lineHeight = 14.sp
-                                    )
+                                    Text("Ignorar Débitos, avisar apenas Cartão de Crédito.", style = MaterialTheme.typography.labelSmall, color = TextWhite.copy(0.6f))
                                 }
                                 Switch(
                                     checked = onlyCredit,
-                                    onCheckedChange = { v ->
-                                        scope.launch {
-                                            userPrefs.saveNotifOnlyCredit(
-                                                v
-                                            )
-                                        }
-                                    },
-                                    colors = premiumSwitchColors
+                                    onCheckedChange = { v -> scope.launch { userPrefs.saveNotifOnlyCredit(v) } },
+                                    colors = SwitchDefaults.colors(checkedThumbColor = PremiumDarkBlue, checkedTrackColor = TextWhite)
                                 )
                             }
                         }
                     }
                 }
 
+                // CARD 3: Ferramentas
                 item {
                     PremiumConfigCard {
-                        Text(
-                            "Ferramentas de Dados",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextWhite
-                        )
+                        Text("Ferramentas de Dados", style = MaterialTheme.typography.titleMedium, color = TextWhite)
                         Spacer(Modifier.height(16.dp))
 
-                        // Botão Categorias
                         OutlinedButton(
                             onClick = { exibirGerenciadorCategorias = true },
                             modifier = Modifier.fillMaxWidth(),
@@ -355,28 +283,27 @@ fun Configuracao(
 
                         Spacer(Modifier.height(12.dp))
 
-                        // Botão Exportar
                         Button(
                             onClick = {
-                                // Verifica se há dados para exportar
                                 if (listaDespesas.isNotEmpty()) {
-                                    val nomeMes = nomesMeses.getOrElse(mesIndex) { "Mes_Atual" }
-
-                                    // Chama a função do Repositório (que criamos anteriormente)
-                                    // Certifique-se de que a função 'exportarExtratoPDF' está no MainRepository
-                                    mainRepository.exportarExtratoPDF(
-                                        context = context,
-                                        mes = nomeMes,
-                                        ano = anoAtual,
-                                        despesas = listaDespesas
-                                    )
-                                } else {
-                                    Toast.makeText(context, "Não há despesas para exportar neste mês.", Toast.LENGTH_SHORT).show()
-                                }
+                                    scope.launch {
+                                        try {
+                                            isExporting = true
+                                            delay(500)
+                                            withContext(Dispatchers.IO) {
+                                                val nomeMes = nomesMeses.getOrElse(mesIndex) { "Mes" }
+                                                mainRepository.exportarExtratoPDF(context, nomeMes, anoAtual, listaDespesas)
+                                            }
+                                            delay(1000)
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) { Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_LONG).show() }
+                                        } finally { isExporting = false }
+                                    }
+                                } else { Toast.makeText(context, "Sem dados.", Toast.LENGTH_SHORT).show() }
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                            shape = RoundedCornerShape(12.dp) // Mantendo padrão visual
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(Icons.Default.PictureAsPdf, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
@@ -389,38 +316,54 @@ fun Configuracao(
                     Text(
                         "O sistema verificará contas a vencer entre hoje e os próximos $daysAhead dias.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextWhite.copy(alpha = 0.4f),
+                        color = TextWhite.copy(0.4f),
                         textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
                     )
                 }
             }
         }
+
+        // DIALOGS E LOADERS
         if (exibirGerenciadorCategorias) {
-            GerenciarCategoriasDialog(
-                viewModel = categoriaVm, // A variável que inicializamos no passo anterior
-                onDismiss = { exibirGerenciadorCategorias = false }
-            )
+            GerenciarCategoriasDialog(viewModel = categoriaVm, onDismiss = { exibirGerenciadorCategorias = false })
         }
 
+        if (isExporting) {
+            Dialog(onDismissRequest = { }, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg),
+                    border = BorderStroke(1.dp, TextWhite.copy(0.1f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF4CAF50))
+                        Spacer(Modifier.height(16.dp))
+                        Text("Gerando extrato...", color = TextWhite, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
 
-// --- COMPONENTES VISUAIS ---
+// --- COMPONENTES VISUAIS OTIMIZADOS ---
 
 @Composable
 private fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp), // Radius levemente menor para economizar espaço visual
         colors = CardDefaults.cardColors(containerColor = CardBg),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(16.dp), // Padding reduzido de 20 para 16
             content = content
         )
     }
@@ -445,7 +388,7 @@ private fun PremiumStepperRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             StepperButton(text = "-", onClick = onMinus, enabled = value > min)
 
-            Box(modifier = Modifier.width(44.dp), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.width(40.dp), contentAlignment = Alignment.Center) {
                 Text(
                     text = "$value",
                     style = MaterialTheme.typography.titleMedium,
@@ -459,72 +402,74 @@ private fun PremiumStepperRow(
     }
 }
 
+// --- NOVO SELETOR DE TEMPO COMPACTO (HORIZONTAL) ---
 @Composable
-private fun PremiumTimeRow(
+private fun PremiumTimeRowCompact(
     hour: Int,
     minute: Int,
     onHourChange: (Int) -> Unit,
     onMinuteChange: (Int) -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Título à esquerda, alinhado com o padrão
         Text(
             "Horário do Alerta",
             style = MaterialTheme.typography.bodyMedium,
-            color = TextWhite.copy(alpha = 0.8f)
+            color = TextWhite
         )
-        Spacer(Modifier.height(16.dp))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            // Horas
-            TimePickerControl(value = hour, range = 24, onChange = onHourChange)
+        // Controles à direita, alinhados horizontalmente
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Horas: [-] 09 [+]
+            TimePickerControlHorizontal(value = hour, range = 24, onChange = onHourChange)
 
             Text(
                 " : ",
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 color = TextWhite.copy(alpha = 0.5f),
-                modifier = Modifier
-                    .padding(horizontal = 8.dp)
-                    .offset(y = (-4).dp)
+                modifier = Modifier.padding(horizontal = 4.dp).offset(y = (-2).dp)
             )
 
-            // Minutos (Pulo de 5 em 5)
-            TimePickerControl(value = minute, range = 60, step = 5, onChange = onMinuteChange)
+            // Minutos: [-] 00 [+]
+            TimePickerControlHorizontal(value = minute, range = 60, step = 5, onChange = onMinuteChange)
         }
     }
 }
 
+// Componente Horizontal: [-] 00 [+]
 @Composable
-private fun TimePickerControl(
+private fun TimePickerControlHorizontal(
     value: Int,
     range: Int,
     step: Int = 1,
     onChange: (Int) -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        StepperButton(text = "+", onClick = { onChange((value + step) % range) })
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        StepperButton(text = "-", onClick = { onChange((value - step + range) % range) })
 
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.3f)),
             shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 4.dp)
         ) {
             Box(
-                modifier = Modifier.size(width = 50.dp, height = 40.dp),
+                modifier = Modifier.size(width = 40.dp, height = 32.dp), // Tamanho reduzido
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = String.format("%02d", value),
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        StepperButton(text = "-", onClick = { onChange((value - step + range) % range) })
+        StepperButton(text = "+", onClick = { onChange((value + step) % range) })
     }
 }
 
@@ -533,8 +478,8 @@ private fun StepperButton(text: String, onClick: () -> Unit, enabled: Boolean = 
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(40.dp), // Aumentei um pouco para facilitar o toque
-        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.size(32.dp), // Tamanho reduzido de 40dp para 32dp
+        shape = RoundedCornerShape(8.dp),
         contentPadding = PaddingValues(0.dp),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = TextWhite,
@@ -546,7 +491,7 @@ private fun StepperButton(text: String, onClick: () -> Unit, enabled: Boolean = 
             if (enabled) TextWhite.copy(alpha = 0.3f) else TextWhite.copy(alpha = 0.1f)
         )
     ) {
-        Text(text, fontSize = 20.sp, fontWeight = FontWeight.Light)
+        Text(text, fontSize = 18.sp, fontWeight = FontWeight.Light, textAlign = TextAlign.Center)
     }
 }
 
@@ -562,32 +507,42 @@ fun GerenciarCategoriasDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        // Box para centralizar e dar margem
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp), // Padding de segurança das bordas da tela
-            contentAlignment = Alignment.Center // Centraliza o conteúdo (o Card)
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
         ) {
             Card(
                 modifier = Modifier
-                    .fillMaxWidth() // Ocupa a largura disponível dentro do Box (respeitando o padding de 16dp)
-                    .heightIn(min = 200.dp, max = 500.dp), // Define limites de altura para o diálogo
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp, max = 500.dp), // Altura dinâmica
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CardBg),
                 border = BorderStroke(1.dp, Color.White.copy(0.1f))
             ) {
                 Column(
                     modifier = Modifier
-                        .padding(24.dp) // Padding interno do conteúdo do Card
+                        .padding(24.dp)
                         .fillMaxWidth()
                 ) {
                     // Cabeçalho
-                    Text("Minhas Categorias", style = MaterialTheme.typography.headlineSmall, color = TextWhite, fontWeight = FontWeight.Bold)
-                    Text("Adicione ou remova categorias personalizadas.", style = MaterialTheme.typography.bodySmall, color = TextWhite.copy(0.6f))
+                    Text(
+                        "Minhas Categorias",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Adicione ou remova categorias personalizadas.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextWhite.copy(0.6f)
+                    )
 
                     Spacer(Modifier.height(20.dp))
 
-                    // Input
+                    // Input de Nova Categoria
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = novoNome,
@@ -602,10 +557,12 @@ fun GerenciarCategoriasDialog(
                                 unfocusedLabelColor = TextWhite.copy(0.6f),
                                 focusedTextColor = TextWhite,
                                 unfocusedTextColor = TextWhite,
-                                cursorColor = TextWhite // Adicionado para garantir visibilidade do cursor
+                                cursorColor = TextWhite
                             )
                         )
                         Spacer(Modifier.width(8.dp))
+
+                        // Botão Adicionar
                         IconButton(
                             onClick = {
                                 if (novoNome.isNotBlank()) {
@@ -623,7 +580,7 @@ fun GerenciarCategoriasDialog(
 
                     // Lista de Categorias
                     LazyColumn(
-                        modifier = Modifier.weight(1f, fill = false), // Scrollável mas não expande infinitamente
+                        modifier = Modifier.weight(1f, fill = false),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(categorias) { cat ->
@@ -636,8 +593,17 @@ fun GerenciarCategoriasDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(cat.title, color = TextWhite, fontWeight = FontWeight.Medium)
-                                IconButton(onClick = { viewModel.excluirCategoria(cat) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFEF5350))
+
+                                IconButton(
+                                    onClick = { viewModel.excluirCategoria(cat) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        null,
+                                        tint = Color(0xFFEF5350),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
@@ -649,7 +615,10 @@ fun GerenciarCategoriasDialog(
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = TextWhite, contentColor = PremiumDarkBlue)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = TextWhite,
+                            contentColor = PremiumDarkBlue
+                        )
                     ) {
                         Text("Concluído", fontWeight = FontWeight.Bold)
                     }

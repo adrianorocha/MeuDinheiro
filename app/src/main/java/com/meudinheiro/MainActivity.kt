@@ -130,6 +130,9 @@ fun ShowApp() {
         AppStage.Cadastro -> {
             CadastroUsuarioScreen(
                 userPrefs = userPrefs,
+                onBack = {
+                    stage = AppStage.Home
+                },
                 onFinished = {
                     stage = AppStage.Home
                 }

@@ -82,7 +82,7 @@ fun MainScreen(
 
     val nome = nomeState
     if (nome!!.isBlank() || emCadastro) {
-        CadastroUsuarioScreen(userPrefs = userPrefs, onFinished = { emCadastro = false })
+        CadastroUsuarioScreen(userPrefs = userPrefs, onBack = { emCadastro = false }, onFinished = { emCadastro = false })
         return
     }
 

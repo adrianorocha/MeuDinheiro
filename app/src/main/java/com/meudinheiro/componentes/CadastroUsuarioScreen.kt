@@ -4,50 +4,23 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,65 +45,50 @@ import com.meudinheiro.viewModel.HomeViewModelFactory
 import java.io.File
 import java.util.UUID
 
-// --- LOGICA DE SENHA (Mantida) ---
-private enum class PasswordStrength { WEAK, MEDIUM, STRONG }
-
+// --- LÓGICA DE SENHA ---
+// Estrutura de dados para a UI da força da senha
 private data class PasswordStrengthUi(
-    val strength: PasswordStrength,
-    val progress: Float,        // 0..1
     val label: String,
-    val color: Color
+    val color: Color,
+    val progress: Float // 0.0 a 1.0
 )
 
+// Função para avaliar a força da senha e retornar o estado da UI
 private fun evaluatePasswordStrength(pass: String): PasswordStrengthUi {
-    if (pass.isBlank()) {
-        return PasswordStrengthUi(
-            strength = PasswordStrength.WEAK,
-            progress = 0f,
-            label = "Fraca",
-            color = Color(0xFFE53935) // Vermelho vivo
-        )
-    }
+    if (pass.isBlank()) return PasswordStrengthUi("", Color.Transparent, 0f)
 
     var score = 0
-    val len = pass.length
-
-    if (len >= 8) score++
-    if (len >= 12) score++
-    if (pass.any { it.isLowerCase() }) score++
-    if (pass.any { it.isUpperCase() }) score++
+    if (pass.length >= 6) score++
+    if (pass.length >= 10) score++
     if (pass.any { it.isDigit() }) score++
     if (pass.any { !it.isLetterOrDigit() }) score++
+    if (pass.any { it.isUpperCase() } && pass.any { it.isLowerCase() }) score++
 
-    val progress = (score / 6f).coerceIn(0f, 1f)
+    // Cores baseadas na imagem de exemplo
+    val weakColor = Color(0xFFE53935) // Vermelho
+    val mediumColor = Color(0xFFFFB300) // Amarelo/Laranja
+    val strongColor = Color(0xFF43A047) // Verde
 
-    return when {
-        score <= 2 -> PasswordStrengthUi(
-            strength = PasswordStrength.WEAK,
-            progress = progress.coerceAtMost(0.4f),
-            label = "Fraca",
-            color = Color(0xFFE53935)
-        )
-        score <= 4 -> PasswordStrengthUi(
-            strength = PasswordStrength.MEDIUM,
-            progress = progress.coerceIn(0.4f, 0.75f),
-            label = "Média",
-            color = Color(0xFFFFB300) // Âmbar
-        )
-        else -> PasswordStrengthUi(
-            strength = PasswordStrength.STRONG,
-            progress = progress.coerceAtLeast(0.75f),
-            label = "Forte",
-            color = Color(0xFF43A047) // Verde
-        )
+    return when (score) {
+        0, 1 -> PasswordStrengthUi("Fraca", weakColor, 0.33f)
+        2, 3 -> PasswordStrengthUi("Média", mediumColor, 0.66f)
+        4, 5 -> PasswordStrengthUi("Forte", strongColor, 1.0f)
+        5,6 -> PasswordStrengthUi("Muito forte", strongColor, 1.0f)
+        6,7 -> PasswordStrengthUi("Extremamente forte", strongColor, 1.0f)
+        7,8 -> PasswordStrengthUi("Muito muito forte", strongColor, 1.0f)
+        8,9 -> PasswordStrengthUi("Muito muito muito forte", strongColor, 1.0f)
+        9,10 -> PasswordStrengthUi("Muito muito muito muito forte", strongColor, 1.0f)
+        else -> PasswordStrengthUi("", Color.Transparent, 0f) // Deveria ser inalcançável
     }
 }
 
 @Composable
 fun CadastroUsuarioScreen(
     userPrefs: UserPreferences,
+    onBack: () -> Unit,
     onFinished: () -> Unit
 ) {
+    // ... (Restante do código de inicialização e estados permanece o mesmo)
     val context = LocalContext.current
     val activity = remember {
         (context as? FragmentActivity)
@@ -140,37 +98,14 @@ fun CadastroUsuarioScreen(
     val homeVm: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val vm: AuthViewModel = viewModel(factory = AuthViewModelFactory(userPrefs))
 
-    // Estados dos campos
+    // Estados
     var nomeCompleto by remember { mutableStateOf("") }
     var usuario by remember { mutableStateOf("") }
     var senha by remember { mutableStateOf("") }
     var confirma by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
 
-    // Foto
-    val savedUri by homeVm.userPhoto.collectAsState(initial = "")
-    val initialPhotoUri: String? = savedUri.takeIf { it.isNotBlank() }
-    var fotoUri by remember { mutableStateOf(initialPhotoUri) }
-
-    val pickLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        try {
-            val dir = File(context.filesDir, "profile")
-            if (!dir.exists()) dir.mkdirs()
-            val destFile = File(dir, "profile_${UUID.randomUUID()}.jpg")
-            context.contentResolver.openInputStream(uri).use { input ->
-                requireNotNull(input) { "Não foi possível abrir a imagem." }
-                destFile.outputStream().use { output -> input.copyTo(output) }
-            }
-            fotoUri = destFile.absolutePath
-            homeVm.updateUserPhoto(destFile.absolutePath)
-        } catch (e: Exception) {
-            Toast.makeText(context, "Erro ao salvar foto: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
+    // Carregamento inicial
     LaunchedEffect(Unit) {
         vm.loadInitial()
         nomeCompleto = vm.nomeCompletoState.value
@@ -179,91 +114,71 @@ fun CadastroUsuarioScreen(
         confirma = ""
     }
 
-    val strengthUi = remember(senha) { evaluatePasswordStrength(senha) }
-    val scrollState = rememberScrollState() // Para rolar em telas pequenas
+    // Foto
+    val savedUri by homeVm.userPhoto.collectAsState(initial = "")
+    var fotoUri by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(savedUri) { if (savedUri.isNotBlank()) fotoUri = savedUri }
 
-    // --- LAYOUT PRINCIPAL ---
+    val pickLauncher =
+        rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                try {
+                    val dir = File(context.filesDir, "profile")
+                    if (!dir.exists()) dir.mkdirs()
+                    val destFile = File(dir, "profile_${UUID.randomUUID()}.jpg")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        destFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    fotoUri = destFile.absolutePath
+                    homeVm.updateUserPhoto(destFile.absolutePath)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Erro ao processar imagem.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+    // --- CÁLCULO DE FORÇA ---
+    val strengthUi = remember(senha) { evaluatePasswordStrength(senha) }
+    val confirmStrengthUi = remember(confirma) { evaluatePasswordStrength(confirma) }
+
+    val scrollState = rememberScrollState()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(PremiumDarkBlue, PremiumLightBlue)
+                    colors = listOf(Color(0xFF0D1B2A), Color(0xFF1B263B))
                 )
             )
     ) {
+        // --- CONTEÚDO SCROLLÁVEL ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp)
-                .verticalScroll(scrollState), // Habilita rolagem
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // ... (Espaçamento e Título)
+            Spacer(modifier = Modifier.height(40.dp))
             Text(
                 "Criar Conta",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextWhite
+                color = Color(0xFFE0E1DD)
             )
-
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- AVATAR ---
-            Box(
-                modifier = Modifier
-                    .size(110.dp)
-                    .clip(CircleShape)
-                    .border(2.dp, TextWhite.copy(alpha = 0.3f), CircleShape)
-                    .background(Color.Black.copy(alpha = 0.2f))
-                    .clickable { pickLauncher.launch(arrayOf("image/*")) },
-                contentAlignment = Alignment.Center
-            ) {
-                if (!fotoUri.isNullOrBlank()) {
-                    Image(
-                        painter = rememberAsyncImagePainter(fotoUri),
-                        contentDescription = "Foto de perfil",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "Avatar padrão",
-                        modifier = Modifier.size(50.dp),
-                        tint = TextWhite.copy(alpha = 0.7f)
-                    )
-                }
-
-                // Ícone de câmera pequeno para indicar edição
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp)
-                        .size(24.dp)
-                        .background(PremiumDarkBlue, CircleShape)
-                        .border(1.dp, TextWhite, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.CameraAlt,
-                        contentDescription = null,
-                        tint = TextWhite,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
-
+            AvatarPicker(fotoUri = fotoUri) { pickLauncher.launch(arrayOf("image/*")) }
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- CAMPOS ---
+            // ... (Outros campos de input)
             PremiumRegistrationInput(
-                value = nomeCompleto,
-                onValueChange = { nomeCompleto = it },
-                label = "Nome completo",
-                icon = Icons.Default.Badge
+                value = nomeCompleto, onValueChange = { nomeCompleto = it },
+                label = "Nome completo", icon = Icons.Default.Badge
             )
-
             Spacer(modifier = Modifier.height(16.dp))
 
             PremiumRegistrationInput(
@@ -273,130 +188,212 @@ fun CadastroUsuarioScreen(
                 icon = Icons.Default.AccountCircle,
                 keyboardType = KeyboardType.Ascii
             )
-
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Senha
             PremiumRegistrationInput(
-                value = senha,
-                onValueChange = { senha = it },
-                label = "Senha",
-                icon = Icons.Default.Lock,
-                isPassword = true,
-                isVisible = isPasswordVisible,
+                value = senha, onValueChange = { senha = it },
+                label = "Senha", icon = Icons.Default.Lock,
+                isPassword = true, isVisible = isPasswordVisible,
                 onVisibilityChange = { isPasswordVisible = !isPasswordVisible }
             )
-
-            // Indicador de força
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = { strengthUi.progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp)),
-                color = strengthUi.color,
-                trackColor = TextWhite.copy(alpha = 0.2f)
-            )
-            Text(
-                text = "Força: ${strengthUi.label}",
-                fontSize = 12.sp,
-                color = strengthUi.color,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-            )
-
+            // NOVO INDICADOR DE FORÇA DE SENHA
+            PasswordStrengthIndicator(strengthUi)
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Confirmação
             PremiumRegistrationInput(
-                value = confirma,
-                onValueChange = { confirma = it },
-                label = "Confirme a senha",
-                icon = Icons.Default.Lock,
-                isPassword = true,
-                isVisible = isPasswordVisible, // Usa o mesmo toggle da senha principal
+                value = confirma, onValueChange = { confirma = it },
+                label = "Confirme a senha", icon = Icons.Default.Lock,
+                isPassword = true, isVisible = isPasswordVisible,
                 onVisibilityChange = { isPasswordVisible = !isPasswordVisible }
             )
+            // NOVO INDICADOR DE FORÇA DE SENHA PARA CONFIRMAÇÃO
+            PasswordStrengthIndicator(confirmStrengthUi)
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- SWITCH BIOMETRIA ---
+            // ... (Restante do código: Biometria, Botão Salvar)
             if (vm.canUseBiometric(activity)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        "Habilitar Biometria",
-                        fontSize = 14.sp,
-                        color = TextWhite,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = vm.useBiometric.value,
-                        onCheckedChange = { checked ->
-                            if (checked) {
-                                vm.promptBiometric(
-                                    activity,
-                                    onAuthenticated = { /* ok */ },
-                                    onError = { errorMsg ->
-                                        Toast.makeText(activity, errorMsg, Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            } else {
-                                vm.useBiometric.value = false
-                            }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = PremiumDarkBlue,
-                            checkedTrackColor = TextWhite,
-                            uncheckedThumbColor = TextWhite,
-                            uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
-                        )
-                    )
+                BiometricSwitch(checked = vm.useBiometric.value) { checked ->
+                    if (checked) vm.promptBiometric(
+                        activity,
+                        {},
+                        { Toast.makeText(activity, it, Toast.LENGTH_SHORT).show() })
+                    else vm.useBiometric.value = false
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
-            // --- BOTÃO SALVAR ---
             Button(
                 onClick = {
-                    when {
-                        nomeCompleto.trim().isBlank() -> Toast.makeText(activity, "Nome completo obrigatório", Toast.LENGTH_SHORT).show()
-                        usuario.trim().isBlank() -> Toast.makeText(activity, "Nome de usuário obrigatório", Toast.LENGTH_SHORT).show()
-                        senha.isBlank() -> Toast.makeText(activity, "Senha obrigatória", Toast.LENGTH_SHORT).show()
-                        senha != confirma -> Toast.makeText(activity, "Senhas diferentes", Toast.LENGTH_SHORT).show()
-                        else -> {
-                            vm.nomeCompletoState.value = nomeCompleto.trim()
-                            vm.usuarioState.value = usuario.trim()
-                            vm.passState.value = senha
-                            vm.confirmState.value = confirma
-                            if (!fotoUri.isNullOrBlank()) {
-                                vm.userPhotoState.value = fotoUri!!.trim()
-                            }
-                            vm.saveCredentials(onSuccess = { onFinished() })
-                        }
+                    if (validateForm(activity, nomeCompleto, usuario, senha, confirma)) {
+                        vm.nomeCompletoState.value = nomeCompleto.trim()
+                        vm.usuarioState.value = usuario.trim()
+                        vm.passState.value = senha
+                        vm.confirmState.value = confirma
+                        if (!fotoUri.isNullOrBlank()) vm.userPhotoState.value = fotoUri!!.trim()
+                        vm.saveCredentials(onSuccess = { onFinished() })
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,
-                    contentColor = PremiumDarkBlue
+                    contentColor = Color(0xFF0D1B2A)
                 ),
                 elevation = ButtonDefaults.buttonElevation(8.dp)
             ) {
                 Text("SALVAR ALTERAÇÕES", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
-
-            // Espaço extra para o scroll não cortar o botão
             Spacer(modifier = Modifier.height(32.dp))
+        }
+
+        // --- BOTÃO VOLTAR (Fixo no topo esquerdo) ---
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 24.dp, start = 16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "Voltar",
+                tint = Color(0xFFE0E1DD),
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }
 
-// Helper visual para os Inputs ficarem iguais ao login
+// --- NOVO COMPONENTE DE FORÇA DA SENHA (Estilo da Imagem) ---
+@Composable
+private fun PasswordStrengthIndicator(strengthUi: PasswordStrengthUi) {
+    // Animação suave para a cor e o progresso
+    val animatedColor by animateColorAsState(
+        targetValue = strengthUi.color,
+        animationSpec = tween(300),
+        label = "color"
+    )
+    val animatedProgress by animateFloatAsState(
+        targetValue = strengthUi.progress,
+        animationSpec = tween(300),
+        label = "progress"
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Barra de progresso
+        LinearProgressIndicator(
+            progress = { animatedProgress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp) // Altura da barra
+                .clip(RoundedCornerShape(2.dp)), // Bordas arredondadas
+            color = animatedColor,
+            trackColor = Color(0xFFE0E1DD).copy(alpha = 0.2f) // Cor de fundo da barra
+        )
+
+        // Rótulo e ícone do cadeado
+        if (strengthUi.label.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = strengthUi.label,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = animatedColor
+                )
+                Icon(
+                    imageVector = Icons.Default.Lock, // Usei o ícone de cadeado padrão
+                    contentDescription = null,
+                    tint = animatedColor,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+// ... (Os outros componentes auxiliares AvatarPicker, BiometricSwitch, PremiumRegistrationInput e a função validateForm permanecem exatamente os mesmos do código anterior e devem ser incluídos aqui para o funcionamento completo)
+// (Inclua aqui os outros componentes AvatarPicker, BiometricSwitch, PremiumRegistrationInput, validateForm do código anterior)
+@Composable
+private fun AvatarPicker(fotoUri: String?, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(110.dp)
+            .clip(CircleShape)
+            .border(2.dp, Color(0xFFE0E1DD).copy(alpha = 0.3f), CircleShape)
+            .background(Color.Black.copy(alpha = 0.2f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!fotoUri.isNullOrBlank()) {
+            Image(
+                painter = rememberAsyncImagePainter(fotoUri),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                Icons.Default.Person,
+                null,
+                modifier = Modifier.size(50.dp),
+                tint = Color(0xFFE0E1DD).copy(alpha = 0.7f)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(8.dp)
+                .size(28.dp)
+                .background(Color(0xFF0D1B2A), CircleShape)
+                .border(1.dp, Color(0xFFE0E1DD), CircleShape), contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.CameraAlt,
+                null,
+                tint = Color(0xFFE0E1DD),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BiometricSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Text(
+            "Habilitar Biometria",
+            fontSize = 14.sp,
+            color = Color(0xFFE0E1DD),
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked, onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color(0xFF0D1B2A),
+                checkedTrackColor = Color(0xFFE0E1DD),
+                uncheckedThumbColor = Color(0xFFE0E1DD),
+                uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
+            )
+        )
+    }
+}
+
 @Composable
 private fun PremiumRegistrationInput(
     value: String,
@@ -409,36 +406,60 @@ private fun PremiumRegistrationInput(
     keyboardType: KeyboardType = KeyboardType.Text
 ) {
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        leadingIcon = { Icon(icon, contentDescription = null, tint = TextWhite.copy(alpha = 0.7f)) },
+        value = value, onValueChange = onValueChange, label = { Text(label) },
+        leadingIcon = { Icon(icon, null, tint = Color(0xFFE0E1DD).copy(alpha = 0.7f)) },
         trailingIcon = if (isPassword) {
             {
                 IconButton(onClick = onVisibilityChange) {
                     Icon(
-                        imageVector = if (isVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = "Alternar senha",
-                        tint = TextWhite.copy(alpha = 0.7f)
+                        if (isVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        null,
+                        tint = Color(0xFFE0E1DD).copy(alpha = 0.7f)
                     )
                 }
             }
         } else null,
         visualTransformation = if (isPassword && !isVisible) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(keyboardType = if(isPassword) KeyboardType.Password else keyboardType),
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        keyboardOptions = KeyboardOptions(keyboardType = if (isPassword) KeyboardType.Password else keyboardType),
+        singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Color.White,
-            unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-            focusedLabelColor = Color.White,
-            unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-            cursorColor = Color.White,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
-            focusedLeadingIconColor = Color.White,
-            unfocusedLeadingIconColor = Color.White.copy(alpha = 0.7f)
+            focusedBorderColor = Color(0xFFE0E1DD),
+            unfocusedBorderColor = Color(0xFFE0E1DD).copy(alpha = 0.3f),
+            focusedLabelColor = Color(0xFFE0E1DD),
+            unfocusedLabelColor = Color(0xFFE0E1DD).copy(alpha = 0.7f),
+            cursorColor = Color(0xFFE0E1DD),
+            focusedTextColor = Color(0xFFE0E1DD),
+            unfocusedTextColor = Color(0xFFE0E1DD),
+            focusedLeadingIconColor = Color(0xFFE0E1DD),
+            unfocusedLeadingIconColor = Color(0xFFE0E1DD).copy(alpha = 0.7f)
         )
     )
+}
+
+private fun validateForm(
+    context: android.content.Context,
+    nome: String,
+    user: String,
+    pass: String,
+    conf: String
+): Boolean {
+    return when {
+        nome.trim().isBlank() -> {
+            Toast.makeText(context, "Nome obrigatório", Toast.LENGTH_SHORT).show(); false
+        }
+
+        user.trim().isBlank() -> {
+            Toast.makeText(context, "Usuário obrigatório", Toast.LENGTH_SHORT).show(); false
+        }
+
+        pass.isBlank() -> {
+            Toast.makeText(context, "Senha obrigatória", Toast.LENGTH_SHORT).show(); false
+        }
+
+        pass != conf -> {
+            Toast.makeText(context, "Senhas não conferem", Toast.LENGTH_SHORT).show(); false
+        }
+
+        else -> true
+    }
 }
