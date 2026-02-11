@@ -21,15 +21,22 @@ class MetaViewModel(private val repository: MainRepository) : ViewModel() {
         }
     }
 
-    /*fun adicionarDinheiro(id: Int, valor: Double) {
+    fun adicionarDinheiro(id: Int, valor: Double) {
         viewModelScope.launch(Dispatchers.IO) { // Adicionado Dispatcher explícito
             repository.adicionarAporte(id, valor)
         }
-    }*/
+    }
 
     fun realizarAporteReal(meta: Meta, contaId: String, valor: Double) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.realizarAporte(meta, contaId, valor)
         }
     }
+
+    fun excluirMeta(meta: Meta, contaId: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.excluirMetaComRestituicao(meta, contaId)
+        }
+    }
+
 }

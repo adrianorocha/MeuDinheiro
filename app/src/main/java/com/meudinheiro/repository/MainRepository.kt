@@ -521,29 +521,57 @@ class MainRepository(private val context: Context) {
         metaDao.adicionarAporte(id, valor)
     }
 
-    suspend fun realizarAporte(meta: Meta, contaId: String, valor: Double) =
-        withContext(Dispatchers.IO) {
-            db.withTransaction {
-                // 1. Subtrair o valor do saldo da conta bancária
-                contaSaldoDao.subtrairSaldo(contaId, valor)
+    suspend fun realizarAporte(meta: Meta, contaId: String, valor: Double) = withContext(Dispatchers.IO) {
+        if (valor <= 0) return@withContext
 
-                // 2. Aumentar o valor guardado na meta
-                metaDao.adicionarAporte(meta.id, valor)
+        db.withTransaction {
+            // 1. Atualiza o saldo da conta (Subtração)
+            contaSaldoDao.subtrairSaldo(contaId, valor)
 
-                // 3. Criar registro no extrato
-                val transacaoReserva = DespesasDomain(
+            // 2. Atualiza o valor guardado na Meta (Adição)
+            metaDao.adicionarAporte(meta.id, valor)
+
+            // 3. Cria a Entity Despesa para o extrato
+            val transacaoAporte = Despesa(
+                id = 0, // O Room gera o ID automaticamente se for autoGenerate
+                descricao = "Aporte: ${meta.nome}",
+                valor = valor,
+                data = Date(),
+                conta = contaId,
+                categoria = "Reserva",
+                pic = "reserva",
+                tipo = TipoDespesa.DEBITO,
+                pago = true
+            )
+
+            // 4. Usa a função que você especificou
+            despesaDao.inserirDespesa(transacaoAporte)
+        }
+    }
+
+    suspend fun excluirMetaComRestituicao(meta: Meta, contaId: String?) = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            // 1. Se houver valor guardado e uma conta destino, devolvemos o dinheiro
+            if (meta.valorGuardado > 0 && contaId != null) {
+                contaSaldoDao.subtrairSaldo(contaId, -meta.valorGuardado) // Soma o valor de volta
+
+                // Registra a devolução no extrato
+                val transacaoEstorno = Despesa(
                     id = 0,
-                    pic = "reserva",
-                    descricao = "Aporte: ${meta.nome}",
-                    valor = valor,
-                    data = Date().time,
+                    descricao = "Estorno: Meta ${meta.nome}",
+                    valor = meta.valorGuardado,
+                    data = Date(),
                     conta = contaId,
                     categoria = "Reserva",
-                    tipo = TipoDespesa.DEBITO,
+                    pic = "reserva",
+                    tipo = TipoDespesa.CREDITO, // Entra como crédito
                     pago = true
                 )
-                // Use o DAO que aceita DespesasDomain se existir, ou converta para Despesa
-                despesaDao.insert(transacaoReserva)
+                despesaDao.inserirDespesa(transacaoEstorno)
             }
+
+            // 2. Remove a meta definitivamente
+            metaDao.excluirMeta(meta)
         }
+    }
 }

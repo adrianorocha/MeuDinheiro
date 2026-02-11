@@ -44,7 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "meudinheiro-db"
                 )
                     .fallbackToDestructiveMigration()
- //                   .addMigrations(MIGRATION_1_2)
+                    //.addMigrations(MIGRATION_1_2)
                     .build()
                     .also { INSTANCE = it }
             }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Date
 
 class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
 
@@ -40,7 +41,7 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
 
         lista.filter { despesa ->
             val cal = Calendar.getInstance()
-            cal.time = despesa.data
+            cal.time = Date(despesa.data)
 
             val mesmoMes = cal.get(Calendar.MONTH) == mes
             val mesmoAno = cal.get(Calendar.YEAR) == ano

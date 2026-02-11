@@ -46,6 +46,7 @@ import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
+import java.util.Date
 
 // Cores Premium Locais
 private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.9f)
@@ -62,7 +63,7 @@ fun DespesasItem(
     onClick: (() -> Unit)? = null
 ) {
     var showDialog by remember { mutableStateOf(false) }
-    val dataFormatada = remember(item.data) { DateUtils.formatarData(item.data) }
+    val dataFormatada = remember(item.data) { DateUtils.formatarData(Date(item.data)) }
     val context = LocalContext.current
 
     val resId = remember(item.pic) {

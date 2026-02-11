@@ -83,6 +83,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation(libs.androidx.runtime)
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    implementation(libs.androidx.compose.ui.geometry)
 
 
 

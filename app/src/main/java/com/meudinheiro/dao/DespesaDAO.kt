@@ -16,9 +16,6 @@ interface DespesaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirDespesa(despesa: Despesa)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(despesa: DespesasDomain)
     @Query("SELECT * FROM despesas ORDER BY data DESC")
     fun obterDespesas(): Flow<List<DespesasDomain>>
 
