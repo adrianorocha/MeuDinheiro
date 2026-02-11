@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -23,9 +24,14 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -36,6 +42,7 @@ import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.formatarMoedaBR
 
+// Cores para os Gráficos
 private val ChartColors = listOf(
     Color(0xFF69F0AE), // Verde Neon
     Color(0xFF40C4FF), // Azul Claro
@@ -54,23 +61,36 @@ fun ResumoGeralCard(
     isPrivate: Boolean = false
 ) {
     val saldoTotal = receitaTotal - despesaTotal
-
-    // Proporção para o gráfico
     val totalFinanceiro = receitaTotal + despesaTotal
-    // Calculamos o ângulo da despesa em relação ao total (máximo 360 graus)
-    val sweepDespesa = if (totalFinanceiro > 0) (despesaTotal / totalFinanceiro).toFloat() * 360f else 0f
 
+    // Calcula o ângulo alvo final (máximo 360 graus)
+    val targetSweepDespesa =
+        if (totalFinanceiro > 0) (despesaTotal / totalFinanceiro).toFloat() * 360f else 0f
+
+    // 1. Estado da animação (Gatilho)
+    var animationPlayed by remember { mutableStateOf(false) }
+
+    // 2. Animação fluida com Easing premium
     val animSweepDespesa by animateFloatAsState(
-        targetValue = sweepDespesa,
-        animationSpec = tween(durationMillis = 1000),
+        targetValue = if (animationPlayed) targetSweepDespesa else 0f,
+        animationSpec = tween(
+            durationMillis = 1200, // Duração da animação do anel
+            delayMillis = 100,     // Pequeno delay para a tela renderizar primeiro
+            easing = FastOutSlowInEasing
+        ),
         label = "animDespesa"
     )
+
+    // Dispara a animação assim que o Card aparece na tela
+    LaunchedEffect(key1 = true) {
+        animationPlayed = true
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp) // Padding externo mínimo
-            .height(85.dp), // Altura compacta fixa
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .height(85.dp), // Altura compacta fixa MANTIDA
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2B3E).copy(alpha = 0.95f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -78,50 +98,60 @@ fun ResumoGeralCard(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp), // Padding interno reduzido
+                .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // --- LADO ESQUERDO: Gráfico de Donut Compacto ---
+            // --- LADO ESQUERDO: Gráfico de Donut Animado ---
             Box(
-                modifier = Modifier.size(60.dp), // Tamanho reduzido
+                modifier = Modifier.size(60.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.size(50.dp)) {
-                    val espessura = 6.dp.toPx() // Traço mais fino
+                    val espessura = 6.dp.toPx()
 
-                    // Fundo/Receita (Verde)
+                    // Fundo/Receita (Verde) - Mantido suave
                     drawArc(
-                        color = Color(0xFF69F0AE).copy(alpha = 0.3f),
+                        color = Color(0xFF69F0AE).copy(alpha = 0.2f),
                         startAngle = -90f,
                         sweepAngle = 360f,
                         useCenter = false,
                         style = Stroke(width = espessura, cap = StrokeCap.Round)
                     )
 
-                    // Saídas (Vermelho) - Sobrepõe
+                    // Saídas (Vermelho) - Com Degradê (Gradient)
+                    val despesaBrush = Brush.sweepGradient(
+                        colors = listOf(
+                            Color(0xFFFF8A80),
+                            Color(0xFFEF5350)
+                        ), // Gradiente do claro pro escuro
+                        center = center
+                    )
+
                     drawArc(
-                        color = Color(0xFFEF5350),
+                        brush = despesaBrush,
                         startAngle = -90f,
-                        sweepAngle = animSweepDespesa,
+                        sweepAngle = animSweepDespesa, // Usa o valor animado!
                         useCenter = false,
                         style = Stroke(width = espessura, cap = StrokeCap.Round)
                     )
                 }
 
-                // Porcentagem no centro (somente se não for privado)
+                // Porcentagem no centro (Contador Animado)
                 if (!isPrivate) {
-                    val porcentagem = if (totalFinanceiro > 0) (despesaTotal / totalFinanceiro * 100).toInt() else 0
+                    // O texto da porcentagem vai subindo junto com a animação da linha
+                    val animatedPercentage =
+                        if (totalFinanceiro > 0) ((animSweepDespesa / 360f) * 100).toInt() else 0
+
                     Text(
-                        text = "$porcentagem%",
-                        fontSize = 10.sp,
-                        color = Color.White.copy(0.7f),
+                        text = "$animatedPercentage%",
+                        fontSize = 11.sp, // Levemente ajustado para leitura
+                        color = Color.White.copy(0.85f),
                         fontWeight = FontWeight.Bold
                     )
                 } else {
-                    // Ícone de cadeado ou asteriscos se for privado
                     Text(
-                        text = "**",
-                        fontSize = 12.sp,
+                        text = "••",
+                        fontSize = 14.sp,
                         color = Color.White.copy(0.5f),
                         fontWeight = FontWeight.Bold
                     )
@@ -138,40 +168,40 @@ fun ResumoGeralCard(
                 Text(
                     text = "Patrimônio Líquido",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 10.sp
+                    color = Color.White.copy(alpha = 0.6f), // Um pouco mais visível
+                    fontSize = 11.sp
                 )
 
                 Text(
                     text = formatarMoedaBR(saldoTotal, isPrivate),
-                    style = MaterialTheme.typography.titleMedium.copy( // Fonte média em vez de Large
+                    style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = (-0.5).sp
                     ),
-                    color = if (saldoTotal >= 0) Color.White else Color(0xFFEF5350),
+                    color = if (saldoTotal >= 0) Color.White else Color(0xFFFF5252),
                     fontSize = 18.sp
                 )
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Legendas de Entradas/Saídas em linha única
+                // Legendas de Entradas/Saídas (Melhor espaçadas)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IndicatorDot(Color(0xFF69F0AE))
+                    Spacer(Modifier.width(4.dp))
                     Text(
                         text = formatarMoedaBR(receitaTotal, isPrivate),
-                        fontSize = 10.sp,
-                        color = Color.White.copy(0.8f),
-                        modifier = Modifier.padding(start = 4.dp)
+                        fontSize = 11.sp,
+                        color = Color.White.copy(0.8f)
                     )
 
                     Spacer(Modifier.width(12.dp))
 
                     IndicatorDot(Color(0xFFEF5350))
+                    Spacer(Modifier.width(4.dp))
                     Text(
                         text = formatarMoedaBR(despesaTotal, isPrivate),
-                        fontSize = 10.sp,
-                        color = Color.White.copy(0.8f),
-                        modifier = Modifier.padding(start = 4.dp)
+                        fontSize = 11.sp,
+                        color = Color.White.copy(0.8f)
                     )
                 }
             }
@@ -273,7 +303,9 @@ fun ChartLegendItem(color: Color, label: String, value: Double, isPrivate: Boole
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(8.dp)
     ) {
-        Box(modifier = Modifier.size(10.dp).background(color, CircleShape))
+        Box(modifier = Modifier
+            .size(10.dp)
+            .background(color, CircleShape))
         Spacer(Modifier.width(6.dp))
         Column {
             Text(label, fontSize = 11.sp, color = TextWhite.copy(0.6f))

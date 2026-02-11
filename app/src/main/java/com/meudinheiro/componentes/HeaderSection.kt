@@ -69,7 +69,7 @@ fun HeaderSection(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.statusBars)
+            //.windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         shape = containerShape,
         color = containerBg,
