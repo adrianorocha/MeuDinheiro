@@ -31,4 +31,10 @@ interface ContaSaldoDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirLista(contas: List<ContaSaldo>)
+
+    @Query("UPDATE contasaldo SET saldo = saldo - :valor WHERE conta = :contaId")
+    suspend fun subtrairSaldo(contaId: String, valor: Double)
+
+    @Query("SELECT * FROM contasaldo")
+    fun getTodasContas(): Flow<List<ContaSaldo>>
 }

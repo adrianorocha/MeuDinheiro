@@ -13,24 +13,29 @@ import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaAviso
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.Meta
 import com.meudinheiro.data.Orcamento
 import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
+import kotlin.Int
 
 class MainRepository(private val context: Context) {
 
     private val db = AppDatabase.getInstance(context)
+
     // DAOs
     private val despesaDao = db.despesaDao()
     private val contaSaldoDao = db.contaSaldoDao()
     private val despesaFixaDao = db.despesaFixaDao()
-
     private val categoriaDao = db.categoriaDao()
     private val orcamentoDao = db.orcamentoDao()
+    private val metaDao = db.metaDao()
 
 
     /* ======================= DESPESAS ======================= */
@@ -86,10 +91,7 @@ class MainRepository(private val context: Context) {
         // Atualiza a tabela de contas com o valor calculado
         contaSaldoDao.atualizarSaldo(contaNome, novoSaldo)
     }
-    /**
-     * Exclui a despesa e ajusta o saldo da conta devolvendo/removendo o valor.
-     * Tudo feito em transação para não deixar dados inconsistentes.
-     */
+
     suspend fun excluirDespesaComRestituicao(id: Int) {
         db.withTransaction {
             // 1. Buscar a despesa
@@ -130,7 +132,8 @@ class MainRepository(private val context: Context) {
         CategoriaDomain(pic = "gym", title = "Academia"),
         CategoriaDomain(pic = "games", title = "Jogos"),
         CategoriaDomain(pic = "drink", title = "Bebidas"),
-        CategoriaDomain(pic = "lunch", title = "Lanche")
+        CategoriaDomain(pic = "lunch", title = "Lanche"),
+        CategoriaDomain(pic = "reserva", title = "Reserva")
     )
 
     val bancos: List<BancoDomain> = listOf(
@@ -172,9 +175,6 @@ class MainRepository(private val context: Context) {
         contaSaldoDao.inserirContaSaldo(contaSaldo)
     }
 
-    /**
-     * Wrapper para garantir que, se não existir saldo para a conta, volte 0.0
-     */
     suspend fun obterSaldoPorConta(conta: String): Double {
         return contaSaldoDao.obterSaldoPorConta(conta) ?: 0.0
     }
@@ -186,6 +186,7 @@ class MainRepository(private val context: Context) {
     suspend fun atualizarSaldo(conta: String, novoSaldo: Double) {
         contaSaldoDao.atualizarSaldo(conta, novoSaldo)
     }
+
     suspend fun getDespesasAVencer(
         startMillis: Long,
         endMillis: Long,
@@ -204,6 +205,7 @@ class MainRepository(private val context: Context) {
             dao.obterPendentesVencendoDate(inicio, fim)
         }
     }
+
     suspend fun listarPendencias(
         daysAhead: Int,
         onlyCredit: Boolean
@@ -243,7 +245,7 @@ class MainRepository(private val context: Context) {
     }
 
     suspend fun obterResumoFinanceiro(inicio: Date, fim: Date): List<ResumoFinanceiroDto> {
-        return db.despesaDao().obterResumoPorPeriodo(inicio, fim)
+        return despesaDao.obterResumoPorPeriodo(inicio, fim)
     }
 
 
@@ -294,8 +296,9 @@ class MainRepository(private val context: Context) {
 
             // Verifica se o mês atual da regra já foi processado
             // Se o mês/ano da última vez for diferente do mês/ano atual (ou se nunca foi lançada)
-            val jaLancouNesteMes = (calUltimoLancamento.get(Calendar.MONTH) == hoje.get(Calendar.MONTH)) &&
-                    (calUltimoLancamento.get(Calendar.YEAR) == hoje.get(Calendar.YEAR))
+            val jaLancouNesteMes =
+                (calUltimoLancamento.get(Calendar.MONTH) == hoje.get(Calendar.MONTH)) &&
+                        (calUltimoLancamento.get(Calendar.YEAR) == hoje.get(Calendar.YEAR))
 
             // Se ainda não lançou neste mês E hoje já é (ou passou) do dia de vencimento
             if (!jaLancouNesteMes && hoje.get(Calendar.DAY_OF_MONTH) >= regra.diaVencimento) {
@@ -331,7 +334,12 @@ class MainRepository(private val context: Context) {
         }
     }
 
-    fun exportarExtratoPDF(context: Context, mes: String, ano: Int, despesas: List<DespesasDomain>) {
+    fun exportarExtratoPDF(
+        context: Context,
+        mes: String,
+        ano: Int,
+        despesas: List<DespesasDomain>
+    ) {
         val pdfDocument = android.graphics.pdf.PdfDocument()
         val paint = android.graphics.Paint()
         val titlePaint = android.graphics.Paint().apply {
@@ -362,11 +370,13 @@ class MainRepository(private val context: Context) {
 
         // Itens
         despesas.forEach { item ->
-            val dataStr = java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault()).format(item.data)
+            val dataStr =
+                java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault()).format(item.data)
             canvas.drawText(dataStr, 40f, yPosition, paint)
             canvas.drawText(item.descricao, 120f, yPosition, paint)
 
-            val valorStr = if (item.tipo == TipoDespesa.CREDITO) "+ ${item.valor}" else "- ${item.valor}"
+            val valorStr =
+                if (item.tipo == TipoDespesa.CREDITO) "+ ${item.valor}" else "- ${item.valor}"
             canvas.drawText(valorStr, 450f, yPosition, paint)
 
             yPosition += 20f
@@ -393,7 +403,12 @@ class MainRepository(private val context: Context) {
                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(android.content.Intent.createChooser(intent, "Compartilhar Extrato"))
+            context.startActivity(
+                android.content.Intent.createChooser(
+                    intent,
+                    "Compartilhar Extrato"
+                )
+            )
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -404,6 +419,7 @@ class MainRepository(private val context: Context) {
     suspend fun obterTodasRecorrencias(): List<DespesaFixa> {
         return despesaFixaDao.obterTodas()
     }
+
     // Remove a regra (cancela a assinatura futura)
     suspend fun excluirRecorrencia(id: Int) {
         despesaFixaDao.excluir(id)
@@ -478,4 +494,56 @@ class MainRepository(private val context: Context) {
     }
 
     val todasDespesasFlow: Flow<List<Despesa>> = despesaDao.obterTodasFlow()
+
+    // --- OPERAÇÕES DE METAS ---
+
+    // Busca todas as metas em tempo real (Flow)
+    fun getTodasMetas(): Flow<List<Meta>> {
+        return metaDao.getTodasMetas()
+    }
+
+    // Salva uma nova meta ou atualiza uma existente
+    suspend fun salvarMeta(meta: Meta) {
+        metaDao.salvarMeta(meta)
+    }
+
+    // Remove uma meta do planejamento
+    suspend fun excluirMeta(meta: Meta) {
+        metaDao.excluirMeta(meta)
+    }
+
+    fun getTodasContas(): Flow<List<ContaSaldo>> {
+        return contaSaldoDao.getTodasContas()
+    }
+
+    // Adiciona um valor específico ao que já foi guardado
+    suspend fun adicionarAporte(id: Int, valor: Double) {
+        metaDao.adicionarAporte(id, valor)
+    }
+
+    suspend fun realizarAporte(meta: Meta, contaId: String, valor: Double) =
+        withContext(Dispatchers.IO) {
+            db.withTransaction {
+                // 1. Subtrair o valor do saldo da conta bancária
+                contaSaldoDao.subtrairSaldo(contaId, valor)
+
+                // 2. Aumentar o valor guardado na meta
+                metaDao.adicionarAporte(meta.id, valor)
+
+                // 3. Criar registro no extrato
+                val transacaoReserva = DespesasDomain(
+                    id = 0,
+                    pic = "reserva",
+                    descricao = "Aporte: ${meta.nome}",
+                    valor = valor,
+                    data = Date().time,
+                    conta = contaId,
+                    categoria = "Reserva",
+                    tipo = TipoDespesa.DEBITO,
+                    pago = true
+                )
+                // Use o DAO que aceita DespesasDomain se existir, ou converta para Despesa
+                despesaDao.insert(transacaoReserva)
+            }
+        }
 }

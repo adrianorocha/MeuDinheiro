@@ -1,6 +1,5 @@
 package com.meudinheiro.componentes
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,14 +19,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -56,6 +55,8 @@ import com.meudinheiro.viewModel.DespesasViewModel
 import com.meudinheiro.viewModel.DespesasViewModelFactory
 import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
+import com.meudinheiro.viewModel.MetaViewModel
+import com.meudinheiro.viewModel.MetaViewModelFactory
 import com.meudinheiro.viewModel.OrcamentoViewModel
 import com.meudinheiro.viewModel.OrcamentoViewModelFactory
 import kotlinx.coroutines.Dispatchers
@@ -82,6 +83,8 @@ fun MainScreen(
     val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
+    val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
+
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
 
     // --- Estados (Preferences & User) ---
@@ -112,9 +115,7 @@ fun MainScreen(
     // --- Verificações de Inicialização ---
     if (nomeState == null) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White),
+            modifier = Modifier.fillMaxSize().background(Color.White),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(color = PremiumDarkBlue)
@@ -162,9 +163,8 @@ fun MainScreen(
             .background(Brush.verticalGradient(colors = listOf(PremiumDarkBlue, PremiumLightBlue)))
     ) {
 
-        // O SCAFFOLD GARANTE QUE A LISTA NÃO FIQUE EMBAIXO DO MENU
         Scaffold(
-            containerColor = Color.Transparent, // Mantém o fundo do Box visível
+            containerColor = Color.Transparent,
             bottomBar = {
                 NavigationSection(
                     selectedIndex = selectedIndex,
@@ -176,7 +176,7 @@ fun MainScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding) // <-- O segredo do scroll responsivo está aqui
+                    .padding(innerPadding)
             ) {
 
                 // 1. HEADER (Fixo no topo)
@@ -195,21 +195,21 @@ fun MainScreen(
                     isPrivateMode = isPrivate,
                     onTogglePrivate = { scope.launch { userPrefs.togglePrivateMode() } }
                 )
-                // Item: Resumo Geral
+
+                // Resumo Geral (Donut Animado)
                 ResumoGeralCard(
                     receitaTotal = dashboardState.receitaGlobal,
                     despesaTotal = dashboardState.despesaGlobal,
                     isPrivate = isPrivate
                 )
 
-                // 2. TUDO O QUE ROLA FICA NA LAZYCOLUMN
+                // 2. CONTEÚDO SCROLLÁVEL
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(bottom = 16.dp) // Reduzi o bottom já que o Scaffold resolve o menu
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-
 
                     // Item: Carrossel de Contas
                     item {
@@ -233,9 +233,7 @@ fun MainScreen(
                             }
                         } else {
                             Text(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextWhite.copy(alpha = 0.5f),
@@ -247,13 +245,11 @@ fun MainScreen(
 
                     // Item: Ações Rápidas
                     item {
-                        Box(modifier = Modifier.padding(top = 8.dp)) { // Mais perto do carrossel
+                        Box(modifier = Modifier.padding(top = 8.dp)) {
                             ActionButtonRow(
                                 categorias = repository.categorias.map { it.title },
                                 getPicCategoria = { nomeCategoria ->
-                                    repository.getPicCategoria(
-                                        nomeCategoria
-                                    )
+                                    repository.getPicCategoria(nomeCategoria)
                                 },
                                 contaSelecionada = contaSelecionadaId.orEmpty(),
                                 viewModel = contaVM,
@@ -262,27 +258,52 @@ fun MainScreen(
                         }
                     }
 
-                    // --- SESSÃO: ORÇAMENTOS ---
+                    // --- MUDANÇA AQUI: SESSÃO ORÇAMENTOS COM BOTÃO AO LADO DO TÍTULO ---
                     item {
-                        Text(
-                            text = "Orçamentos do Mês",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Orçamentos do Mês",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            TextButton(
+                                onClick = { showAddOrcamentoDialog = true },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color(0xFF69F0AE)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "Configurar",
+                                    color = Color(0xFF69F0AE),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
 
                     item {
-                        // Quebra a lista em grupos de até 4 orçamentos
                         val gruposDeQuatro = orcamentosComProgresso.chunked(4)
 
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                             gruposDeQuatro.forEach { linhaDeOrcamentos ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp) // Espaço entre os cards
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    // Desenha os orçamentos daquela linha
                                     linhaDeOrcamentos.forEach { orcamento ->
                                         Box(modifier = Modifier.weight(1f)) {
                                             OrcamentoCard(
@@ -290,46 +311,21 @@ fun MainScreen(
                                                 onClick = { orcamentoSelecionado = orcamento })
                                         }
                                     }
-                                    // Se a linha tiver menos de 4 itens, cria "espaços fantasmas" para alinhar
                                     repeat(4 - linhaDeOrcamentos.size) {
                                         Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(8.dp)) // Espaço para a linha de baixo
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
                     }
-                    item {
-                        OutlinedButton(
-                            onClick = { showAddOrcamentoDialog = true },
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                                .fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
-                            border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f))
-                        ) {
-                            Icon(Icons.Default.Add, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Configurar Teto de Gasto")
-                        }
-                    }
 
-                    // --- SESSÃO: SELETOR DE MÊS ---
+                    // --- SELETOR DE MÊS ---
                     item {
                         val meses = remember {
                             listOf(
-                                "Janeiro",
-                                "Fevereiro",
-                                "Março",
-                                "Abril",
-                                "Maio",
-                                "Junho",
-                                "Julho",
-                                "Agosto",
-                                "Setembro",
-                                "Outubro",
-                                "Novembro",
-                                "Dezembro"
+                                "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                                "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
                             )
                         }
                         Row(
@@ -360,15 +356,12 @@ fun MainScreen(
                         }
                     }
 
-                    // --- SESSÃO: LISTA DE DESPESAS ---
+                    // --- LISTA DE DESPESAS ---
                     if (despesasFiltradas.isEmpty()) {
                         item {
                             Text(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 fontSize = 16.sp,
-                                fontWeight = FontWeight.Normal,
                                 color = TextWhite.copy(alpha = 0.6f),
                                 textAlign = TextAlign.Center,
                                 text = "Nenhuma movimentação neste mês."
@@ -388,12 +381,11 @@ fun MainScreen(
                             )
                         }
                     }
-                } // Fim da LazyColumn
+                }
             }
-        } // Fim do Scaffold
+        }
 
         // --- CAMADAS SOBREPOSTAS (Dialogs) ---
-        // Fora do Scaffold para preencher a tela inteira quando abertos
         orcamentoSelecionado?.let { orcamento ->
             DetalheOrcamentoBottomSheet(
                 item = orcamento,
@@ -403,7 +395,6 @@ fun MainScreen(
                     orcamentoSelecionado = null
                 },
                 onEditar = { novoValor ->
-                    // AGORA CHAMA A FUNÇÃO DE ATUALIZAR, NÃO A DE SALVAR!
                     orcamentoVM.atualizarOrcamento(orcamento.categoria, novoValor)
                 }
             )
@@ -423,6 +414,22 @@ fun MainScreen(
             ContaBancaria(
                 viewModelFactory = ContaSaldoViewModelFactory(repository),
                 onClose = { selectedIndex = -1 }
+            )
+        }
+        if (selectedIndex == 1) {
+            ExtratoScreen(
+                despesasVM = despVM,
+                categorias = repository.categorias.map { it.title },
+                isPrivate = isPrivate,
+                onBack = { selectedIndex = -1 }
+            )
+        }
+
+        if (selectedIndex == 2) {
+            MetasScreen(
+                viewModel = metaVM,
+                isPrivate = isPrivate,
+                onBack = { selectedIndex = -1 }
             )
         }
     }

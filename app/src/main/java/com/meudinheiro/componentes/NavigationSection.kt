@@ -85,12 +85,27 @@ fun NavigationSection(
                 horizontalArrangement = Arrangement.Center, // Centralizado (ou SpaceEvenly se tiver mais itens)
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // ITEM 1: Minha Conta
+                // ITEM 1
                 PremiumSingleDockItem(
                     selected = selectedIndex == 0,
                     label = "Minha Conta",
                     iconRes = R.drawable.bank, // Certifique-se que o ícone existe
                     onClick = { onItemSelected(0) }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                PremiumSingleDockItem(
+                    selected = selectedIndex == 1,
+                    label = "Extrato",
+                    iconRes = R.drawable.extrato,
+                    onClick = { onItemSelected(1) }
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+                PremiumSingleDockItem(
+                    selected = selectedIndex == 2,
+                    label = "Metas",
+                    iconRes = R.drawable.metas,
+                    onClick = { onItemSelected(2) }
                 )
 
                 // Exemplo de como adicionar um segundo item futuramente:

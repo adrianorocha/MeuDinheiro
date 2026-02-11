@@ -11,6 +11,7 @@ import com.meudinheiro.dao.CategoriaDao
 import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.dao.DespesaDao
 import com.meudinheiro.dao.DespesaFixaDao
+import com.meudinheiro.dao.MetaDao
 import com.meudinheiro.dao.OrcamentoDao
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -20,7 +21,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 }
 
 @Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class,
-    Categoria::class, Orcamento::class], version = 3)
+    Categoria::class, Orcamento::class, Meta::class], version = 1)
 @TypeConverters(Converters::class)
 
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +30,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun despesaFixaDao(): DespesaFixaDao
     abstract fun categoriaDao(): CategoriaDao
     abstract fun orcamentoDao(): OrcamentoDao
+    abstract fun metaDao(): MetaDao
+
 
     companion object{
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -41,7 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "meudinheiro-db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2)
+ //                   .addMigrations(MIGRATION_1_2)
                     .build()
                     .also { INSTANCE = it }
             }
