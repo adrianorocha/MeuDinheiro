@@ -20,7 +20,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 }
 
 @Database(entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class,
-    Categoria::class, Orcamento::class,OrcamentoProgresso::class], version = 2)
+    Categoria::class, Orcamento::class], version = 3)
 @TypeConverters(Converters::class)
 
 abstract class AppDatabase : RoomDatabase() {
@@ -41,7 +41,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "meudinheiro-db"
                 )
                     .fallbackToDestructiveMigration()
-                    //.addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2)
                     .build()
                     .also { INSTANCE = it }
             }

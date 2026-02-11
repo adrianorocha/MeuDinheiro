@@ -250,31 +250,4 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
             carregarRecorrencias() // Atualiza a lista
         }
     }
-
-    // Dentro do seu ViewModel (ex: ContaSaldoViewModel ou um novo OrcamentoViewModel)
-    val orcamentosComProgresso = combine(
-        repository.obterOrcamentosFlow(),
-        despesasViewModel.despesasFiltradas // Lista de despesas do mês atual
-    ) { orcamentos, despesas ->
-        orcamentos.map { orc ->
-            val gastoAtual = despesas
-                .filter { it.categoria == orc.categoria && it.tipo == TipoDespesa.DEBITO }
-                .sumOf { it.valor }
-
-            // Criamos um objeto temporário para a UI
-            OrcamentoProgresso(
-                categoria = orc.categoria,
-                limite = orc.valorLimite,
-                gastoAtual = gastoAtual,
-                porcentagem = if (orc.valorLimite > 0) (gastoAtual / orc.valorLimite).toFloat() else 0f
-            )
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    data class OrcamentoProgresso(
-        val categoria: String,
-        val limite: Double,
-        val gastoAtual: Double,
-        val porcentagem: Float
-    )
 }

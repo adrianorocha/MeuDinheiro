@@ -12,14 +12,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import androidx.lifecycle.lifecycleScope
 import com.meudinheiro.componentes.CadastroUsuarioScreen
 import com.meudinheiro.componentes.Configuracao
 import com.meudinheiro.componentes.LoginScreen
@@ -27,30 +27,42 @@ import com.meudinheiro.componentes.MainScreen
 import com.meudinheiro.componentes.PendenciasScreen
 import com.meudinheiro.componentes.SplashScreen
 import com.meudinheiro.funcoes.UserPreferences
+import com.meudinheiro.notif.AgendadorNotifDespesas
 import com.meudinheiro.notif.DespesasDevidas
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        scheduleExpenseNotificationWorker()
+
+        // Substituímos o WorkManager antigo pelo nosso novo Agendador Exato
+        ativarNotificacoesDiarias()
 
         setContent {
             ShowApp()
         }
     }
 
-    private fun scheduleExpenseNotificationWorker() {
-        // Define a periodicidade do worker
-        val workRequest = PeriodicWorkRequestBuilder<DespesasDevidas>(1, TimeUnit.DAYS)
-            .build()
+    private fun ativarNotificacoesDiarias() {
+        // Lança uma coroutine atrelada ao ciclo de vida da Activity
+        lifecycleScope.launch(Dispatchers.IO) {
+            val userPrefs = UserPreferences(applicationContext)
 
-        WorkManager.getInstance(this).enqueue(workRequest)
+            // Lê o horário salvo. Se não existir, usa 09:00 como padrão
+            val hora = userPrefs.notifHourFlow.firstOrNull() ?: 9
+            val minuto = userPrefs.notifMinuteFlow.firstOrNull() ?: 0
+
+            // 1. Arma o despertador para o horário configurado para amanhã e os próximos dias
+            AgendadorNotifDespesas.scheduleDaily(applicationContext, hora, minuto)
+
+            // 2. CHAMA IMEDIATAMENTE AGORA! (Assim que o app abre)
+            DespesasDevidas.verificarEExibir(applicationContext)
+        }
     }
-
 }
 
 private enum class AppStage { Splash, Cadastro, Login, Home, Avisos, Pendencias }
@@ -64,6 +76,7 @@ fun ShowApp() {
 
     var nextAfterSplash by remember { mutableStateOf<AppStage?>(null) }
     var showExitDialog by remember { mutableStateOf(false) }
+    val isBiometriaAtiva by userPrefs.biometriaEnabledFlow.collectAsState(initial = true)
 
     var hasUser by remember { mutableStateOf<Boolean?>(null) }
 
@@ -76,7 +89,7 @@ fun ShowApp() {
             if (u.isNotBlank() && p.isNotBlank()) AppStage.Login else AppStage.Cadastro
     }
 
-// Intercepta o botão voltar/gesture
+    // Intercepta o botão voltar/gesture
     BackHandler(enabled = stage != AppStage.Splash) {
         when (stage) {
             AppStage.Home -> showExitDialog = true
@@ -113,20 +126,29 @@ fun ShowApp() {
             }
         )
     }
+
     when (stage) {
         AppStage.Splash -> {
             SplashScreen(
                 onTimeout = {
                     if (hasUser == true) {
-                        stage = AppStage.Login
+                        // VERIFICA SE O USUÁRIO QUER BIOMETRIA
+                        if (isBiometriaAtiva) {
+                            com.meudinheiro.componentes.solicitarBiometria(
+                                context = context,
+                                onSuccess = { stage = AppStage.Home },
+                                onFallback = { stage = AppStage.Login }
+                            )
+                        } else {
+                            // Se a biometria estiver desligada na config, vai direto pra senha
+                            stage = AppStage.Login
+                        }
                     } else if (hasUser == false) {
                         stage = AppStage.Cadastro
                     }
-                    //stage = nextAfterSplash ?: AppStage.Cadastro
                 }
             )
         }
-
         AppStage.Cadastro -> {
             CadastroUsuarioScreen(
                 userPrefs = userPrefs,
@@ -175,4 +197,3 @@ fun ShowApp() {
         }
     }
 }
-

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import java.util.Calendar
 
@@ -19,62 +20,57 @@ object AgendadorNotifDespesas {
         val pi = receiverPendingIntent(context)
         val triggerAt = nextTriggerMillis(hour, minute)
 
-        cancel(context) // evita duplicar agendamentos
+        cancel(context) // Limpa agendamentos antigos para evitar duplicação
 
-        if (Build.VERSION.SDK_INT >= 31) {
+        // A partir do Android 6 (Marshmallow), o Doze Mode bloqueia alarmes normais.
+        // O setExactAndAllowWhileIdle "acorda" o sistema no horário exato.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { // Android 12+
             if (am.canScheduleExactAlarms()) {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
             } else {
-                // Fallback sem permissão de alarme exato
-                am.setInexactRepeating(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAt,
-                    AlarmManager.INTERVAL_DAY,
-                    pi
-                )
+                // Fallback de segurança caso o usuário revogue a permissão de alarme exato
+                am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi)
             }
-        } else {
-            am.setInexactRepeating(
-                AlarmManager.RTC_WAKEUP,
-                triggerAt,
-                AlarmManager.INTERVAL_DAY,
-                pi
-            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) { // Android 6 ao 11
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+        } else { // Android 5 ou inferior
+            am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi)
         }
     }
-    fun rescheduleNext(context: Context) {
-        // lê do prefs o horário atual e agenda novamente
-        // (assim sempre respeita o último horário salvo)
-        val prefs = com.meudinheiro.funcoes.UserPreferences(context)
 
-        // como é object, chamamos um worker agora e reagendamos no receiver
-        // aqui vamos buscar o horário no DataStore via runNow? não dá (suspend).
-        // Solução simples: reagendar pelo último horário gravado também no Intent extras, ou:
-        // (Recomendado) chamar scheduleDaily novamente quando user muda hora/minuto na Configuracao.
-        //
-        // Então aqui apenas agenda +24h com o mesmo horário do último scheduleDaily já chamado.
-        // Na prática: o receiver só chama rescheduleNext depois de runNow; o scheduleDaily já foi chamado
-        // nas mudanças. Se você quiser “perfeito”, posso te mandar a versão que salva hour/minute no SharedPrefs
-        // só para o alarme.
+    // Como usamos setExactAndAllowWhileIdle (que dispara apenas uma vez),
+    // é OBRIGATÓRIO reagendar para o dia seguinte assim que a notificação for disparada.
+    fun rescheduleNext(context: Context, hour: Int, minute: Int) {
+        scheduleDaily(context, hour, minute)
     }
+
     fun cancel(context: Context) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pi = receiverPendingIntent(context)
         am.cancel(pi)
         pi.cancel()
+
+        // Garante que cancelamos qualquer processo de background preso na fila
+        WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
     }
 
-    fun runNow(context: Context) {
-        val req = OneTimeWorkRequestBuilder<DespesasDevidas>().build()
+    // OTMIZADO: Força execução imediata ignorando a economia de bateria
+    /*fun runNow(context: Context) {
+        val req = OneTimeWorkRequestBuilder<DespesasDevidas>()
+            // Diz ao Android: "Isso foi engatilhado pelo usuário agora, execute imediatamente!"
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+
         WorkManager.getInstance(context).enqueueUniqueWork(
             WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.REPLACE, // Derruba a tarefa anterior se o usuário clicar duas vezes rápido
             req
         )
-    }
+    }*/
 
     private fun receiverPendingIntent(context: Context): PendingIntent {
         val i = Intent(context, ReceptorAvisosDiarios::class.java)
+        // FLAG_IMMUTABLE é obrigatória a partir do Android 12 para segurança
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         return PendingIntent.getBroadcast(context, REQ_CODE, i, flags)
     }
@@ -87,9 +83,11 @@ object AgendadorNotifDespesas {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        if (cal.timeInMillis <= now.timeInMillis) cal.add(Calendar.DAY_OF_YEAR, 1)
+
+        // Se a hora já passou hoje, agenda para amanhã no mesmo horário
+        if (cal.timeInMillis <= now.timeInMillis) {
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+        }
         return cal.timeInMillis
     }
-
-
 }

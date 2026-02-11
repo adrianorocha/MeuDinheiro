@@ -17,6 +17,9 @@ interface OrcamentoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun salvarOrcamento(orcamento: Orcamento)
 
-    @Delete
-    suspend fun excluirOrcamento(orcamento: Orcamento)
+    @Query("DELETE FROM orcamentos WHERE categoria = :categoria") // Verifique se o nome da sua tabela é esse mesmo
+    suspend fun excluirPorCategoria(categoria: String)
+
+    @Query("UPDATE orcamentos SET valorLimite = :novoValor WHERE categoria = :categoria")
+    suspend fun atualizarPorCategoria(categoria: String, novoValor: Double)
 }

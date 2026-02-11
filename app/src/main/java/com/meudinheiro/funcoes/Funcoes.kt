@@ -53,9 +53,14 @@ class UserPreferences(private val context: Context) {
             longPreferencesKey("notif_last_day") // evita repetir no mesmo dia
         private val KEY_NOTIF_ONLY_PENDING = booleanPreferencesKey("notif_only_pending")
         private val PRIVATE_MODE_KEY = booleanPreferencesKey("private_mode")
+
+        private val BIOMETRIA_ENABLED = booleanPreferencesKey("biometria_enabled")
     }
 
     // 2) flows que usam o context da instância
+    val biometriaEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[BIOMETRIA_ENABLED] ?: true
+    }
     val userNameFlow: Flow<String> = context.dataStore.data
         .map { prefs -> prefs[KEY_USER_NAME].orEmpty() }
 
@@ -173,6 +178,12 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { preferences ->
             val current = preferences[PRIVATE_MODE_KEY] ?: false
             preferences[PRIVATE_MODE_KEY] = !current
+        }
+    }
+
+    suspend fun saveBiometriaEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[BIOMETRIA_ENABLED] = enabled
         }
     }
 }

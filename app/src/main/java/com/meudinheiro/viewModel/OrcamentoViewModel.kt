@@ -11,36 +11,57 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import kotlin.collections.emptyList
 import kotlin.collections.filter
 import kotlin.collections.map
 
 class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
 
-    val listaOrcamentos = repository.obterOrcamentosFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // 1. Pegamos o mês atual para filtrar as despesas do orçamento
+    private val calendar = Calendar.getInstance()
+    private val mesAtual = calendar.get(Calendar.MONTH) // 0 a 11
+    private val anoAtual = calendar.get(Calendar.YEAR)
 
-    val orcamentosComProgresso: StateFlow<List<OrcamentoProgresso>> = combine<List<Orcamento>, List<Despesa>, List<OrcamentoProgresso>>(
-        repository.obterOrcamentosFlow(),
-        despesasViewModel.despesasFiltradas,
-    ) { orcamentos, despesas ->
+    // 2. Fluxo de Orçamentos (Vem do Banco)
+    private val orcamentosFlow = repository.obterOrcamentosFlow()
 
-        // Lógica de cruzamento dos dados
-        orcamentos.map { orc ->
-            // Filtra despesas daquela categoria e soma
-            val gastoAtual = despesas
-                .filter { it.categoria == orc.categoria && it.tipo == "DEBITO" } // Ajuste "DEBITO" conforme seu Enum/String
+    // 3. Fluxo de Despesas (Vem do Banco e filtramos o mês atual aqui)
+    private val despesasDoMesFlow = repository.todasDespesasFlow
+        .map { lista ->
+            lista.filter { despesa ->
+                val calDespesa = Calendar.getInstance()
+                calDespesa.time = despesa.data
+
+                calDespesa.get(Calendar.MONTH) == mesAtual &&
+                        calDespesa.get(Calendar.YEAR) == anoAtual &&
+                        despesa.tipo == TipoDespesa.DEBITO
+            }
+        }
+
+    // 4. COMBINE: Cruza os dois fluxos
+    val orcamentosComProgresso: StateFlow<List<OrcamentoProgresso>> = combine(
+        orcamentosFlow,
+        despesasDoMesFlow
+    ) { listaOrcamentos, listaDespesas ->
+
+        listaOrcamentos.map { orcamento ->
+            // Para cada orçamento, somamos as despesas daquela categoria
+            val gastoTotal = listaDespesas
+                .filter { it.categoria == orcamento.categoria }
                 .sumOf { it.valor }
 
-            // Calcula porcentagem (evita divisão por zero)
-            val porcentagem = if (orc.valorLimite > 0) (gastoAtual / orc.valorLimite).toFloat() else 0f
+            val porcentagem = if (orcamento.valorLimite > 0) {
+                (gastoTotal / orcamento.valorLimite).toFloat()
+            } else 0f
 
             OrcamentoProgresso(
-                categoria = orc.categoria,
-                limite = orc.valorLimite,
-                gastoAtual = gastoAtual,
+                categoria = orcamento.categoria,
+                limite = orcamento.valorLimite,
+                gastoAtual = gastoTotal,
                 porcentagem = porcentagem
             )
         }
@@ -49,9 +70,30 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
-    fun salvarNovoTeto(categoria: String, valor: Double) {
+    fun salvarOrcamento(categoria: String, valor: Double) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Chama a função do repositório para salvar no banco de dados (Room)
             repository.salvarOrcamento(categoria, valor)
+        }
+    }
+
+    fun excluirOrcamento(categoria: String) {
+        viewModelScope.launch {
+            try {
+                repository.excluirOrcamento(categoria)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Se quiser, pode adicionar um Log aqui caso falhe
+            }
+        }
+    }
+    fun atualizarOrcamento(categoria: String, novoValor: Double) {
+        viewModelScope.launch {
+            try {
+                repository.atualizarOrcamento(categoria, novoValor)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }

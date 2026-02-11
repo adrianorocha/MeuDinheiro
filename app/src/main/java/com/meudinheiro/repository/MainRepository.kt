@@ -457,7 +457,7 @@ class MainRepository(private val context: Context) {
 
     // --- LÓGICA DE ORÇAMENTOS (BUDGETS) ---
 
-    fun obterOrcamentosFlow(): kotlinx.coroutines.flow.Flow<List<Orcamento>> {
+    fun obterOrcamentosFlow(): Flow<List<Orcamento>> {
         return orcamentoDao.obterTodosFlow()
     }
 
@@ -469,7 +469,13 @@ class MainRepository(private val context: Context) {
         orcamentoDao.salvarOrcamento(orcamento)
     }
 
-    suspend fun excluirOrcamento(orcamento: Orcamento) {
-        orcamentoDao.excluirOrcamento(orcamento)
+    suspend fun excluirOrcamento(categoria: String) {
+        orcamentoDao.excluirPorCategoria(categoria)
     }
+
+    suspend fun atualizarOrcamento(categoria: String, novoValor: Double) {
+        orcamentoDao.atualizarPorCategoria(categoria, novoValor)
+    }
+
+    val todasDespesasFlow: Flow<List<Despesa>> = despesaDao.obterTodasFlow()
 }

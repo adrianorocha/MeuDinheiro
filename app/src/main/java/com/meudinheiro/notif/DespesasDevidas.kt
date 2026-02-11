@@ -6,49 +6,61 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.work.CoroutineWorker
-import androidx.work.WorkerParameters
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.repository.MainRepository
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-class DespesasDevidas(
-    appContext: Context,
-    params: WorkerParameters
-) : CoroutineWorker(appContext, params) {
+object DespesasDevidas {
 
-    override suspend fun doWork(): Result {
-        val context = applicationContext
+    // Função direta que roda na Thread de IO (Banco de Dados)
+    suspend fun verificarEExibir(context: Context) = withContext(Dispatchers.IO) {
+        val TAG = "DespesasWorker"
+        Log.d(TAG, "Iniciando verificação DIRETA de despesas...")
+
         val prefs = UserPreferences(context)
 
-        val enabled = prefs.notifEnabledFlow.first()
-        if (!enabled) return Result.success()
-
-        if (Build.VERSION.SDK_INT >= 33) {
-            val ok = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!ok) return Result.success()
+        val enabled = prefs.notifEnabledFlow.firstOrNull() ?: true
+        if (!enabled) {
+            Log.d(TAG, "Notificações desativadas.")
+            return@withContext
         }
 
-        val daysAhead = prefs.notifDaysAheadFlow.first()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasPermission = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
 
-        val df = SimpleDateFormat("EEE, dd MMM yyyy", Locale("pt", "BR"))
+            if (!hasPermission) {
+                Log.d(TAG, "Sem permissão do Android.")
+                return@withContext
+            }
+        }
 
+        val daysAhead = prefs.notifDaysAheadFlow.firstOrNull() ?: 3
         val (inicio, fim) = buildWindowDates(daysAhead)
 
-        val repo = MainRepository(context)
-        val pendentes = repo.getPendentesAVencer(inicio, fim, onlyCredit = false)
+        val pendentes = try {
+            val repo = MainRepository(context)
+            repo.getPendentesAVencer(inicio, fim, onlyCredit = false)
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro no banco", e)
+            return@withContext
+        }
 
-        if (pendentes.isEmpty()) return Result.success()
+        if (pendentes.isEmpty()) {
+            Log.d(TAG, "Nenhuma despesa para os próximos $daysAhead dias.")
+            return@withContext
+        }
 
         val nf = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
+        val df = SimpleDateFormat("dd/MM/yy", Locale("pt", "BR"))
         val total = pendentes.sumOf { it.valor }
 
         val title = "Despesas a vencer"
@@ -62,16 +74,15 @@ class DespesasDevidas(
             }
 
         val bigText = if (pendentes.size > 6) {
-            "$lines\n\n+${pendentes.size - 6} item(ns) não exibidos."
+            "$lines\n\n+${pendentes.size - 6} item(ns) ocultos."
         } else lines
-        ExpenseNotif.show(
-            context = context,
-            title = title,
-            text = text,
-            bigText = bigText
-        )
 
-        return Result.success()
+        try {
+            ExpenseNotif.show(context, title, text, bigText)
+            Log.d(TAG, "Notificação disparada com SUCESSO!")
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro fatal ao exibir notificação", e)
+        }
     }
 
     private fun buildWindowDates(daysAhead: Int): Pair<Date, Date> {
@@ -91,6 +102,4 @@ class DespesasDevidas(
         }
         return Date(calIni.timeInMillis) to Date(calFim.timeInMillis)
     }
-
-
 }

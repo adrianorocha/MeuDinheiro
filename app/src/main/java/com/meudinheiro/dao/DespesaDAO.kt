@@ -123,4 +123,7 @@ suspend fun atualizarStatusPago(id: Long, status: Boolean)
     // Opcional: Limpar antes de restaurar para evitar lixo de dados antigos
     @Query("DELETE FROM despesas")
     suspend fun limparTudo()
+
+    @Query("SELECT * FROM despesas") // Atenção: verifique se o nome da sua tabela é "despesas" mesmo
+    fun obterTodasFlow(): Flow<List<Despesa>>
 }
