@@ -86,6 +86,7 @@ fun MetasScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var metaParaAportar by remember { mutableStateOf<Meta?>(null) }
     var metaParaExcluir by remember { mutableStateOf<Meta?>(null) }
+    var metaParaEditar by remember { mutableStateOf<Meta?>(null) }
 
     // Sistema de Confetes
     val confettiState = remember { ConfeteState() }
@@ -164,7 +165,9 @@ fun MetasScreen(
             onConfirmar = { contaId, valor ->
                 // Lógica de Confete: se o novo valor atingir o objetivo
                 if (meta.valorGuardado + valor >= meta.valorObjetivo && meta.valorGuardado < meta.valorObjetivo) {
-                    confettiState.disparar(screenWidth)
+                    val posX = screenWidth / 2
+                    val posY = 1200f // Altura aproximada de onde o diálogo aparece
+                    confettiState.disparar(posX, posY)
                 }
                 viewModel.realizarAporteReal(meta, contaId, valor)
                 metaParaAportar = null
@@ -486,6 +489,58 @@ fun DeleteMetaDialog(
                 onClick = { onConfirm(contaSelecionadaId) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))
             ) { Text("Excluir", color = Color.White) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Color.White.copy(0.6f)) }
+        }
+    )
+}
+
+@Composable
+fun EditMetaDialog(
+    meta: Meta,
+    onConfirmar: (String, Double) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nome by remember { mutableStateOf(meta.nome) }
+    var objetivo by remember { mutableStateOf(meta.valorObjetivo.toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1E2B3E),
+        title = { Text("Editar Meta", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = nome,
+                    onValueChange = { nome = it },
+                    label = { Text("Nome da Meta") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = objetivo,
+                    onValueChange = { objetivo = it },
+                    label = { Text("Novo Valor do Objetivo (R$)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val valor = objetivo.replace(",", ".").toDoubleOrNull() ?: 0.0
+                    if (nome.isNotBlank() && valor > 0) {
+                        onConfirmar(nome, valor)
+                        onDismiss()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF69F0AE))
+            ) {
+                Text("Salvar Alterações", color = PremiumDarkBlue, fontWeight = FontWeight.Bold)
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar", color = Color.White.copy(0.6f)) }

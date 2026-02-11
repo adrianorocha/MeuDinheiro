@@ -1,6 +1,10 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -10,30 +14,32 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.rotate
 import com.meudinheiro.data.ConfeteState
 
 @Composable
 fun ConfettiOverlay(state: ConfeteState) {
-    // Loop de animação que roda a cada quadro (frame)
+    val tempo = rememberInfiniteTransition(label = "").animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing))
+    )
+
     LaunchedEffect(state.partículas) {
         while (state.partículas.isNotEmpty()) {
-            withFrameNanos {
-                state.atualizar()
-            }
+            withFrameNanos { state.atualizar() }
         }
     }
 
-    // Este é o Canvas do COMPOSE (androidx.compose.foundation.Canvas)
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        state.partículas.forEach { confete ->
-            // No Compose, o drawRoundRect já está disponível no escopo do Canvas
-            drawRoundRect(
-                color = confete.cor,
-                topLeft = Offset(confete.x, confete.y),
-                size = Size(confete.tamanho, confete.tamanho * 0.6f),
-                // CornerRadius corrigido para o pacote androidx.compose.ui.geometry
-                cornerRadius = CornerRadius(4f, 4f)
-            )
+    Canvas(Modifier.fillMaxSize()) {
+        state.partículas.forEachIndexed { index, c ->
+            rotate(degrees = tempo.value * (if(index % 2 == 0) 1f else -1f), pivot = Offset(c.x, c.y)) {
+                drawRoundRect(
+                    color = c.cor,
+                    topLeft = Offset(c.x, c.y),
+                    size = Size(c.tamanho, c.tamanho * 0.6f),
+                    cornerRadius = CornerRadius(2f, 2f)
+                )
+            }
         }
     }
 }

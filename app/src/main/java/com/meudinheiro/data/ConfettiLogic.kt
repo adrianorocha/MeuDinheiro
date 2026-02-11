@@ -6,33 +6,47 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 
 data class Confete(
-    val x: Float,
+    var x: Float,
     var y: Float,
+    var vx: Float, // Velocidade horizontal
+    var vy: Float, // Velocidade vertical
     val cor: Color,
-    val velocidade: Float,
-    val angulo: Float,
-    val tamanho: Float = (8..15).random().toFloat()
+    val tamanho: Float,
+    val peso: Float // Para dar variação na queda
 )
 
 class ConfeteState {
     var partículas by mutableStateOf<List<Confete>>(emptyList())
+    private val gravidade = 0.8f
 
-    fun disparar(largura: Float) {
-        val novasParticulas = List(100) {
+    fun disparar(origemX: Float, origemY: Float) {
+        val novasParticulas = List(80) {
+            // Gera um ângulo aleatório para a explosão (para cima)
+            val angulo = (-Math.PI).toFloat() * (0.2f..0.8f).random()
+            val forca = (15f..35f).random()
+
             Confete(
-                x = (0f..largura).random(),
-                y = -50f,
-                cor = listOf(Color(0xFF69F0AE), Color(0xFF00E676), Color(0xFFB2FF59), Color.White).random(),
-                velocidade = (10f..25f).random(),
-                angulo = (-0.5f..0.5f).random()
+                x = origemX,
+                y = origemY,
+                vx = Math.cos(angulo.toDouble()).toFloat() * forca,
+                vy = Math.sin(angulo.toDouble()).toFloat() * forca,
+                cor = listOf(Color(0xFF69F0AE), Color(0xFF00E676), Color.White, Color.Yellow).random(),
+                tamanho = (10f..20f).random(),
+                peso = (0.5f..1.2f).random()
             )
         }
-        partículas = novasParticulas
+        partículas = partículas + novasParticulas
     }
 
     fun atualizar() {
-        partículas = partículas.map { it.copy(y = it.y + it.velocidade, x = it.x + it.angulo) }
-            .filter { it.y < 2500f } // Remove confetes que saíram da tela
+        partículas = partículas.map { c ->
+            c.vy += gravidade * c.peso // Gravidade puxando para baixo
+            c.copy(
+                x = c.x + c.vx,
+                y = c.y + c.vy,
+                vx = c.vx * 0.95f // Arrastre (vai parando pros lados)
+            )
+        }.filter { it.y < 3000f && it.x > -100f && it.x < 2000f }
     }
 }
 
