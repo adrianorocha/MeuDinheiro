@@ -1,11 +1,16 @@
 package com.meudinheiro.viewModel
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import com.meudinheiro.componentes.FiltroPeriodo
+import com.meudinheiro.componentes.obterIntervalo
 import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
@@ -16,10 +21,14 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Date
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -249,5 +258,23 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
             repository.excluirRecorrencia(id) // Certifique-se que seu Repo tem essa função
             carregarRecorrencias() // Atualiza a lista
         }
+    }
+
+    val totalPoupado = repository.getTotalPoupado()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    var filtroAtual by mutableStateOf(FiltroPeriodo.ESTE_MES)
+        private set
+
+    // Este Flow vai reagir sempre que o filtro mudar
+    val resumoFinanceiro = snapshotFlow { filtroAtual }
+        .flatMapLatest { filtro ->
+            val (inicio, fim) = obterIntervalo(filtro)
+            if (inicio == null) repository.obterResumoGlobal()
+            else repository.obterResumoPorPeriodo(Date(inicio), Date(fim))
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ResumoDto())
+
+    fun alterarFiltro(novoFiltro: FiltroPeriodo) {
+        filtroAtual = novoFiltro
     }
 }

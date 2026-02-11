@@ -574,4 +574,8 @@ class MainRepository(private val context: Context) {
             metaDao.excluirMeta(meta)
         }
     }
+
+    fun getTotalPoupado(): Flow<Double> {
+        return metaDao.getTotalPoupado().map { it ?: 0.0 }
+    }
 }

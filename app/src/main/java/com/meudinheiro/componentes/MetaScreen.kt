@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -139,7 +140,8 @@ fun MetasScreen(
                             meta = meta,
                             isPrivate = isPrivate,
                             onAporteClick = { metaParaAportar = meta },
-                            onExcluirClick = { metaParaExcluir = meta }
+                            onExcluirClick = { metaParaExcluir = meta },
+                            onEditClick = { metaParaEditar = meta }
                         )
                     }
                 }
@@ -186,6 +188,16 @@ fun MetasScreen(
             }
         )
     }
+    metaParaEditar?.let { meta ->
+        EditMetaDialog(
+            meta = meta,
+            onDismiss = { metaParaEditar = null },
+            onConfirmar = { novoNome, novoObjetivo ->
+                viewModel.editarMeta(meta.copy(nome = novoNome, valorObjetivo = novoObjetivo))
+                metaParaEditar = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -193,7 +205,8 @@ fun MetaCard(
     meta: Meta,
     isPrivate: Boolean,
     onAporteClick: () -> Unit,
-    onExcluirClick: () -> Unit
+    onExcluirClick: () -> Unit,
+    onEditClick: () -> Unit
 ) {
     val progresso = (meta.valorGuardado / meta.valorObjetivo).toFloat().coerceIn(0f, 1f)
     val isConcluida = progresso >= 1f
@@ -230,6 +243,9 @@ fun MetaCard(
                         Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF69F0AE), modifier = Modifier.size(24.dp))
                     } else {
                         Text("${(progresso * 100).toInt()}%", color = Color(0xFF69F0AE), fontWeight = FontWeight.Black)
+                    }
+                    IconButton(onClick = onEditClick, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Edit, null, tint = TextWhite.copy(0.5f))
                     }
                     Spacer(Modifier.width(8.dp))
                     IconButton(onClick = onExcluirClick, modifier = Modifier.size(24.dp)) {

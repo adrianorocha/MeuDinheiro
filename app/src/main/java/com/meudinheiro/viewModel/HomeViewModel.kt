@@ -20,4 +20,5 @@ class HomeViewModel(private val prefs: UserPreferences) : ViewModel() {
     fun updateUserPhoto(uri: String) {
         viewModelScope.launch { prefs.saveUserPhoto(uri) }
     }
+
 }

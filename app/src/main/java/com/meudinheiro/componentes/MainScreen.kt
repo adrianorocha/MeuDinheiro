@@ -106,6 +106,7 @@ fun MainScreen(
 
     val despesasFiltradas by despVM.despesasFiltradas.collectAsState()
     val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
+    val totalMetas by contaVM.totalPoupado.collectAsState()
 
     var selectedIndex by remember { mutableStateOf(-1) }
     fun onItemSelected(index: Int) {
@@ -200,6 +201,7 @@ fun MainScreen(
                 ResumoGeralCard(
                     receitaTotal = dashboardState.receitaGlobal,
                     despesaTotal = dashboardState.despesaGlobal,
+                    metasTotal = totalMetas,
                     isPrivate = isPrivate
                 )
 

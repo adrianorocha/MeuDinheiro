@@ -21,4 +21,7 @@ interface MetaDao {
 
     @Query("UPDATE metas SET valorGuardado = valorGuardado + :valor WHERE id = :id")
     suspend fun adicionarAporte(id: Int, valor: Double)
+
+    @Query("SELECT SUM(valorGuardado) FROM metas")
+    fun getTotalPoupado(): Flow<Double?>
 }
