@@ -26,4 +26,7 @@ interface OrcamentoDao {
 
     @Query("SELECT * FROM orcamentos")
     suspend fun obterTodasStatic(): List<Orcamento>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirLista(orcamentos: List<Orcamento>)
 }

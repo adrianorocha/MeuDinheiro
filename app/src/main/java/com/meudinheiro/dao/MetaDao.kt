@@ -32,4 +32,7 @@ interface MetaDao {
     @Query("SELECT * FROM metas ORDER BY valorObjetivo DESC")
     suspend fun obterTodasAsMetasSync(): List<Meta>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirLista(contas: List<Meta>)
+
 }

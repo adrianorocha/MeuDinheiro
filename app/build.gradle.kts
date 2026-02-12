@@ -91,6 +91,11 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.0")
     implementation("androidx.glance:glance-material3:1.1.0")
     implementation(libs.navigation.compose)
+    implementation(libs.androidx.ui.text)
+
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.airbnb.android:lottie-compose:6.4.0")
+    implementation(libs.androidx.compose.animation)
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -132,30 +133,41 @@ fun Configuracao(
         }
     }
 
-    val restoreBackupLauncher = rememberLauncherForActivityResult<Array<String>, Uri?>(
+    val restoreBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { safeUri ->
             scope.launch(Dispatchers.IO) {
                 try {
-                    processingMessage = "Restaurando dados..."
-                    val json = context.contentResolver.openInputStream(safeUri)?.bufferedReader()
-                        ?.use { it.readText() }
-                    json?.let { mainRepository.restaurarBackupCompleto(it) }
+                    processingMessage = "Validando backup..."
+
+                    // 1. Abre o Stream com persistência de leitura
+                    val json = context.contentResolver.openInputStream(safeUri)?.use { inputStream ->
+                        inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                            reader.readText()
+                        }
+                    }?.trim() // Remove espaços em branco ou quebras de linha acidentais
+
+                    if (json.isNullOrBlank()) throw Exception("O arquivo está vazio.")
+
+                    // 2. Limpeza de caracteres invisíveis (BOM) que corrompem o JSON
+                    val cleanJson = if (json.startsWith("\uFEFF")) json.substring(1) else json
+
+                    processingMessage = "Restaurando banco de dados..."
+                    mainRepository.restaurarBackupCompleto(cleanJson)
+
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            "Dados restaurados com sucesso!",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        Toast.makeText(context, "✅ Dados restaurados!", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
+                    Log.e("BackupError", "Falha na restauração: ${e.localizedMessage}", e)
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            "Arquivo inválido ou corrompido.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        // Mostra o erro real para o desenvolvedor, mas amigável para o usuário
+                        val msg = when {
+                            e.message?.contains("expected", true) == true -> "Formato de arquivo incompatível."
+                            else -> "Erro: ${e.localizedMessage ?: "Arquivo corrompido"}"
+                        }
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                     }
                 } finally {
                     processingMessage = null
@@ -163,7 +175,6 @@ fun Configuracao(
             }
         }
     }
-
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->

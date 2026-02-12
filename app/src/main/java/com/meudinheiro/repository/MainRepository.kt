@@ -469,9 +469,11 @@ class MainRepository(private val context: Context) {
 
             // 2. Restaura em massa
             categoriaDao.inserirLista(backup.categorias)
-            contaSaldoDao.inserirLista(backup.contas)
             despesaDao.inserirLista(backup.despesas)
             despesaFixaDao.inserirLista(backup.despesasFixas)
+            contaSaldoDao.inserirLista(backup.contas)
+            metaDao.inserirLista(backup.metas)
+            orcamentoDao.inserirLista(backup.orcamentos)
         }
     }
 
@@ -586,8 +588,7 @@ class MainRepository(private val context: Context) {
     suspend fun obterResumoGlobal(): ResumoDto = withContext(Dispatchers.IO) {
         val entradas = despesaDao.somarGlobal(TipoDespesa.CREDITO) ?: 0.0
         val saidas = despesaDao.somarGlobal(TipoDespesa.DEBITO) ?: 0.0
-        val patrimonioLiquido = entradas - saidas
-        ResumoDto(entradas, saidas, patrimonioLiquido)
+        ResumoDto(entradas, saidas)
     }
 
     suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): ResumoDto = withContext(Dispatchers.IO) {

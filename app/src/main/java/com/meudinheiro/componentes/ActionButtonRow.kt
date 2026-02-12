@@ -1,41 +1,83 @@
 package com.meudinheiro.componentes
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.Update
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.room.util.copy
+import androidx.compose.ui.window.DialogProperties
 import com.meudinheiro.R
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
-import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.funcoes.SuccessAnimation
+import com.meudinheiro.funcoes.compartilharComprovante
+import com.meudinheiro.funcoes.gerarBitmapComprovante
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -48,7 +90,8 @@ import java.util.Locale
 // Cores locais
 private val DialogBg = Color(0xFF1E2B3E)
 private val TextColor = Color(0xFFE0E1DD)
-private enum class Frequencia {
+
+enum class Frequencia {
     UNICA,
     PARCELADA,
     FIXA // Recorrente Automática
@@ -62,7 +105,7 @@ fun ActionButtonRow(
     viewModel: ContaSaldoViewModel,
     onConfigClick: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentContext = LocalContext.current
     val parentScope = rememberCoroutineScope()
 
     var exibirFormulario by remember { mutableStateOf(false) }
@@ -87,7 +130,11 @@ fun ActionButtonRow(
                 color = Color(0xFF4CAF50),
                 modifier = modifierItem,
                 onClick = {
-                    if (contaSelecionada.isBlank()) Toast.makeText(context, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+                    if (contaSelecionada.isBlank()) Toast.makeText(
+                        currentContext,
+                        "Selecione uma conta",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     else exibirDeposito = true
                 }
             )
@@ -98,7 +145,11 @@ fun ActionButtonRow(
                 color = Color(0xFF2196F3),
                 modifier = modifierItem,
                 onClick = {
-                    if (contaSelecionada.isBlank()) Toast.makeText(context, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+                    if (contaSelecionada.isBlank()) Toast.makeText(
+                        currentContext,
+                        "Selecione uma conta",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     else exibirFormulario = true
                 }
             )
@@ -183,7 +234,7 @@ fun ActionButton(
 }
 
 @Composable
-fun PremiumDialogCard(content: @Composable ColumnScope.() -> Unit) {
+fun PremiumDialogCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -206,30 +257,31 @@ fun PremiumTextField(
     label: String,
     modifier: Modifier = Modifier,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None, // O parâmetro que faltava!
     readOnly: Boolean = false,
     trailingIcon: @Composable (() -> Unit)? = null
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
+        label = { Text(label, color = Color.White.copy(alpha = 0.7f)) },
+        modifier = modifier.fillMaxWidth(),
+        keyboardOptions = keyboardOptions,
+        visualTransformation = visualTransformation,
         readOnly = readOnly,
         trailingIcon = trailingIcon,
-        modifier = modifier,
-        keyboardOptions = keyboardOptions,
-        singleLine = true,
-        shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Color.White.copy(alpha = 0.5f),
-            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-            focusedTextColor = TextColor,
-            unfocusedTextColor = TextColor,
-            focusedLabelColor = Color.White,
-            unfocusedLabelColor = Color.White.copy(alpha = 0.6f),
-            cursorColor = Color.White
-        )
+            focusedBorderColor = Color(0xFF69F0AE),
+            unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            cursorColor = Color(0xFF69F0AE)
+        ),
+        shape = RoundedCornerShape(12.dp),
+        singleLine = true
     )
 }
+
 // ... (DepositDialog Code) ...
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -267,7 +319,10 @@ private fun DepositDialog(
             )
 
             PremiumTextField(
-                value = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(dataMillis.value)),
+                value = SimpleDateFormat(
+                    "dd/MM/yyyy",
+                    Locale.getDefault()
+                ).format(Date(dataMillis.value)),
                 onValueChange = {},
                 label = "Data",
                 readOnly = true,
@@ -308,7 +363,10 @@ private fun DepositDialog(
                         }
                     },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4CAF50),
+                        contentColor = Color.White
+                    )
                 ) { Text("Confirmar") }
             }
         }
@@ -329,316 +387,317 @@ fun AddDespesaDialog(
     parentScope: CoroutineScope,
     onDismiss: () -> Unit
 ) {
-    // --- ESTADOS DE DADOS ---
+    val currentContext = LocalContext.current
+    // --- ESTADOS ---
+    val scrollState = rememberScrollState()
     val contaAtual by rememberUpdatedState(contaSelecionada.trim())
-    var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
-    var tipo by remember { mutableStateOf(TipoDespesa.DEBITO) } // Poderia ter um Switch para Crédito
-    var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
+    var mostrarSucesso by remember { mutableStateOf(false) }
 
+    var categoriaSelecionada by remember { mutableStateOf<String?>(null) }
+    var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
     var descricao by rememberSaveable { mutableStateOf("") }
     var valorTexto by rememberSaveable { mutableStateOf("") }
     var numeroParcelas by rememberSaveable { mutableStateOf("2") }
+    var moedaSelecionada by remember { mutableStateOf("BRL") }
+    var cotacaoTexto by remember { mutableStateOf("1.00") }
 
-    // --- ESTADOS DE DATA ---
     val mostrarCalendario = remember { mutableStateOf(false) }
     val dataMillis = remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
-
-    // --- ESTADOS DE MOEDA (NOVO!) ---
-    var moedaSelecionada by remember { mutableStateOf("BRL") }
-    var cotacaoTexto by remember { mutableStateOf("1.00") } // Padrão 1.0 para BRL
-
-    // --- ESTADOS DE UI ---
     var expandidoCategoria by remember { mutableStateOf(false) }
+    var erros by remember { mutableStateOf(mapOf<String, String>()) }
 
-    // --- VALIDAÇÃO (Mensagens de erro) ---
-    var erroCategoria by remember { mutableStateOf<String?>(null) }
-    var erroDescricao by remember { mutableStateOf<String?>(null) }
-    var erroValor by remember { mutableStateOf<String?>(null) }
-    var erroParcelas by remember { mutableStateOf<String?>(null) }
-    var erroData by remember { mutableStateOf<String?>(null) }
-
-    // --- FUNÇÕES AUXILIARES ---
-    fun normalizeMoneyInput(raw: String): String {
-        return raw.filter { it.isDigit() || it == ',' || it == '.' }.replace(',', '.')
-    }
-
-    fun validarSalvar(): Boolean {
-        // Limpa erros anteriores
-        erroCategoria = null; erroDescricao = null; erroValor = null; erroParcelas = null; erroData = null
-        var isValid = true
-
-        if (categoriaSelecionada.isNullOrBlank()) { erroCategoria = "Selecione uma categoria"; isValid = false }
-        if (descricao.isBlank()) { erroDescricao = "Digite uma descrição"; isValid = false }
-
-        val v = valorTexto.toDoubleOrNull()
-        if (v == null || v <= 0.0) { erroValor = "Valor inválido"; isValid = false }
-
-        if (dataMillis.value == null) { erroData = "Data obrigatória"; isValid = false }
-
-        if (frequencia == Frequencia.PARCELADA) {
-            val p = numeroParcelas.toIntOrNull()
-            if (p == null || p < 2) { erroParcelas = "Mínimo 2x"; isValid = false }
+    // --- LÓGICA DE VALIDAÇÃO ---
+    fun validar(): Boolean {
+        val novosErros = mutableMapOf<String, String>()
+        if (categoriaSelecionada.isNullOrBlank()) novosErros["cat"] = "Selecione a categoria"
+        if (descricao.isBlank()) novosErros["desc"] = "Descrição vazia"
+        val v = valorTexto.replace(",", ".").toDoubleOrNull()
+        if (v == null || v <= 0.0) novosErros["valor"] = "Valor inválido"
+        if (frequencia == Frequencia.PARCELADA && (numeroParcelas.toIntOrNull() ?: 0) < 2) {
+            novosErros["parc"] = "Mínimo 2x"
         }
-
-        return isValid
+        erros = novosErros
+        return novosErros.isEmpty()
     }
 
-    // --- COMPONENTES VISUAIS ---
+    // --- DIÁLOGO DE CALENDÁRIO ---
     if (mostrarCalendario.value) {
         CustomCalendarDialog(
             onDismiss = { mostrarCalendario.value = false },
             onDateSelected = { y, m, d ->
-                val c = Calendar.getInstance().apply { set(y, m, d) }
-                dataMillis.value = c.timeInMillis
+                dataMillis.value = Calendar.getInstance().apply { set(y, m, d) }.timeInMillis
                 mostrarCalendario.value = false
-                erroData = null
             }
         )
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        PremiumDialogCard {
-            // CABEÇALHO
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Nova Despesa", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = TextWhite)
-                Text(
-                    "Conta: $contaAtual",
-                    color = TextWhite.copy(alpha = 0.6f),
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // 1. SELETOR DE FREQUÊNCIA
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val opcoes = listOf(
-                    Frequencia.UNICA to "Única",
-                    Frequencia.PARCELADA to "Parcelada",
-                    Frequencia.FIXA to "Fixa"
-                )
-
-                opcoes.forEachIndexed { index, (freq, label) ->
-                    SegmentedButton(
-                        selected = frequencia == freq,
-                        onClick = { frequencia = freq },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = opcoes.size),
-                        colors = SegmentedButtonDefaults.colors(
-                            activeContainerColor = Color(0xFF69F0AE),
-                            activeContentColor = PremiumDarkBlue,
-                            inactiveContainerColor = Color.Transparent,
-                            inactiveContentColor = TextWhite
-                        ),
-                        label = { Text(label, fontSize = 11.sp, fontWeight = if(frequencia == freq) FontWeight.Bold else FontWeight.Normal) }
-                    )
-                }
-            }
-
-            // Explicação Recorrência
-            AnimatedVisibility(visible = frequencia == Frequencia.FIXA) {
-                Text(
-                    "Será lançada todo mês no dia selecionado. Gerencie em Ajustes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF69F0AE),
-                    fontSize = 10.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // 2. SELETOR DE MOEDA (Feature Nova)
-            Text("Moeda da Transação", fontSize = 12.sp, color = TextWhite.copy(0.7f))
-            CurrencySelector(
-                moedaAtual = moedaSelecionada,
-                onMoedaSelecionada = {
-                    moedaSelecionada = it
-                    if (it == "BRL") cotacaoTexto = "1.00" // Reset se voltar pra Real
-                }
-            )
-
-            // 3. VALORES E COTAÇÃO
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Campo Valor
-                Column(Modifier.weight(1f)) {
-                    PremiumTextField(
-                        value = valorTexto,
-                        onValueChange = { valorTexto = normalizeMoneyInput(it) },
-                        label = "Valor (${moedaSelecionada})",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (erroValor != null) Text(erroValor!!, color = Color(0xFFEF5350), fontSize = 10.sp)
-                }
-
-                // Campo Cotação (Só aparece se não for BRL)
-                if (moedaSelecionada != "BRL") {
-                    Column(Modifier.weight(0.7f)) {
-                        PremiumTextField(
-                            value = cotacaoTexto,
-                            onValueChange = { cotacaoTexto = normalizeMoneyInput(it) },
-                            label = "Cotação",
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-
-            // Preview da Conversão
-            if (moedaSelecionada != "BRL" && valorTexto.isNotEmpty()) {
-                val vOrig = valorTexto.toDoubleOrNull() ?: 0.0
-                val cot = cotacaoTexto.toDoubleOrNull() ?: 1.0
-                val final = vOrig * cot
-                Text(
-                    text = "Valor final: ${formatarMoedaBR(final, false)}", // Assumindo isPrivate false no dialog
-                    color = Color(0xFF69F0AE),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.End)
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // 4. DESCRIÇÃO E CATEGORIA
-            ExposedDropdownMenuBox(
-                expanded = expandidoCategoria,
-                onExpandedChange = { expandidoCategoria = !expandidoCategoria },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                PremiumTextField(
-                    value = categoriaSelecionada ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = "Categoria",
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandidoCategoria) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = expandidoCategoria,
-                    onDismissRequest = { expandidoCategoria = false },
-                    modifier = Modifier.background(Color(0xFF1E2B3E))
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        PremiumDialogCard(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .wrapContentHeight()
+                .padding(vertical = 16.dp)
+                .imePadding()
+        ) {
+            Crossfade(targetState = mostrarSucesso, animationSpec = tween(500)) { sucesso ->
+            if (sucesso) {
+                SuccessAnimation(onFinished = onDismiss)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(scrollState)
+                        .padding(16.dp)
                 ) {
-                    categorias.forEach { categoria ->
-                        DropdownMenuItem(
-                            text = { Text(categoria, color = TextWhite) },
-                            onClick = {
-                                categoriaSelecionada = categoria
-                                expandidoCategoria = false
-                                erroCategoria = null
-                            }
-                        )
-                    }
-                }
-            }
-            if (erroCategoria != null) Text(erroCategoria!!, color = Color(0xFFEF5350), fontSize = 10.sp)
+                    HeaderSection(contaAtual)
+                    Spacer(Modifier.height(16.dp))
 
-            Spacer(Modifier.height(8.dp))
+                    FrequenciaSelector(frequencia) { frequencia = it }
+                    Spacer(Modifier.height(16.dp))
 
-            PremiumTextField(
-                value = descricao,
-                onValueChange = { descricao = it },
-                label = "Descrição",
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (erroDescricao != null) Text(erroDescricao!!, color = Color(0xFFEF5350), fontSize = 10.sp)
-
-            Spacer(Modifier.height(8.dp))
-
-            // 5. DATA E PARCELAS
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Campo Data
-                Column(Modifier.weight(1f)) {
-                    val labelData = if (frequencia == Frequencia.FIXA) "Dia Vencimento" else "Data"
-                    PremiumTextField(
-                        value = dataMillis.value?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)) } ?: "",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = labelData,
-                        trailingIcon = {
-                            Icon(Icons.Default.CalendarMonth, null, tint = TextWhite.copy(0.7f), modifier = Modifier.clickable { mostrarCalendario.value = true })
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    ValueSection(
+                        moeda = moedaSelecionada,
+                        valor = valorTexto,
+                        cotacao = cotacaoTexto,
+                        onMoedaChange = { moedaSelecionada = it },
+                        onValorChange = { valorTexto = it },
+                        onCotacaoChange = { cotacaoTexto = it },
+                        erroValor = erros["valor"]
                     )
-                    if (erroData != null) Text(erroData!!, color = Color(0xFFEF5350), fontSize = 10.sp)
-                }
 
-                // Campo Parcelas (Condicional)
-                if (frequencia == Frequencia.PARCELADA) {
-                    Column(Modifier.weight(0.6f)) {
-                        PremiumTextField(
-                            value = numeroParcelas,
-                            onValueChange = { if(it.length <= 3) numeroParcelas = it.filter { c -> c.isDigit() } },
-                            label = "x Vezes",
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (erroParcelas != null) Text(erroParcelas!!, color = Color(0xFFEF5350), fontSize = 10.sp)
-                    }
-                }
-            }
+                    CategoryAndDescSection(
+                        categorias = categorias,
+                        expandido = expandidoCategoria,
+                        setExpandido = { expandidoCategoria = it },
+                        selecionada = categoriaSelecionada,
+                        onSelect = { categoriaSelecionada = it },
+                        descricao = descricao,
+                        onDescChange = { descricao = it },
+                        erroCat = erros["cat"],
+                        erroDesc = erros["desc"]
+                    )
 
-            Spacer(Modifier.height(24.dp))
+                    DateAndInstallmentSection(
+                        frequencia = frequencia,
+                        dataMillis = dataMillis.value,
+                        onOpenCalendar = { mostrarCalendario.value = true },
+                        parcelas = numeroParcelas,
+                        onParcelasChange = { numeroParcelas = it },
+                        erroParc = erros["parc"]
+                    )
 
-            // 6. BOTÕES DE AÇÃO
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
-                    border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.2f))
-                ) { Text("Cancelar") }
+                    Spacer(Modifier.height(24.dp))
 
-                Button(
-                    onClick = {
-                        if (validarSalvar()) {
-                            val vOriginal = valorTexto.toDouble()
-                            val cot = cotacaoTexto.toDoubleOrNull() ?: 1.0
-                            val vFinalBRL = vOriginal * cot
-                            val dataFinal = Date(dataMillis.value!!)
+                    ActionButtons(
+                        onCancel = onDismiss,
+                        onSave = {
+                            if (validar()) {
+                                val vCotacao =
+                                    cotacaoTexto.replace(",", ".").toDoubleOrNull() ?: 1.0
+                                val vOriginal = (valorTexto.toDoubleOrNull() ?: 0.0) / 100.0
+                                val vFinalBRL = vOriginal * vCotacao
 
-                            val desp = Despesa(
-                                id = 0,
-                                descricao = descricao.trim(),
-                                valor = vFinalBRL, // Salva sempre em REAIS para somar certo
-                                valorOriginal = vOriginal, // Guarda o original para histórico
-                                moedaOriginal = moedaSelecionada,
-                                cotacaoNaData = cot,
-                                data = dataFinal,
-                                categoria = categoriaSelecionada!!,
-                                pic = getPicCategoria(categoriaSelecionada!!),
-                                conta = contaAtual,
-                                tipo = tipo,
-                                pago = true // Assume pago ao criar (ou adicionar checkbox depois)
-                            )
+                                val desp = Despesa(
+                                    id = 0,
+                                    descricao = descricao.trim(),
+                                    valor = vFinalBRL,
+                                    data = Date(dataMillis.value!!),
+                                    categoria = categoriaSelecionada!!,
+                                    pic = getPicCategoria(categoriaSelecionada!!),
+                                    conta = contaAtual,
+                                    tipo = TipoDespesa.DEBITO,
+                                    pago = false
+                                )
 
-                            parentScope.launch {
-                                when (frequencia) {
-                                    Frequencia.UNICA -> viewModel.adicionarDespesa(desp)
-                                    Frequencia.PARCELADA -> {
-                                        val p = numeroParcelas.toIntOrNull() ?: 1
-                                        viewModel.adicionarDespesaParcelada(desp, p, dataMillis.value!!)
+                                parentScope.launch {
+                                    when (frequencia) {
+                                        Frequencia.UNICA -> viewModel.adicionarDespesa(desp)
+                                        Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(
+                                            desp,
+                                            numeroParcelas.toInt(),
+                                            dataMillis.value!!
+                                        )
+
+                                        Frequencia.FIXA -> viewModel.salvarDespesaRecorrente(
+                                            desp,
+                                            Calendar.getInstance()
+                                                .apply { timeInMillis = dataMillis.value!! }
+                                                .get(Calendar.DAY_OF_MONTH)
+                                        )
                                     }
-                                    Frequencia.FIXA -> {
-                                        val cal = Calendar.getInstance().apply { time = dataFinal }
-                                        viewModel.salvarDespesaRecorrente(desp, cal.get(Calendar.DAY_OF_MONTH))
-                                    }
+                                    mostrarSucesso = true
+
+                                    delay(100)
+
+                                    val bitmap = gerarBitmapComprovante(desp)
+                                    compartilharComprovante(currentContext, bitmap)
+                                    onDismiss()
                                 }
-                                // Pequeno delay para animação de fechar não engasgar
-                                delay(100)
                             }
-                            onDismiss()
                         }
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF69F0AE), contentColor = PremiumDarkBlue)
-                ) {
-                    Text("Salvar", fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+            }
+        }
+    }
+}
+
+// --- SUB-COMPOSABLES SUPORTE ---
+
+@Composable
+fun HeaderSection(conta: String) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Nova Despesa", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
+        Text("Conta: $conta", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FrequenciaSelector(atual: Frequencia, onSelect: (Frequencia) -> Unit) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        val opcoes = listOf(
+            Frequencia.UNICA to "Única",
+            Frequencia.PARCELADA to "Parcelada",
+            Frequencia.FIXA to "Fixa"
+        )
+        opcoes.forEachIndexed { index, (freq, label) ->
+            SegmentedButton(
+                selected = atual == freq,
+                onClick = { onSelect(freq) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = opcoes.size),
+                label = { Text(label, fontSize = 12.sp) }
+            )
+        }
+    }
+}
+
+@Composable
+fun ValueSection(
+    moeda: String, valor: String, cotacao: String,
+    onMoedaChange: (String) -> Unit, onValorChange: (String) -> Unit,
+    onCotacaoChange: (String) -> Unit, erroValor: String?
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        // Um pequeno delay de 300ms garante que o diálogo já terminou de "subir"
+        delay(300)
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    Column {
+        CurrencySelector(moeda, onMoedaChange)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PremiumTextField(
+                value = valor,
+                onValueChange = { input ->
+                    if (input.all { it.isDigit() }) onValorChange(input)
+                },
+                label = "Valor ($moeda)", modifier = Modifier.weight(1f),
+                visualTransformation = CurrencyVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+            if (moeda != "BRL") {
+                PremiumTextField(
+                    value = cotacao, onValueChange = onCotacaoChange,
+                    label = "Cotação", modifier = Modifier.weight(0.7f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+            }
+        }
+        erroValor?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CategoryAndDescSection(
+    categorias: List<String>, expandido: Boolean, setExpandido: (Boolean) -> Unit,
+    selecionada: String?, onSelect: (String) -> Unit,
+    descricao: String, onDescChange: (String) -> Unit,
+    erroCat: String?, erroDesc: String?
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ExposedDropdownMenuBox(expanded = expandido, onExpandedChange = setExpandido) {
+            PremiumTextField(
+                value = selecionada ?: "",
+                onValueChange = {},
+                readOnly = true,
+                label = "Categoria",
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth()
+            )
+            ExposedDropdownMenu(expanded = expandido, onDismissRequest = { setExpandido(false) }) {
+                categorias.forEach {
+                    DropdownMenuItem(
+                        text = { Text(it) },
+                        onClick = { onSelect(it); setExpandido(false) })
                 }
             }
         }
+        erroCat?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
+
+        PremiumTextField(
+            value = descricao,
+            onValueChange = onDescChange,
+            label = "Descrição",
+            modifier = Modifier.fillMaxWidth()
+        )
+        erroDesc?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
+    }
+}
+
+@Composable
+fun DateAndInstallmentSection(
+    frequencia: Frequencia, dataMillis: Long?, onOpenCalendar: () -> Unit,
+    parcelas: String, onParcelasChange: (String) -> Unit, erroParc: String?
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 8.dp)
+    ) {
+        PremiumTextField(
+            value = dataMillis?.let {
+                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(
+                    Date(it)
+                )
+            } ?: "",
+            onValueChange = {}, readOnly = true, label = "Data",
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onOpenCalendar() },
+            trailingIcon = { Icon(Icons.Default.CalendarMonth, null, tint = Color.White) }
+        )
+        if (frequencia == Frequencia.PARCELADA) {
+            Column(Modifier.weight(0.6f)) {
+                PremiumTextField(
+                    value = parcelas,
+                    onValueChange = onParcelasChange,
+                    label = "x Vezes",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                erroParc?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
+            }
+        }
+    }
+}
+
+@Composable
+fun ActionButtons(onCancel: () -> Unit, onSave: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancelar") }
+        Button(
+            onClick = onSave,
+            modifier = Modifier.weight(1f),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF69F0AE))
+        ) { Text("Salvar", color = Color(0xFF1E2B3E), fontWeight = FontWeight.Bold) }
     }
 }

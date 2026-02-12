@@ -84,6 +84,8 @@ class ContaSaldoViewModel(
         }
 
         bancos.value = repository.bancos
+
+        carregarDadosIniciaisESincronizarWidget()
     }
 
     // --- CARREGAMENTO DE DADOS (GLOBAL / ACUMULADO) ---
@@ -318,7 +320,7 @@ class ContaSaldoViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val resumo = repository.obterResumoGlobal()
-                val saldoTotal = resumo.patrimonioLiquido ?: 0.0
+                val saldoTotal = (resumo.entradas- resumo.saidas) ?: 0.0
 
                 // 2. Busca a meta mais relevante (ex: a que vence primeiro ou a mais próxima de 100%)
                 val metaDestaque = repository.obterTodasAsMetasSync().firstOrNull()

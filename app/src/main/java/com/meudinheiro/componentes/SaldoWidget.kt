@@ -33,7 +33,6 @@ import androidx.glance.layout.size
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import com.meudinheiro.MainActivity
 import com.meudinheiro.funcoes.formatarMoedaBR
 
@@ -44,6 +43,13 @@ class SaldoWidget : GlanceAppWidget() {
         val saldo = prefs.getFloat("saldo_atual", 0.0f)
         val nomeMeta = prefs.getString("nome_meta", "Nenhuma Meta") ?: "Nenhuma Meta"
         val idMeta = prefs.getString("id_meta", "") ?: ""
+
+        val valorMeta = prefs.getFloat("valor_meta", 1.0f)
+        val valorAlcancado = prefs.getFloat("valor_alcancado", 0.0f)
+
+        // 2. Calcule a porcentagem (entre 0.0 e 1.0)
+        val progresso = (valorAlcancado / valorMeta).coerceIn(0f, 1f)
+        val porcentagemTexto = "${(progresso * 100).toInt()}%"
 
         provideContent {
             GlanceTheme {
@@ -85,7 +91,9 @@ class SaldoWidget : GlanceAppWidget() {
                             fontWeight = FontWeight.Bold
                         )
                     )
+
                     Spacer(GlanceModifier.height(8.dp))
+
                     // 2. ADICIONAR DESPESA RÁPIDA (Via Intent Extra)
                     val intentAdd = Intent(context, MainActivity::class.java).apply {
                         action = "ACTION_QUICK_ADD"

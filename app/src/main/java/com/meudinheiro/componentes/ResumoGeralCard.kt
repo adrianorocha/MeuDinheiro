@@ -15,12 +15,27 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.with
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -30,11 +45,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.meudinheiro.funcoes.*
-import com.meudinheiro.data.DespesasDomain
-import com.meudinheiro.data.TipoDespesa
-import com.meudinheiro.funcoes.ChartLegendItem
+import com.meudinheiro.funcoes.HorizontalBalanceBar
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.funcoes.lembrarEstadoPerformance
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -103,7 +116,7 @@ fun ResumoGeralCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .height(135.dp), // Aumentado para acomodar 3 barras
+            .height(140.dp), // Aumentado para acomodar 3 barras
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2B3E).copy(alpha = 0.95f)),
         border = if (estaNoVermelho) {
@@ -162,7 +175,9 @@ fun ResumoGeralCard(
                             // Sem animação de slide/fade para poupar CPU/GPU
                             fadeIn(tween(0)) with fadeOut(tween(0))
                         } else {
-                            (fadeIn(tween(duracaoAnim)) + slideInVertically { it / 2 }) with fadeOut(tween(duracaoAnim))
+                            (fadeIn(tween(duracaoAnim)) + slideInVertically { it / 2 }) with fadeOut(
+                                tween(duracaoAnim)
+                            )
                         }
                     }
                 ) { valor ->
