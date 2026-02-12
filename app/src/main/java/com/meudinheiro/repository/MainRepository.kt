@@ -1,6 +1,7 @@
 package com.meudinheiro.repository
 
 import android.content.Context
+import androidx.room.Query
 import androidx.room.withTransaction
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.BackupData
@@ -451,7 +452,9 @@ class MainRepository(private val context: Context) {
             categorias = categoriaDao.obterTodasStatic(),
             despesas = despesaDao.obterTodasStatic(),
             despesasFixas = despesaFixaDao.obterTodasStatic(),
-            contas = contaSaldoDao.obterTodasStatic()
+            contas = contaSaldoDao.obterTodasStatic(),
+            metas = metaDao.obterTodasStatic(),
+            orcamentos = orcamentoDao.obterTodasStatic()
         )
         return com.google.gson.Gson().toJson(backup)
     }
@@ -583,12 +586,17 @@ class MainRepository(private val context: Context) {
     suspend fun obterResumoGlobal(): ResumoDto = withContext(Dispatchers.IO) {
         val entradas = despesaDao.somarGlobal(TipoDespesa.CREDITO) ?: 0.0
         val saidas = despesaDao.somarGlobal(TipoDespesa.DEBITO) ?: 0.0
-        ResumoDto(entradas, saidas)
+        val patrimonioLiquido = entradas - saidas
+        ResumoDto(entradas, saidas, patrimonioLiquido)
     }
 
     suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): ResumoDto = withContext(Dispatchers.IO) {
         val entradas = despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.CREDITO) ?: 0.0
         val saidas = despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.DEBITO) ?: 0.0
         ResumoDto(entradas, saidas)
+    }
+
+    suspend fun obterTodasAsMetasSync(): List<Meta> {
+        return metaDao.obterTodasAsMetasSync()
     }
 }

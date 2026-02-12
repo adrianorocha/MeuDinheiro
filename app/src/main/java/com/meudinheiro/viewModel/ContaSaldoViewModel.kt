@@ -1,15 +1,23 @@
 package com.meudinheiro.viewModel
 
+import android.app.Application
+import android.appwidget.AppWidgetManager
+import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalContext
+import androidx.glance.appwidget.updateAll
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.componentes.FiltroPeriodo
+import com.meudinheiro.componentes.SaldoWidget
 import com.meudinheiro.componentes.obterIntervalo
 import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.ContaSaldo
@@ -41,7 +49,10 @@ data class DashboardFinanceiroState(
     val dadosPorConta: Map<String, Pair<Double, Double>> = emptyMap()
 )
 
-class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() {
+class ContaSaldoViewModel(
+    application: Application, // <-- Recebe o application aqui
+    private val repository: MainRepository
+) : AndroidViewModel(application) {
 
     // Lista de bancos para Spinners/Dialogs
     val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
@@ -73,7 +84,6 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
         }
 
         bancos.value = repository.bancos
-
     }
 
     // --- CARREGAMENTO DE DADOS (GLOBAL / ACUMULADO) ---
@@ -270,13 +280,14 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
 
     // Este Flow vai reagir sempre que o filtro mudar
     val resumoFinanceiro = snapshotFlow { filtroAtual }
-        .mapLatest { filtro -> // <-- Troque flatMapLatest por mapLatest
+        .mapLatest { filtro ->
+            val intervalo = obterIntervalo(filtro)
             val (inicio, fim) = obterIntervalo(filtro)
-            if (inicio == null) {
-                repository.obterResumoGlobal()
-            } else {
-                repository.obterResumoPorPeriodo(Date(inicio), Date(fim))
-            }
+            inicio?.let { i ->
+                fim?.let { f ->
+                    repository.obterResumoPorPeriodo(java.util.Date(i), java.util.Date(f))
+                }
+            } ?: repository.obterResumoGlobal()
         }
         .stateIn(
             scope = viewModelScope,
@@ -286,5 +297,42 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
 
     fun alterarFiltro(novoFiltro: FiltroPeriodo) {
         filtroAtual = novoFiltro
+    }
+
+    fun atualizarInformacoesWidget(context: Context, saldo: Double, metaNome: String, metaId: String) {
+        val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putFloat("saldo_atual", saldo.toFloat())
+            putString("nome_meta", metaNome)
+            putString("id_meta", metaId)
+            apply()
+        }
+
+        // Notifica o Glance para redesenhar o widget
+        viewModelScope.launch {
+            SaldoWidget().updateAll(context)
+        }
+    }
+
+    private fun carregarDadosIniciaisESincronizarWidget() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val resumo = repository.obterResumoGlobal()
+                val saldoTotal = resumo.patrimonioLiquido ?: 0.0
+
+                // 2. Busca a meta mais relevante (ex: a que vence primeiro ou a mais próxima de 100%)
+                val metaDestaque = repository.obterTodasAsMetasSync().firstOrNull()
+
+                // 3. Dispara a atualização para o "mundo externo" (SharedPreferences + Glance)
+                atualizarInformacoesWidget(
+                    context = getApplication(), // Necessário ser AndroidViewModel para ter o contexto
+                    saldo = saldoTotal,
+                    metaNome = metaDestaque?.nome ?: "Nenhuma meta ativa",
+                    metaId = metaDestaque?.id?.toString() ?: ""
+                )
+            } catch (e: Exception) {
+                Log.e("WidgetSync", "Erro ao sincronizar dados: ${e.message}")
+            }
+        }
     }
 }

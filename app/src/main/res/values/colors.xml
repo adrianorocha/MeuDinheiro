@@ -8,4 +8,11 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="blue_dark">#FF052559</color>
+
+    <color name="glance_neon_green">#69F0AE</color>
+    <color name="glance_dark_blue">#1E2B3E</color>
+    <color name="glance_text_white">#FFFFFF</color>
+
+    <color name="widget_neon_green">#69F0AE</color>
+    <color name="widget_bg_dark">#1E2B3E</color>
 </resources>

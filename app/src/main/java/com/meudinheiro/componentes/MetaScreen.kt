@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TrendingUp
@@ -72,6 +71,7 @@ import com.meudinheiro.data.ConfeteState
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Meta
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.funcoes.lembrarEstadoPerformance
 import com.meudinheiro.viewModel.MetaViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,6 +92,8 @@ fun MetasScreen(
     // Sistema de Confetes
     val confettiState = remember { ConfeteState() }
     var screenWidth by remember { mutableStateOf(0f) }
+
+    val modoEconomia = lembrarEstadoPerformance()
 
     Box(modifier = Modifier
         .fillMaxSize()
@@ -169,7 +171,10 @@ fun MetasScreen(
                 if (meta.valorGuardado + valor >= meta.valorObjetivo && meta.valorGuardado < meta.valorObjetivo) {
                     val posX = screenWidth / 2
                     val posY = 1200f // Altura aproximada de onde o diálogo aparece
-                    confettiState.disparar(posX, posY)
+                    if (!modoEconomia){
+                        confettiState.disparar(posX, posY)
+                    } else if (modoEconomia)
+                        println("Meta atingida! (Confetes desativados por economia)")
                 }
                 viewModel.realizarAporteReal(meta, contaId, valor)
                 metaParaAportar = null

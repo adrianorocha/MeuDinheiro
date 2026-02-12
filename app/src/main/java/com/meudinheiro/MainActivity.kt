@@ -1,6 +1,9 @@
 package com.meudinheiro
 
 import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -20,6 +23,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.meudinheiro.componentes.CadastroUsuarioScreen
 import com.meudinheiro.componentes.Configuracao
 import com.meudinheiro.componentes.LoginScreen
@@ -28,10 +35,12 @@ import com.meudinheiro.componentes.PendenciasScreen
 import com.meudinheiro.componentes.SplashScreen
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
+import com.meudinheiro.notif.BackupReminderWorker
 import com.meudinheiro.notif.DespesasDevidas
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,6 +48,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        criarCanalNotificacao(this)
+        agendarLembreteBackupSemanal(this)
         // Substituímos o WorkManager antigo pelo nosso novo Agendador Exato
         ativarNotificacoesDiarias()
 
@@ -195,5 +206,41 @@ fun ShowApp() {
                 onBack = { stage = AppStage.Home }
             )
         }
+    }
+}
+
+fun agendarLembreteBackupSemanal(context: Context) {
+    val request = PeriodicWorkRequestBuilder<BackupReminderWorker>(
+        7, TimeUnit.DAYS // Executa a cada 7 dias
+    ).setConstraints(
+        Constraints.Builder()
+            .setRequiresBatteryNotLow(true) // Só avisa se tiver bateria
+            .build()
+    ).build()
+
+    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        "LembreteBackupSemanal",
+        ExistingPeriodicWorkPolicy.KEEP, // Mantém o agendamento existente
+        request
+    )
+}
+
+// Chame isto no onCreate da MainActivity
+private fun criarCanalNotificacao(context: Context) {
+    // Canais de notificação só existem do Android 8.0 (Oreo) em diante
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val name = "Lembretes de Backup"
+        val descriptionText = "Notificações para manter seus dados seguros"
+        val importance = NotificationManager.IMPORTANCE_DEFAULT
+
+        val channel = NotificationChannel("backup_channel", name, importance).apply {
+            description = descriptionText
+        }
+
+        // Obtendo o Manager do SISTEMA (não o Compat)
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        notificationManager.createNotificationChannel(channel)
     }
 }

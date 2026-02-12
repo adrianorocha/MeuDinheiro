@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import android.app.Application
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,9 +46,11 @@ fun PendenciasScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val application = context.applicationContext as Application
+
     val scope = rememberCoroutineScope()
     val repository = remember { MainRepository(context) }
-    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
+    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(application, repository))
 
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)

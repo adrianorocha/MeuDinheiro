@@ -1,5 +1,7 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -7,6 +9,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.with
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -24,10 +30,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meudinheiro.funcoes.*
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.funcoes.ChartLegendItem
 import com.meudinheiro.funcoes.formatarMoedaBR
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun ResumoGeralCard(
     receitaTotal: Double,
@@ -47,6 +56,11 @@ fun ResumoGeralCard(
 
     var animationPlayed by remember { mutableStateOf(false) }
 
+    val modoEconomia = lembrarEstadoPerformance()
+
+    // Se estiver em economia, o tempo de animação é ZERO (mudança instantânea)
+    val duracaoAnim = if (modoEconomia) 0 else 600
+
     // Animações
     val animBarReceita by animateFloatAsState(
         targetValue = if (animationPlayed) propReceita else 0f,
@@ -62,7 +76,8 @@ fun ResumoGeralCard(
     )
 
     // Proporção do Donut (Despesa em relação ao que entrou)
-    val sweepDespesa = if (receitaTotal > 0) (despesaTotal / receitaTotal).toFloat().coerceIn(0f, 1f) * 360f else 0f
+    val sweepDespesa = if (receitaTotal > 0) (despesaTotal / receitaTotal).toFloat()
+        .coerceIn(0f, 1f) * 360f else 0f
     val animSweep by animateFloatAsState(
         targetValue = if (animationPlayed) sweepDespesa else 0f,
         animationSpec = tween(1200, easing = FastOutSlowInEasing), label = "donut"
@@ -99,7 +114,9 @@ fun ResumoGeralCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(14.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // --- LADO ESQUERDO: Donut ---
@@ -119,10 +136,14 @@ fun ResumoGeralCard(
                         style = Stroke(width = stroke, cap = StrokeCap.Round)
                     )
                 }
-                val percent = if (receitaTotal > 0) ((despesaTotal / receitaTotal) * 100).toInt() else 0
+                val percent =
+                    if (receitaTotal > 0) ((despesaTotal / receitaTotal) * 100).toInt() else 0
                 Text(
                     text = if (isPrivate) "**" else "$percent%",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    ),
                     color = Color.White
                 )
             }
@@ -130,14 +151,28 @@ fun ResumoGeralCard(
             Spacer(modifier = Modifier.width(24.dp))
 
             // --- LADO DIREITO: Barras e Info ---
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text("Patrimônio Líquido", fontSize = 11.sp, color = Color.White.copy(0.6f))
-                Text(
-                    text = formatarMoedaBR(patrimonioTotal, isPrivate),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (estaNoVermelho) Color(0xFFEF5350) else Color.White
-                )
+
+                // --- TEXTO ANIMADO DO PATRIMÔNIO ---
+                AnimatedContent(
+                    targetState = patrimonioTotal,
+                    transitionSpec = {
+                        if (modoEconomia) {
+                            // Sem animação de slide/fade para poupar CPU/GPU
+                            fadeIn(tween(0)) with fadeOut(tween(0))
+                        } else {
+                            (fadeIn(tween(duracaoAnim)) + slideInVertically { it / 2 }) with fadeOut(tween(duracaoAnim))
+                        }
+                    }
+                ) { valor ->
+                    Text(
+                        text = formatarMoedaBR(valor, isPrivate),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (estaNoVermelho) Color(0xFFEF5350) else Color.White
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -166,107 +201,4 @@ fun ResumoGeralCard(
         }
     }
 }
-@Composable
-private fun HorizontalBalanceBar(
-    label: String,
-    value: Double,
-    progress: Float,
-    color: Color,
-    isPrivate: Boolean
-) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(label, fontSize = 9.sp, color = Color.White.copy(0.5f))
-            Text(formatarMoedaBR(value, isPrivate), fontSize = 9.sp, color = Color.White.copy(0.8f))
-        }
-        Spacer(Modifier.height(2.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .background(Color.White.copy(0.05f), CircleShape)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .height(4.dp)
-                    .background(color, CircleShape)
-            )
-        }
-    }
-}
 
-// Componente para pontos indicadores (se ainda usar em outros lugares)
-@Composable
-private fun IndicatorDot(color: Color) {
-    Box(
-        modifier = Modifier
-            .size(6.dp)
-            .background(color, RoundedCornerShape(2.dp))
-    )
-}
-
-// --- Gráfico de Pizza (Distribuicao de Gastos) mantido e organizado ---
-@Composable
-fun PremiumPieChart(
-    despesas: List<DespesasDomain>,
-    isPrivate: Boolean = false
-) {
-    val gastosPorCategoria = despesas
-        .filter { it.tipo == TipoDespesa.DEBITO }
-        .groupBy { it.categoria }
-        .mapValues { it.value.sumOf { d -> d.valor } }
-
-    val totalGeral = gastosPorCategoria.values.sum()
-    val listaCores = listOf(
-        Color(0xFF69F0AE), Color(0xFF40C4FF), Color(0xFFFFD54F),
-        Color(0xFFFF8A80), Color(0xFFB388FF), Color(0xFF80D8FF)
-    )
-
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Distribuição de Gastos", style = MaterialTheme.typography.titleMedium, color = TextWhite, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(20.dp))
-
-        Box(contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.size(180.dp)) {
-                var startAngle = -90f
-                gastosPorCategoria.entries.forEachIndexed { index, entry ->
-                    val sweepAngle = (entry.value / totalGeral).toFloat() * 360f
-                    drawArc(color = listaCores[index % listaCores.size], startAngle = startAngle, sweepAngle = sweepAngle, useCenter = true)
-                    startAngle += sweepAngle
-                }
-                drawCircle(color = PremiumDarkBlue, radius = size.minDimension / 4)
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            maxItemsInEachRow = 3
-        ) {
-            gastosPorCategoria.entries.forEachIndexed { index, entry ->
-                ChartLegendItem(color = listaCores[index % listaCores.size], label = entry.key, value = entry.value, isPrivate = isPrivate)
-            }
-        }
-    }
-}
-
-@Composable
-fun ChartLegendItem(color: Color, label: String, value: Double, isPrivate: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
-        Box(modifier = Modifier.size(10.dp).background(color, CircleShape))
-        Spacer(Modifier.width(8.dp))
-        Column {
-            Text(label, fontSize = 11.sp, color = TextWhite.copy(0.6f))
-            Text(formatarMoedaBR(value, isPrivate), fontSize = 12.sp, color = TextWhite, fontWeight = FontWeight.Bold)
-        }
-    }
-}

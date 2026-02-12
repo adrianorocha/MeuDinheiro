@@ -1,4 +1,4 @@
-package com.meudinheiro
+package com.meudinheiro.componentes
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -15,7 +15,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.meudinheiro.componentes.FiltroPeriodo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

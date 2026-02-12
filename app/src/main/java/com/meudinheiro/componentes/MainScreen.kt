@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,9 +79,10 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
 
     // --- ViewModels ---
+    val application = context.applicationContext as Application
     val repository = remember { MainRepository(context) }
     val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
-    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(repository))
+    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(application, repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
@@ -116,7 +118,9 @@ fun MainScreen(
     // --- Verificações de Inicialização ---
     if (nomeState == null) {
         Box(
-            modifier = Modifier.fillMaxSize().background(Color.White),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(color = PremiumDarkBlue)
@@ -196,11 +200,17 @@ fun MainScreen(
                     isPrivateMode = isPrivate,
                     onTogglePrivate = { scope.launch { userPrefs.togglePrivateMode() } }
                 )
+                SeletorPeriodo(
+                    filtroSelecionado = contaVM.filtroAtual,
+                    onFiltroSelected = { contaVM.alterarFiltro(it) }
+                )
+                val resumo by contaVM.resumoFinanceiro.collectAsState()
+                val totalMetas by contaVM.totalPoupado.collectAsState()
 
                 // Resumo Geral (Donut Animado)
                 ResumoGeralCard(
-                    receitaTotal = dashboardState.receitaGlobal,
-                    despesaTotal = dashboardState.despesaGlobal,
+                    receitaTotal = resumo.entradas,
+                    despesaTotal = resumo.saidas,
                     metasTotal = totalMetas,
                     isPrivate = isPrivate
                 )
@@ -235,7 +245,9 @@ fun MainScreen(
                             }
                         } else {
                             Text(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextWhite.copy(alpha = 0.5f),
@@ -362,7 +374,9 @@ fun MainScreen(
                     if (despesasFiltradas.isEmpty()) {
                         item {
                             Text(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
                                 fontSize = 16.sp,
                                 color = TextWhite.copy(alpha = 0.6f),
                                 textAlign = TextAlign.Center,
@@ -414,7 +428,7 @@ fun MainScreen(
 
         if (selectedIndex == 0) {
             ContaBancaria(
-                viewModelFactory = ContaSaldoViewModelFactory(repository),
+                viewModelFactory = ContaSaldoViewModelFactory(application, repository),
                 onClose = { selectedIndex = -1 }
             )
         }

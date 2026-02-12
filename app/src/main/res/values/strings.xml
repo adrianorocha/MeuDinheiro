@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">MeuDinheiro</string>
+    <string name="widget_description">Mostra seu saldo atual de forma rápidal</string>
 </resources>

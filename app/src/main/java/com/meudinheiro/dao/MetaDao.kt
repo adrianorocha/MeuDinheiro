@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Meta
 import kotlinx.coroutines.flow.Flow
 
@@ -24,4 +25,11 @@ interface MetaDao {
 
     @Query("SELECT SUM(valorGuardado) FROM metas")
     fun getTotalPoupado(): Flow<Double?>
+
+    @Query("SELECT * FROM metas")
+    suspend fun obterTodasStatic(): List<Meta>
+
+    @Query("SELECT * FROM metas ORDER BY valorObjetivo DESC")
+    suspend fun obterTodasAsMetasSync(): List<Meta>
+
 }

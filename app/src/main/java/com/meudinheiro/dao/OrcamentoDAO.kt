@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.meudinheiro.data.Meta
 import com.meudinheiro.data.Orcamento
 import kotlinx.coroutines.flow.Flow
 
@@ -22,4 +23,7 @@ interface OrcamentoDao {
 
     @Query("UPDATE orcamentos SET valorLimite = :novoValor WHERE categoria = :categoria")
     suspend fun atualizarPorCategoria(categoria: String, novoValor: Double)
+
+    @Query("SELECT * FROM orcamentos")
+    suspend fun obterTodasStatic(): List<Orcamento>
 }

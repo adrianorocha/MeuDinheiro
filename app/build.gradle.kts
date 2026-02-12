@@ -84,8 +84,13 @@ dependencies {
     implementation(libs.androidx.runtime)
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation(libs.androidx.compose.ui.geometry)
+    implementation("androidx.glance:glance-appwidget:1.0.0")
+    implementation("androidx.glance:glance-material3:1.0.0")
 
-
+    implementation("androidx.glance:glance:1.1.0")
+    implementation("androidx.glance:glance-appwidget:1.1.0")
+    implementation("androidx.glance:glance-material3:1.1.0")
+    implementation(libs.navigation.compose)
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)
