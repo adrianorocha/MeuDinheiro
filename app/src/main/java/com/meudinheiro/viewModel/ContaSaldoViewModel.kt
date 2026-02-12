@@ -17,6 +17,7 @@ import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -268,11 +270,19 @@ class ContaSaldoViewModel(private val repository: MainRepository) : ViewModel() 
 
     // Este Flow vai reagir sempre que o filtro mudar
     val resumoFinanceiro = snapshotFlow { filtroAtual }
-        .flatMapLatest { filtro ->
+        .mapLatest { filtro -> // <-- Troque flatMapLatest por mapLatest
             val (inicio, fim) = obterIntervalo(filtro)
-            if (inicio == null) repository.obterResumoGlobal()
-            else repository.obterResumoPorPeriodo(Date(inicio), Date(fim))
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ResumoDto())
+            if (inicio == null) {
+                repository.obterResumoGlobal()
+            } else {
+                repository.obterResumoPorPeriodo(Date(inicio), Date(fim))
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = ResumoDto()
+        )
 
     fun alterarFiltro(novoFiltro: FiltroPeriodo) {
         filtroAtual = novoFiltro

@@ -15,6 +15,7 @@ import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.Meta
 import com.meudinheiro.data.Orcamento
+import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.Dispatchers
@@ -577,5 +578,17 @@ class MainRepository(private val context: Context) {
 
     fun getTotalPoupado(): Flow<Double> {
         return metaDao.getTotalPoupado().map { it ?: 0.0 }
+    }
+
+    suspend fun obterResumoGlobal(): ResumoDto = withContext(Dispatchers.IO) {
+        val entradas = despesaDao.somarGlobal(TipoDespesa.CREDITO) ?: 0.0
+        val saidas = despesaDao.somarGlobal(TipoDespesa.DEBITO) ?: 0.0
+        ResumoDto(entradas, saidas)
+    }
+
+    suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): ResumoDto = withContext(Dispatchers.IO) {
+        val entradas = despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.CREDITO) ?: 0.0
+        val saidas = despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.DEBITO) ?: 0.0
+        ResumoDto(entradas, saidas)
     }
 }

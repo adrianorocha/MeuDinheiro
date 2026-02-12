@@ -125,4 +125,12 @@ suspend fun atualizarStatusPago(id: Long, status: Boolean)
 
     @Query("SELECT * FROM despesas") // Atenção: verifique se o nome da sua tabela é "despesas" mesmo
     fun obterTodasFlow(): Flow<List<Despesa>>
+
+    // Soma tudo por período
+    @Query("SELECT SUM(valor) FROM despesas WHERE data >= :inicio AND data <= :fim AND tipo = :tipo AND pago = 1")
+    suspend fun somarPorPeriodo(inicio: Long, fim: Long, tipo: TipoDespesa): Double?
+
+    // Soma tudo (Global)
+    @Query("SELECT SUM(valor) FROM despesas WHERE tipo = :tipo AND pago = 1")
+    suspend fun somarGlobal(tipo: TipoDespesa): Double?
 }
