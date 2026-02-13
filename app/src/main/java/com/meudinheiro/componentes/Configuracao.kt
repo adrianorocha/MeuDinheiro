@@ -99,33 +99,34 @@ fun Configuracao(
         )
     }
 
-    // --- LAUNCHERS (Backup e Restore) ---
+// --- LAUNCHERS (Backup e Restore) ---
+
+// 1. LAUNCHER DE CRIAÇÃO (BACKUP)
     val createBackupLauncher = rememberLauncherForActivityResult<String, Uri?>(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
         uri?.let { safeUri ->
-            scope.launch(Dispatchers.IO) {
+            scope.launch { // Inicia no scopo da UI, mas muda para IO internamente
+                processingMessage = "Gerando arquivo de backup..."
+
                 try {
-                    processingMessage = "Salvando backup..."
-                    val json = mainRepository.gerarBackup()
-                    context.contentResolver.openOutputStream(safeUri)?.use { stream ->
-                        stream.write(json.toByteArray())
+                    // Executa tudo em Background para não travar a tela
+                    withContext(Dispatchers.IO) {
+                        val jsonBackup = mainRepository.gerarBackup()
+
+                        if (jsonBackup.isBlank()) throw Exception("O arquivo de backup gerado está vazio.")
+
+                        context.contentResolver.openOutputStream(safeUri)?.use { outputStream ->
+                            outputStream.write(jsonBackup.toByteArray(Charsets.UTF_8))
+                        } ?: throw Exception("Não foi possível abrir o arquivo para escrita.")
                     }
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            "Backup salvo com sucesso!",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+
+                    // Sucesso (Volta para Main Thread automaticamente fora do withContext)
+                    Toast.makeText(context, "✅ Backup salvo com sucesso!", Toast.LENGTH_SHORT).show()
+
                 } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            "Erro ao salvar: ${e.message}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+                    Log.e("BackupError", "Erro ao salvar", e)
+                    Toast.makeText(context, "Erro ao salvar: ${e.message}", Toast.LENGTH_LONG).show()
                 } finally {
                     processingMessage = null
                 }
@@ -133,48 +134,60 @@ fun Configuracao(
         }
     }
 
+// 2. LAUNCHER DE RESTAURAÇÃO (RESTORE)
     val restoreBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { safeUri ->
-            scope.launch(Dispatchers.IO) {
+            scope.launch {
+                processingMessage = "Lendo e validando arquivo..."
+
                 try {
-                    processingMessage = "Validando backup..."
+                    // Passo 1: Leitura do Arquivo (IO)
+                    val jsonLimpo = withContext(Dispatchers.IO) {
+                        val inputStream = context.contentResolver.openInputStream(safeUri)
+                            ?: throw Exception("Não foi possível abrir o arquivo.")
 
-                    // 1. Abre o Stream com persistência de leitura
-                    val json = context.contentResolver.openInputStream(safeUri)?.use { inputStream ->
-                        inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
-                            reader.readText()
-                        }
-                    }?.trim() // Remove espaços em branco ou quebras de linha acidentais
+                        val conteudoCru = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
 
-                    if (json.isNullOrBlank()) throw Exception("O arquivo está vazio.")
+                        if (conteudoCru.isBlank()) throw Exception("O arquivo selecionado está vazio.")
 
-                    // 2. Limpeza de caracteres invisíveis (BOM) que corrompem o JSON
-                    val cleanJson = if (json.startsWith("\uFEFF")) json.substring(1) else json
-
-                    processingMessage = "Restaurando banco de dados..."
-                    mainRepository.restaurarBackupCompleto(cleanJson)
-
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "✅ Dados restaurados!", Toast.LENGTH_SHORT).show()
+                        // REMOVE O BOM (Byte Order Mark) - Essencial para evitar erros de sintaxe
+                        if (conteudoCru.startsWith("\uFEFF")) {
+                            conteudoCru.substring(1)
+                        } else {
+                            conteudoCru
+                        }.trim()
                     }
+
+                    // Passo 2: Processamento no Banco (IO)
+                    processingMessage = "Restaurando dados..."
+                    // O Repository já deve ter o 'withTransaction' interno
+                    mainRepository.restaurarBackupCompleto(jsonLimpo)
+
+                    // Sucesso
+                    Toast.makeText(context, "✅ Dados restaurados com sucesso!", Toast.LENGTH_SHORT).show()
+
+                    // Opcional: Recarregar dados da tela se necessário
+                    // despesasVM.atualizarLista()
+
+                } catch (e: com.google.gson.JsonSyntaxException) {
+                    Log.e("RestoreError", "JSON Inválido", e)
+                    Toast.makeText(context, "Arquivo inválido: O formato não é compatível.", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
-                    Log.e("BackupError", "Falha na restauração: ${e.localizedMessage}", e)
-                    withContext(Dispatchers.Main) {
-                        // Mostra o erro real para o desenvolvedor, mas amigável para o usuário
-                        val msg = when {
-                            e.message?.contains("expected", true) == true -> "Formato de arquivo incompatível."
-                            else -> "Erro: ${e.localizedMessage ?: "Arquivo corrompido"}"
-                        }
-                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    Log.e("RestoreError", "Erro genérico", e)
+                    val msg = when {
+                        e.message?.contains("NullPointerException") == true -> "Arquivo incompatível (campos faltando)."
+                        else -> "Erro: ${e.localizedMessage ?: "Falha desconhecida"}"
                     }
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 } finally {
                     processingMessage = null
                 }
             }
         }
     }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->

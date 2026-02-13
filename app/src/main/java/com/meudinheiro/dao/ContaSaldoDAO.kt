@@ -37,4 +37,10 @@ interface ContaSaldoDao {
 
     @Query("SELECT * FROM contasaldo")
     fun getTodasContas(): Flow<List<ContaSaldo>>
+
+    @Query("DELETE FROM contasaldo")
+    suspend fun limparTudo()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirTodas(contas: List<ContaSaldo>)
 }

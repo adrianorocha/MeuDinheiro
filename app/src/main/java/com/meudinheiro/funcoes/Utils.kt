@@ -7,14 +7,23 @@ import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.os.PowerManager
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,21 +33,30 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PaintingStyle.Companion.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -54,145 +72,13 @@ import com.meudinheiro.componentes.PremiumDarkBlue
 import com.meudinheiro.componentes.TextWhite
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.PieChartData
 import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.delay
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
-
-
-@Composable
-fun ChartLegendItem(color: Color, label: String, value: Double, isPrivate: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
-        Box(modifier = Modifier
-            .size(10.dp)
-            .background(color, CircleShape))
-        Spacer(Modifier.width(8.dp))
-        Column {
-            Text(label, fontSize = 11.sp, color = TextWhite.copy(0.6f))
-            Text(
-                formatarMoedaBR(value, isPrivate),
-                fontSize = 12.sp,
-                color = TextWhite,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun IndicatorDot(color: Color) {
-    Box(
-        modifier = Modifier
-            .size(6.dp)
-            .background(color, RoundedCornerShape(2.dp))
-    )
-}
-
-// --- Gráfico de Pizza (Distribuicao de Gastos) mantido e organizado ---
-@Composable
-fun PremiumPieChart(
-    despesas: List<DespesasDomain>,
-    isPrivate: Boolean = false
-) {
-    val gastosPorCategoria = despesas
-        .filter { it.tipo == TipoDespesa.DEBITO }
-        .groupBy { it.categoria }
-        .mapValues { it.value.sumOf { d -> d.valor } }
-
-    val totalGeral = gastosPorCategoria.values.sum()
-    val listaCores = listOf(
-        Color(0xFF69F0AE), Color(0xFF40C4FF), Color(0xFFFFD54F),
-        Color(0xFFFF8A80), Color(0xFFB388FF), Color(0xFF80D8FF)
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            "Distribuição de Gastos",
-            style = MaterialTheme.typography.titleMedium,
-            color = TextWhite,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(20.dp))
-
-        Box(contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.size(180.dp)) {
-                var startAngle = -90f
-                gastosPorCategoria.entries.forEachIndexed { index, entry ->
-                    val sweepAngle = (entry.value / totalGeral).toFloat() * 360f
-                    drawArc(
-                        color = listaCores[index % listaCores.size],
-                        startAngle = startAngle,
-                        sweepAngle = sweepAngle,
-                        useCenter = true
-                    )
-                    startAngle += sweepAngle
-                }
-                drawCircle(color = PremiumDarkBlue, radius = size.minDimension / 4)
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            maxItemsInEachRow = 3
-        ) {
-            gastosPorCategoria.entries.forEachIndexed { index, entry ->
-                ChartLegendItem(
-                    color = listaCores[index % listaCores.size],
-                    label = entry.key,
-                    value = entry.value,
-                    isPrivate = isPrivate
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun HorizontalBalanceBar(
-    label: String,
-    value: Double,
-    progress: Float,
-    color: Color,
-    isPrivate: Boolean
-) {
-    Column {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, fontSize = 9.sp, color = Color.White.copy(0.5f))
-
-            // --- VALOR DA BARRA ANIMADO ---
-            AnimatedContent(targetState = value) { valor ->
-                Text(
-                    text = formatarMoedaBR(valor, isPrivate),
-                    fontSize = 9.sp,
-                    color = Color.White.copy(0.8f)
-                )
-            }
-        }
-        Spacer(Modifier.height(2.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .background(Color.White.copy(0.05f), CircleShape)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .height(4.dp)
-                    .background(color, CircleShape)
-            )
-        }
-    }
-}
+import kotlin.math.atan2
 
 @Composable
 fun lembrarEstadoPerformance(): Boolean {
@@ -352,6 +238,215 @@ fun SuccessAnimation(onFinished: () -> Unit) {
             if (progress >= 1f) {
                 delay(1000) // Aguarda 1 segundo após o fim
                 onFinished()
+            }
+        }
+    }
+}
+
+@Composable
+fun gerarCorParaCategoria(cat: String): Color {
+    return when (cat.lowercase().trim()) {
+        "alimentação", "comida" -> Color(0xFFFFB74D) // Laranja
+        "transporte", "combustível" -> Color(0xFF64B5F6) // Azul
+        "lazer", "viagem" -> Color(0xFFBA68C8) // Roxo
+        "saúde", "farmácia" -> Color(0xFFE57373) // Vermelho
+        "contas", "fixas" -> Color(0xFF4FC3F7) // Ciano
+        "poupado", "metas" -> Color(0xFF69F0AE) // Verde Blu Macaw
+        else -> Color(0xFF90A4AE) // Cinza Azulado (Padrão para outros)
+    }
+}
+
+@Composable
+fun PremiumPieChart(
+    dados: List<PieChartData>,
+    modifier: Modifier = Modifier,
+    isPrivate: Boolean = false
+) {
+    val total = dados.sumOf { it.valor }.toFloat()
+
+    // Estado para saber qual fatia foi clicada (-1 significa nenhuma)
+    var selectedIndex by remember { mutableIntStateOf(-1) }
+
+    // Animação de entrada
+    var animar by remember { mutableStateOf(false) }
+    LaunchedEffect(dados) { animar = true }
+
+    val progresso by animateFloatAsState(
+        targetValue = if (animar) 1f else 0f,
+        animationSpec = tween(1200, easing = FastOutSlowInEasing), label = "anim"
+    )
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(dados) {
+                detectTapGestures { offset ->
+                    // 1. Calcula o centro e a distância do toque
+                    val centerX = size.width / 2f
+                    val centerY = size.height / 2f
+                    val dx = offset.x - centerX
+                    val dy = offset.y - centerY
+
+                    // 2. Transforma (x,y) em ângulo (graus)
+                    var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+
+                    // Ajusta para o sistema do Canvas (-90 graus é o topo)
+                    angle += 90f
+                    if (angle < 0) angle += 360f
+
+                    // 3. Verifica em qual fatia o ângulo caiu
+                    var currentStartAngle = 0f
+                    dados.forEachIndexed { index, fatia ->
+                        val sweepAngle = (fatia.valor.toFloat() / total) * 360f
+                        if (angle in currentStartAngle..(currentStartAngle + sweepAngle)) {
+                            // Se clicar na mesma, desmarca. Se não, seleciona a nova.
+                            selectedIndex = if (selectedIndex == index) -1 else index
+                            return@detectTapGestures
+                        }
+                        currentStartAngle += sweepAngle
+                    }
+                }
+            }
+        ) {
+            var startAngle = -90f
+            dados.forEachIndexed { index, fatia ->
+                val sweepAngle = if (total > 0) (fatia.valor.toFloat() / total) * 360f else 0f
+
+                // Se a fatia estiver selecionada, ela fica um pouco mais grossa (Efeito Zoom)
+                val isSelected = selectedIndex == index
+                val strokeWidth = if (isSelected) 28f else 18f
+
+                drawArc(
+                    color = if (selectedIndex == -1 || isSelected) fatia.cor else fatia.cor.copy(alpha = 0.3f),
+                    startAngle = startAngle,
+                    sweepAngle = sweepAngle * progresso,
+                    useCenter = false,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                )
+                startAngle += sweepAngle
+            }
+        }
+
+        // --- TEXTO CENTRAL DINÂMICO ---
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (selectedIndex != -1) {
+                // Mostra dados da categoria selecionada
+                val item = dados[selectedIndex]
+                Text(
+                    text = item.categoria.uppercase(),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = item.cor
+                )
+                Text(
+                    text = formatarMoedaBR(item.valor, isPrivate),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            } else {
+                // Mostra o total geral
+                Text("TOTAL", fontSize = 8.sp, color = Color.White.copy(0.5f))
+                Text(
+                    text = formatarMoedaBR(total.toDouble(), isPrivate),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun HorizontalBalanceBarSlim(label: String, value: Double, progress: Float, color: Color, isPrivate: Boolean) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, fontSize = 9.sp, color = Color.White.copy(0.5f))
+            Text(formatarMoedaBR(value, isPrivate), fontSize = 9.sp, color = Color.White)
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
+            color = color,
+            trackColor = color.copy(alpha = 0.1f)
+        )
+    }
+}
+
+@Composable
+fun CategoryGridItem(
+    fatia: PieChartData,
+    isPrivate: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .padding(8.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        // Linha superior: Bolinha de cor + Nome
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(fatia.cor)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = fatia.categoria,
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Valor logo abaixo
+        Text(
+            text = formatarMoedaBR(fatia.valor,isPrivate),
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 14.dp) // Alinha abaixo do nome
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class) // Necessário para FlowRow
+@Composable
+fun CompactCategoryGrid(
+    dados: List<PieChartData>,
+    isPrivate: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text(
+            text = "DISTRIBUIÇÃO POR CATEGORIA",
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.padding(bottom = 8.dp, start = 8.dp)
+        )
+
+        // O FlowRow organiza os itens em grade automaticamente
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start,
+            maxItemsInEachRow = 4 // Força as 4 colunas
+        ) {
+            val itemModifier = Modifier.fillMaxWidth(0.25f) // Cada item ocupa 25% da largura (1/4)
+
+            dados.sortedByDescending { it.valor }.forEach { fatia ->
+                CategoryGridItem(
+                    fatia = fatia,
+                    isPrivate = isPrivate,
+                    modifier = itemModifier
+                )
             }
         }
     }

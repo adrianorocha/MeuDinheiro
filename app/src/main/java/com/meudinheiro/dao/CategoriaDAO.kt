@@ -32,4 +32,10 @@ interface CategoriaDao {
     // Para a Restauração: Insere uma lista completa de uma vez
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirLista(categorias: List<Categoria>)
+
+    @Query("DELETE FROM categorias")
+    suspend fun limparTudo()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirTodas(categorias: List<Categoria>)
 }

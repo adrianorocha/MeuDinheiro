@@ -133,4 +133,7 @@ suspend fun atualizarStatusPago(id: Long, status: Boolean)
     // Soma tudo (Global)
     @Query("SELECT SUM(valor) FROM despesas WHERE tipo = :tipo AND pago = 1")
     suspend fun somarGlobal(tipo: TipoDespesa): Double?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirTodas(despesas: List<Despesa>) // <--- O nome que o Repository procura
 }

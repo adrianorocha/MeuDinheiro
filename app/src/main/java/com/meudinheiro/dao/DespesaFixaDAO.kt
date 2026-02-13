@@ -32,4 +32,6 @@ interface DespesaFixaDao {
     @Query("DELETE FROM despesas_fixas")
     suspend fun limparTudo()
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirTodas(despesas: List<DespesaFixa>)
 }

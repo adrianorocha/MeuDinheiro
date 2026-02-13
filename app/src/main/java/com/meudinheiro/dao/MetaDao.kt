@@ -35,4 +35,8 @@ interface MetaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirLista(contas: List<Meta>)
 
+    @Query("DELETE FROM metas")
+    suspend fun limparTudo()
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirTodas(contas: List<Meta>)
 }

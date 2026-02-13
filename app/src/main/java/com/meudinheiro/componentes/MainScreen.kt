@@ -48,7 +48,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.OrcamentoProgresso
+import com.meudinheiro.data.PieChartData
+import com.meudinheiro.funcoes.CategoryLegendList
+import com.meudinheiro.funcoes.CompactCategoryGrid
+import com.meudinheiro.funcoes.PremiumPieChart
 import com.meudinheiro.funcoes.UserPreferences
+import com.meudinheiro.funcoes.gerarCorParaCategoria
 import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
@@ -207,14 +212,41 @@ fun MainScreen(
                 val resumo by contaVM.resumoFinanceiro.collectAsState()
                 val totalMetas by contaVM.totalPoupado.collectAsState()
 
+                val lista by despVM.despesasFiltradas.collectAsState(initial = emptyList())
+
+                val dadosGrafico = remember(lista) {
+                    lista.groupBy { it.categoria }
+                        .map { (categoria, despesasDaCategoria) ->
+                            PieChartData(
+                                categoria = categoria,
+                                valor = despesasDaCategoria.sumOf { it.valor },
+                                // AQUI GARANTIMOS A COR DIFERENTE:
+                                cor = gerarCorParaCategoria(categoria)
+                            )
+                        }
+                }
                 // Resumo Geral (Donut Animado)
                 ResumoGeralCard(
                     receitaTotal = resumo.entradas,
                     despesaTotal = resumo.saidas,
                     metasTotal = totalMetas,
-                    isPrivate = isPrivate
+                    isPrivate = isPrivate,
+                    dadosGrafico = dadosGrafico
                 )
 
+                if (dadosGrafico.isNotEmpty()) {
+                    CompactCategoryGrid(
+                        dados = dadosGrafico,
+                        isPrivate = isPrivate
+                    )
+                } else {
+                    // Feedback caso não tenha nada
+                    Text(
+                        "Nenhum gasto este mês",
+                        modifier = Modifier.padding(32.dp).align(Alignment.CenterHorizontally),
+                        color = Color.White.copy(0.3f)
+                    )
+                }
                 // 2. CONTEÚDO SCROLLÁVEL
                 LazyColumn(
                     modifier = Modifier

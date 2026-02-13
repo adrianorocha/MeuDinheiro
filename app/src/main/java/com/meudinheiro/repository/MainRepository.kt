@@ -1,10 +1,10 @@
 package com.meudinheiro.repository
 
 import android.content.Context
-import androidx.room.Query
 import androidx.room.withTransaction
+import com.google.gson.Gson
 import com.meudinheiro.data.AppDatabase
-import com.meudinheiro.data.BackupData
+import com.meudinheiro.data.BackupDto
 import com.meudinheiro.data.BancoDomain
 import com.meudinheiro.data.Categoria
 import com.meudinheiro.data.CategoriaDomain
@@ -25,12 +25,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
-import kotlin.Int
+import kotlin.Double
+import kotlin.collections.emptyList
 
 class MainRepository(private val context: Context) {
-
+    private val database = AppDatabase.getDatabase(context)
     private val db = AppDatabase.getInstance(context)
-
     // DAOs
     private val despesaDao = db.despesaDao()
     private val contaSaldoDao = db.contaSaldoDao()
@@ -447,8 +447,9 @@ class MainRepository(private val context: Context) {
     }
 
     // 1. Coleta tudo do banco para o Backup
+
     suspend fun gerarBackup(): String {
-        val backup = BackupData(
+        val backup = BackupDto(
             categorias = categoriaDao.obterTodasStatic(),
             despesas = despesaDao.obterTodasStatic(),
             despesasFixas = despesaFixaDao.obterTodasStatic(),
@@ -456,27 +457,125 @@ class MainRepository(private val context: Context) {
             metas = metaDao.obterTodasStatic(),
             orcamentos = orcamentoDao.obterTodasStatic()
         )
-        return com.google.gson.Gson().toJson(backup)
+        return Gson().toJson(backup)
     }
 
     // 2. Limpa o banco atual e restaura o backup
     suspend fun restaurarBackupCompleto(json: String) {
-        val backup = com.google.gson.Gson().fromJson(json, BackupData::class.java)
+        // 1. Converte o JSON para o Objeto DTO
+        val backupData = try {
+            Gson().fromJson(json, BackupDto::class.java)
+        } catch (e: Exception) {
+            throw Exception("Formato de JSON inválido ou incompatível.")
+        }
 
-        db.withTransaction { // Executa tudo ou nada
-            // 1. Limpa o que for necessário (Opcional)
-            despesaDao.limparTudo()
+        // 2. Executa a transação no banco
+        database.withTransaction {
 
-            // 2. Restaura em massa
-            categoriaDao.inserirLista(backup.categorias)
-            despesaDao.inserirLista(backup.despesas)
-            despesaFixaDao.inserirLista(backup.despesasFixas)
-            contaSaldoDao.inserirLista(backup.contas)
-            metaDao.inserirLista(backup.metas)
-            orcamentoDao.inserirLista(backup.orcamentos)
+            // --- A. METAS ---
+            val contasSeguras = backupData.contas?.map { contasaldo: ContaSaldo ->
+                contasaldo.copy(
+                    id = 0, // Zera o ID para gerar um novo
+                    saldo = contasaldo.saldo ?: 0.0,
+                    banco = contasaldo.banco,
+                    pic = contasaldo.pic,
+                    agencia = contasaldo.agencia,
+                    conta = contasaldo.conta,
+                    titular = contasaldo.titular
+                )
+            } ?: emptyList()
+
+            if (contasSeguras.isNotEmpty()) {
+                contaSaldoDao.limparTudo()
+                contaSaldoDao.inserirTodas(contasSeguras)
+            }
+
+
+            // --- A. METAS ---
+            val metasSeguras = backupData.metas?.map { meta: Meta ->
+                meta.copy(
+                    id = 0, // Zera o ID para gerar um novo
+                    nome = meta.nome ?: "Meta Restaurada",
+                    valorObjetivo = meta.valorObjetivo ?: 0.0,
+                    valorGuardado = meta.valorGuardado ?: 0.0
+                )
+            } ?: emptyList()
+
+            if (metasSeguras.isNotEmpty()) {
+                metaDao.limparTudo()
+                metaDao.inserirTodas(metasSeguras)
+            }
+
+            // --- B. DESPESAS FIXAS ---
+            val fixasSeguras = backupData.despesasFixas?.map { fixa: DespesaFixa ->
+                fixa.copy(
+                    id = 0,
+                    descricao = fixa.descricao ?: "Despesa Fixa",
+                    valor = fixa.valor ?: 0.0,
+                    diaVencimento = if (fixa.diaVencimento in 1..31) fixa.diaVencimento else 10,
+                    categoria = fixa.categoria ?: "Geral",
+                    conta = fixa.conta ?: "Principal"
+                )
+            } ?: emptyList()
+
+            if (fixasSeguras.isNotEmpty()) {
+                despesaFixaDao.limparTudo()
+                despesaFixaDao.inserirTodas(fixasSeguras)
+            }
+
+            // --- C. ORÇAMENTOS ---
+            val orcamentosSeguros = backupData.orcamentos?.map { orc: Orcamento ->
+                orc.copy(
+                    id = 0,
+                    categoria = orc.categoria ?: "Geral",
+                    valorLimite = orc.valorLimite ?: 1000.0
+                    //mes = orc.mes ?: java.util.Calendar.getInstance().get(java.util.Calendar.MONTH),
+                    //ano = orc.ano ?: java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                )
+            } ?: emptyList()
+
+            if (orcamentosSeguros.isNotEmpty()) {
+                orcamentoDao.limparTudo()
+                orcamentoDao.inserirTodas(orcamentosSeguros)
+            }
+
+            // --- D. DESPESAS (PRINCIPAL) ---
+            val despesasSeguras = backupData.despesas?.map { despesa: Despesa ->
+                despesa.copy(
+                    id = 0, // IMPORTANTE: Zera o ID para não dar conflito
+                    descricao = despesa.descricao ?: "Sem Descrição",
+                    valor = despesa.valor ?: 0.0,
+                    categoria = despesa.categoria ?: "Geral",
+                    conta = despesa.conta ?: "Principal",
+                    pago = despesa.pago ?: false, // Se vier nulo, assume falso
+                    tipo = (despesa.tipo ?: "DEBITO") as TipoDespesa,
+                    valorOriginal = despesa.valorOriginal ?: 0.0,
+                    moedaOriginal = despesa.moedaOriginal ?: "BRL",
+                    cotacaoNaData = despesa.cotacaoNaData ?: 1.0
+                )
+            } ?: emptyList()
+
+            if (despesasSeguras.isNotEmpty()) {
+                despesaDao.limparTudo()
+                despesaDao.inserirTodas(despesasSeguras)
+            }
+
+            // --- E. Categorias ---
+            val categoriasSeguras = backupData.categorias?.map { categoria: Categoria ->
+                categoria.copy(
+                    id = 0, // IMPORTANTE: Zera o ID para não dar conflito
+                    pic = categoria.pic ?: "default_pic",
+                    nome = categoria.nome ?: "Geral"
+                )
+            } ?: emptyList()
+
+            if (categoriasSeguras.isNotEmpty()) {
+                categoriaDao.limparTudo()
+                categoriaDao.inserirTodas(categoriasSeguras)
+            }
+
         }
     }
-
     // --- LÓGICA DE ORÇAMENTOS (BUDGETS) ---
 
     fun obterOrcamentosFlow(): Flow<List<Orcamento>> {
@@ -527,59 +626,64 @@ class MainRepository(private val context: Context) {
         metaDao.adicionarAporte(id, valor)
     }
 
-    suspend fun realizarAporte(meta: Meta, contaId: String, valor: Double) = withContext(Dispatchers.IO) {
-        if (valor <= 0) return@withContext
+    suspend fun realizarAporte(meta: Meta, contaId: String, valor: Double) =
+        withContext(Dispatchers.IO) {
+            if (valor <= 0) return@withContext
 
-        db.withTransaction {
-            // 1. Atualiza o saldo da conta (Subtração)
-            contaSaldoDao.subtrairSaldo(contaId, valor)
+            db.withTransaction {
+                // 1. Atualiza o saldo da conta (Subtração)
+                contaSaldoDao.subtrairSaldo(contaId, valor)
 
-            // 2. Atualiza o valor guardado na Meta (Adição)
-            metaDao.adicionarAporte(meta.id, valor)
+                // 2. Atualiza o valor guardado na Meta (Adição)
+                metaDao.adicionarAporte(meta.id, valor)
 
-            // 3. Cria a Entity Despesa para o extrato
-            val transacaoAporte = Despesa(
-                id = 0, // O Room gera o ID automaticamente se for autoGenerate
-                descricao = "Aporte: ${meta.nome}",
-                valor = valor,
-                data = Date(),
-                conta = contaId,
-                categoria = "Reserva",
-                pic = "reserva",
-                tipo = TipoDespesa.DEBITO,
-                pago = true
-            )
-
-            // 4. Usa a função que você especificou
-            despesaDao.inserirDespesa(transacaoAporte)
-        }
-    }
-
-    suspend fun excluirMetaComRestituicao(meta: Meta, contaId: String?) = withContext(Dispatchers.IO) {
-        db.withTransaction {
-            // 1. Se houver valor guardado e uma conta destino, devolvemos o dinheiro
-            if (meta.valorGuardado > 0 && contaId != null) {
-                contaSaldoDao.subtrairSaldo(contaId, -meta.valorGuardado) // Soma o valor de volta
-
-                // Registra a devolução no extrato
-                val transacaoEstorno = Despesa(
-                    id = 0,
-                    descricao = "Estorno: Meta ${meta.nome}",
-                    valor = meta.valorGuardado,
+                // 3. Cria a Entity Despesa para o extrato
+                val transacaoAporte = Despesa(
+                    id = 0, // O Room gera o ID automaticamente se for autoGenerate
+                    descricao = "Aporte: ${meta.nome}",
+                    valor = valor,
                     data = Date(),
                     conta = contaId,
                     categoria = "Reserva",
                     pic = "reserva",
-                    tipo = TipoDespesa.CREDITO, // Entra como crédito
+                    tipo = TipoDespesa.DEBITO,
                     pago = true
                 )
-                despesaDao.inserirDespesa(transacaoEstorno)
-            }
 
-            // 2. Remove a meta definitivamente
-            metaDao.excluirMeta(meta)
+                // 4. Usa a função que você especificou
+                despesaDao.inserirDespesa(transacaoAporte)
+            }
         }
-    }
+
+    suspend fun excluirMetaComRestituicao(meta: Meta, contaId: String?) =
+        withContext(Dispatchers.IO) {
+            db.withTransaction {
+                // 1. Se houver valor guardado e uma conta destino, devolvemos o dinheiro
+                if (meta.valorGuardado > 0 && contaId != null) {
+                    contaSaldoDao.subtrairSaldo(
+                        contaId,
+                        -meta.valorGuardado
+                    ) // Soma o valor de volta
+
+                    // Registra a devolução no extrato
+                    val transacaoEstorno = Despesa(
+                        id = 0,
+                        descricao = "Estorno: Meta ${meta.nome}",
+                        valor = meta.valorGuardado,
+                        data = Date(),
+                        conta = contaId,
+                        categoria = "Reserva",
+                        pic = "reserva",
+                        tipo = TipoDespesa.CREDITO, // Entra como crédito
+                        pago = true
+                    )
+                    despesaDao.inserirDespesa(transacaoEstorno)
+                }
+
+                // 2. Remove a meta definitivamente
+                metaDao.excluirMeta(meta)
+            }
+        }
 
     fun getTotalPoupado(): Flow<Double> {
         return metaDao.getTotalPoupado().map { it ?: 0.0 }
@@ -591,11 +695,14 @@ class MainRepository(private val context: Context) {
         ResumoDto(entradas, saidas)
     }
 
-    suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): ResumoDto = withContext(Dispatchers.IO) {
-        val entradas = despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.CREDITO) ?: 0.0
-        val saidas = despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.DEBITO) ?: 0.0
-        ResumoDto(entradas, saidas)
-    }
+    suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): ResumoDto =
+        withContext(Dispatchers.IO) {
+            val entradas =
+                despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.CREDITO) ?: 0.0
+            val saidas =
+                despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.DEBITO) ?: 0.0
+            ResumoDto(entradas, saidas)
+        }
 
     suspend fun obterTodasAsMetasSync(): List<Meta> {
         return metaDao.obterTodasAsMetasSync()

@@ -156,7 +156,7 @@ fun ActionButtonRow(
 
             ActionButton(
                 icon = R.drawable.sim_chip,
-                text = "Avisos",
+                text = "Configurações",
                 color = Color(0xFFFFC107),
                 modifier = modifierItem,
                 onClick = onConfigClick

@@ -48,5 +48,22 @@ abstract class AppDatabase : RoomDatabase() {
                     .build()
                     .also { INSTANCE = it }
             }
+
+        fun getDatabase(context: Context): AppDatabase {
+            // Se a instância já existe, retorna ela
+            return INSTANCE ?: synchronized(this) {
+                // Se não existe, cria uma nova
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "meu_dinheiro_db" // Nome do arquivo do banco
+                )
+                    .fallbackToDestructiveMigration() // Opcional: Recria o banco se mudar versão
+                    .build()
+
+                INSTANCE = instance
+                instance
+            }
+        }
     }
 }
