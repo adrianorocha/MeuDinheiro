@@ -3,6 +3,7 @@ package com.meudinheiro.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.repository.MainRepository
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,5 +97,23 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
             repository.excluirDespesaComRestituicao(id)
             // Não precisa recarregar nada manualmente, o Flow (obterDespesas) avisa o combine automaticamente
         }
+    }
+
+    fun getTotalPorMesEAno(mes: Int, ano: Int): Flow<Double> {
+        return repository.getTotalDespesasPorPeriodo(mes, ano)
+    }
+
+    fun getDespesaMesAnterior(mesAtual: Int, anoAtual: Int): Flow<Double> {
+        val calendar = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.YEAR, anoAtual)
+            set(java.util.Calendar.MONTH, mesAtual - 1) // Meses no Calendar são 0-11
+            add(java.util.Calendar.MONTH, -1) // Retrocede 1 mês
+        }
+
+        val mesAnterior = String.format("%02d", calendar.get(java.util.Calendar.MONTH) + 1)
+        val anoAnterior = calendar.get(java.util.Calendar.YEAR).toString()
+
+        return repository.getTotalPorMesEAno(mesAnterior, anoAnterior)
+            .map { it ?: 0.0 }
     }
 }

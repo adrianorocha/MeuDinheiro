@@ -136,4 +136,11 @@ suspend fun atualizarStatusPago(id: Long, status: Boolean)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(despesas: List<Despesa>) // <--- O nome que o Repository procura
+
+    @Query("""
+    SELECT SUM(valor) FROM despesas 
+    WHERE strftime('%m', data / 1000, 'unixepoch') = :mes 
+    AND strftime('%Y', data / 1000, 'unixepoch') = :ano
+""")
+    fun getTotalPorMesEAno(mes: String, ano: String): Flow<Double?>
 }

@@ -32,9 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.PieChartData
-import com.meudinheiro.funcoes.HorizontalBalanceBar // Certifique-se que esta função existe
 import com.meudinheiro.funcoes.HorizontalBalanceBarSlim
 import com.meudinheiro.funcoes.PremiumPieChart    // Certifique-se que esta função existe
+import com.meudinheiro.funcoes.TrendIndicator
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.lembrarEstadoPerformance
 
@@ -196,6 +196,12 @@ fun ResumoGeralCard(
                 HorizontalBalanceBarSlim(
                     label = "Saídas", value = despesaTotal, progress = animBarDespesa,
                     color = Color(0xFFEF5350), isPrivate = isPrivate
+                )
+
+                TrendIndicator(
+                    valorAtual = despesaTotal,
+                    valorAnterior = despesaMesAnterior, // Você precisará passar esse valor via parâmetro
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
 

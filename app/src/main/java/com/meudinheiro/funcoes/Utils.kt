@@ -243,7 +243,6 @@ fun SuccessAnimation(onFinished: () -> Unit) {
     }
 }
 
-@Composable
 fun gerarCorParaCategoria(cat: String): Color {
     return when (cat.lowercase().trim()) {
         "alimentação", "comida" -> Color(0xFFFFB74D) // Laranja
@@ -410,7 +409,7 @@ fun CategoryGridItem(
         Text(
             text = formatarMoedaBR(fatia.valor,isPrivate),
             color = Color.White,
-            fontSize = 12.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 14.dp) // Alinha abaixo do nome
         )
@@ -449,5 +448,42 @@ fun CompactCategoryGrid(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun TrendIndicator(
+    valorAtual: Double,
+    valorAnterior: Double,
+    modifier: Modifier = Modifier
+) {
+    val diferenca = valorAtual - valorAnterior
+    val percentual = if (valorAnterior > 0) (diferenca / valorAnterior) * 100 else 0.0
+
+    // Define a cor e o ícone com base na tendência
+    // Nota: Para despesas, "mais" é ruim (vermelho), "menos" é bom (verde).
+    val isPositiveTrend = diferenca <= 0
+    val color = if (isPositiveTrend) Color(0xFF69F0AE) else Color(0xFFEF5350)
+    val icon = if (isPositiveTrend) "↓" else "↑"
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.1f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "$icon ${String.format("%.1f", Math.abs(percentual))}%",
+            color = color,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = "vs mês ant.",
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 10.sp
+        )
     }
 }

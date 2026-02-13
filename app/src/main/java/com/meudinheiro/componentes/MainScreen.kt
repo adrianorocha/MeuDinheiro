@@ -49,9 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.PieChartData
-import com.meudinheiro.funcoes.CategoryLegendList
 import com.meudinheiro.funcoes.CompactCategoryGrid
-import com.meudinheiro.funcoes.PremiumPieChart
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.funcoes.gerarCorParaCategoria
 import com.meudinheiro.repository.MainRepository

@@ -707,4 +707,6 @@ class MainRepository(private val context: Context) {
     suspend fun obterTodasAsMetasSync(): List<Meta> {
         return metaDao.obterTodasAsMetasSync()
     }
+
+
 }
