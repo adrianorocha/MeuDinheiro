@@ -119,4 +119,8 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         return repository.getTotalDespesasPorPeriodo(mesAnterior, anoAnterior)
             .map { valor -> valor ?: 0.0 } // Use 'valor ->' em vez de 'it' para ser mais claro
     }
+
+    fun setMes(mes: Int) {
+        _mesSelecionado.value = mes
+    }
 }

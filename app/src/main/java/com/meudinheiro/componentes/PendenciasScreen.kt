@@ -38,7 +38,6 @@ import kotlinx.coroutines.withContext
 private val WarningColor = Color(0xFFFFAB40)
 private val DangerColor = Color(0xFFEF5350)
 private val SuccessColor = Color(0xFF00C853)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PendenciasScreen(
