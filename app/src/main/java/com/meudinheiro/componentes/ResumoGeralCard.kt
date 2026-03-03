@@ -15,13 +15,27 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.with
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -33,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.HorizontalBalanceBarSlim
-import com.meudinheiro.funcoes.PremiumPieChart    // Certifique-se que esta função existe
+import com.meudinheiro.funcoes.PremiumPieChart
 import com.meudinheiro.funcoes.TrendIndicator
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.lembrarEstadoPerformance
@@ -42,6 +56,7 @@ import com.meudinheiro.funcoes.lembrarEstadoPerformance
 @Composable
 fun ResumoGeralCard(
     receitaTotal: Double,
+    despesaMesAnterior: Double,
     despesaTotal: Double,
     metasTotal: Double,
     isPrivate: Boolean = false,
@@ -183,19 +198,19 @@ fun ResumoGeralCard(
                 // Barra 1: Entradas
                 HorizontalBalanceBarSlim(
                     label = "Entradas", value = receitaTotal, progress = animBarReceita,
-                    color = Color(0xFF69F0AE), isPrivate = isPrivate
+                    color = Color(0xFF69F0AE), isPrivate = isPrivate, isLoading = !animationPlayed
                 )
 
                 // Barra 2: Poupado (Metas)
                 HorizontalBalanceBarSlim(
                     label = "Poupado", value = metasTotal, progress = animBarMetas,
-                    color = Color(0xFF00E676), isPrivate = isPrivate // Verde um pouco mais forte
+                    color = Color(0xFF00E676), isPrivate = isPrivate, isLoading = !animationPlayed // Verde um pouco mais forte
                 )
 
                 // Barra 3: Saídas
                 HorizontalBalanceBarSlim(
                     label = "Saídas", value = despesaTotal, progress = animBarDespesa,
-                    color = Color(0xFFEF5350), isPrivate = isPrivate
+                    color = Color(0xFFEF5350), isPrivate = isPrivate, isLoading = !animationPlayed
                 )
 
                 TrendIndicator(

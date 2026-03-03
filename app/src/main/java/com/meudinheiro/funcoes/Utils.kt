@@ -6,12 +6,13 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.os.PowerManager
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,14 +31,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,9 +50,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PaintingStyle.Companion.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,17 +68,13 @@ import androidx.core.content.FileProvider
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieAnimatable
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.meudinheiro.R
-import com.meudinheiro.componentes.PremiumDarkBlue
-import com.meudinheiro.componentes.TextWhite
+import com.meudinheiro.componentes.MonthPill
 import com.meudinheiro.data.Despesa
-import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.PieChartData
-import com.meudinheiro.data.TipoDespesa
 import kotlinx.coroutines.delay
 import java.io.File
 import java.io.FileOutputStream
@@ -360,7 +361,7 @@ fun PremiumPieChart(
     }
 }
 
-@Composable
+/*@Composable
 fun HorizontalBalanceBarSlim(label: String, value: Double, progress: Float, color: Color, isPrivate: Boolean) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -373,6 +374,68 @@ fun HorizontalBalanceBarSlim(label: String, value: Double, progress: Float, colo
             color = color,
             trackColor = color.copy(alpha = 0.1f)
         )
+    }
+}*/
+
+@Composable
+fun HorizontalBalanceBarSlim(
+    label: String,
+    value: Double,
+    progress: Float,
+    color: Color,
+    isPrivate: Boolean,
+    isLoading: Boolean = false
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            if (isLoading) {
+                Box(modifier = Modifier
+                    .width(60.dp)
+                    .height(12.dp)
+                    .shimmerEffect())
+                Box(modifier = Modifier
+                    .width(80.dp)
+                    .height(12.dp)
+                    .shimmerEffect())
+            } else {
+                Text(
+                    text = label.uppercase(),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp,
+                    color = Color.White.copy(alpha = 0.4f)
+                )
+                Text(
+                    text = formatarMoedaBR(value, isPrivate),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+        }
+
+        Spacer(Modifier.height(3.dp))
+
+        // A nossa nova barra neon
+        if (isLoading) {
+            Box(modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .shimmerEffect())
+        } else {
+            NeonProgressBar(
+                progress = progress,
+                primaryColor = color
+            )
+        }
     }
 }
 
@@ -423,7 +486,9 @@ fun CompactCategoryGrid(
     isPrivate: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+    Column(modifier = modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp)) {
         Text(
             text = "DISTRIBUIÇÃO POR CATEGORIA",
             color = Color.White.copy(alpha = 0.4f),
@@ -485,5 +550,118 @@ fun TrendIndicator(
             color = Color.White.copy(alpha = 0.4f),
             fontSize = 10.sp
         )
+    }
+
+    }
+
+fun obterCorDaCategoria(categoria: String): Color {
+    return when (categoria.lowercase().trim()) {
+        "alimentação", "comida", "mercado" -> Color(0xFFFFB74D) // Laranja
+        "transporte", "combustível", "uber" -> Color(0xFF64B5F6) // Azul
+        "lazer", "viagem", "cinema" -> Color(0xFFBA68C8) // Roxo
+        "saúde", "farmácia", "médico" -> Color(0xFFE57373) // Vermelho
+        "contas", "fixas", "luz", "água" -> Color(0xFF4FC3F7) // Ciano
+        "poupado", "metas", "investimento" -> Color(0xFF69F0AE) // Verde Blu Macaw
+        "educação", "cursos" -> Color(0xFFFFF176) // Amarelo
+        else -> Color(0xFF90A4AE) // Cinza Azulado (Padrão)
+    }
+}
+
+@Composable
+fun NeonProgressBar(
+    progress: Float,
+    primaryColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val animProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = tween(1000, easing = FastOutSlowInEasing),
+        label = "progressAnim"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(6.dp) // Um pouco mais grossa para o gradiente aparecer
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.05f)) // Trilho de fundo
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width * animProgress
+
+            drawRoundRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        primaryColor.copy(alpha = 0.7f), // Cor suave no início
+                        primaryColor                    // Neon puro no fim
+                    )
+                ),
+                size = size.copy(width = width),
+                cornerRadius = CornerRadius(100f, 100f)
+            )
+        }
+    }
+}
+
+fun Modifier.shimmerEffect(): Modifier = composed {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val startOffsetX by transition.animateFloat(
+        initialValue = -1000f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer_offset"
+    )
+
+    // Cores otimizadas para o seu tema Dark (fundo do card é 1E2B3E)
+    background(
+        brush = Brush.linearGradient(
+            colors = listOf(
+                Color(0xFF2A3B52), // Escuro
+                Color(0xFF405675), // Brilho mais claro
+                Color(0xFF2A3B52), // Escuro
+            ),
+            start = Offset(startOffsetX, 0f),
+            end = Offset(startOffsetX + 400f, 0f) // Largura do feixe de luz
+        ),
+        shape = RoundedCornerShape(8.dp) // Cantos arredondados
+    )
+}
+
+@Composable
+fun HorizontalMonthSelector(
+    selectedMonth: Int, // 1 a 12
+    onMonthSelected: (Int) -> Unit
+) {
+    val meses = listOf(
+        "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+        "Jul", "Ago", "Set", "Out", "Nov", "Dez"
+    )
+
+    val listState = rememberLazyListState()
+
+    // Rola para o mês selecionado ao iniciar
+    LaunchedEffect(Unit) {
+        listState.scrollToItem(maxOf(0, selectedMonth - 2))
+    }
+
+    LazyRow(
+        state = listState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        itemsIndexed(meses) { index, nome ->
+            val mesNumero = index + 1
+            MonthPill(
+                mes = nome,
+                isSelected = selectedMonth == mesNumero,
+                onClick = { onMonthSelected(mesNumero) }
+            )
+        }
     }
 }

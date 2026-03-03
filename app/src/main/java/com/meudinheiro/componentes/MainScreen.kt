@@ -113,6 +113,9 @@ fun MainScreen(
     val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
     val totalMetas by contaVM.totalPoupado.collectAsState()
 
+    val saidasMesAnterior by despVM.getDespesaMesAnterior(mesAtual, anoAtual)
+        .collectAsState(initial = 0.0)
+
     var selectedIndex by remember { mutableStateOf(-1) }
     fun onItemSelected(index: Int) {
         selectedIndex = index
@@ -227,6 +230,7 @@ fun MainScreen(
                 ResumoGeralCard(
                     receitaTotal = resumo.entradas,
                     despesaTotal = resumo.saidas,
+                    despesaMesAnterior = saidasMesAnterior,
                     metasTotal = totalMetas,
                     isPrivate = isPrivate,
                     dadosGrafico = dadosGrafico

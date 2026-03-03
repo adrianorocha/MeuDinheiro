@@ -708,5 +708,13 @@ class MainRepository(private val context: Context) {
         return metaDao.obterTodasAsMetasSync()
     }
 
+    // --- ESSA É A FUNÇÃO QUE FALTAVA ---
+    fun getTotalDespesasPorPeriodo(mes: Int, ano: Int): Flow<Double> {
+        // Formata o mês para ter sempre dois dígitos (01, 02...)
+        val mesFormatado = String.format("%02d", mes)
+        val anoFormatado = ano.toString()
 
+        return despesaDao.getTotalPorMesEAno(mesFormatado, anoFormatado)
+            .map { it ?: 0.0 } // Se for nulo, retorna 0.0
+    }
 }
