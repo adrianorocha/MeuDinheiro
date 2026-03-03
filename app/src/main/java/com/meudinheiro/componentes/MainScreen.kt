@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +43,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,6 +54,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.CompactCategoryGrid
+import com.meudinheiro.funcoes.EmptyStateSection
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.funcoes.gerarCorParaCategoria
 import com.meudinheiro.repository.MainRepository
@@ -80,17 +85,19 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
+    val haptic = LocalHapticFeedback.current
     // --- ViewModels ---
     val application = context.applicationContext as Application
     val repository = remember { MainRepository(context) }
     val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
-    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(application, repository))
+    val contaVM: ContaSaldoViewModel =
+        viewModel(factory = ContaSaldoViewModelFactory(application, repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
 
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
+    var showAddDespesaDialog by remember { mutableStateOf(false) }
 
     // --- Estados (Preferences & User) ---
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
@@ -115,6 +122,8 @@ fun MainScreen(
 
     val saidasMesAnterior by despVM.getDespesaMesAnterior(mesAtual, anoAtual)
         .collectAsState(initial = 0.0)
+
+    val parentScope = rememberCoroutineScope()
 
     var selectedIndex by remember { mutableStateOf(-1) }
     fun onItemSelected(index: Int) {
@@ -181,6 +190,23 @@ fun MainScreen(
                     selectedIndex = selectedIndex,
                     onItemSelected = ::onItemSelected
                 )
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showAddDespesaDialog = true
+                    },
+                    containerColor = Color(0xFF69F0AE),
+                    shape = CircleShape,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Nova Despesa",
+                        tint = PremiumDarkBlue
+                    )
+                }
             }
         ) { innerPadding ->
 
@@ -245,7 +271,9 @@ fun MainScreen(
                     // Feedback caso não tenha nada
                     Text(
                         "Nenhum gasto este mês",
-                        modifier = Modifier.padding(32.dp).align(Alignment.CenterHorizontally),
+                        modifier = Modifier
+                            .padding(32.dp)
+                            .align(Alignment.CenterHorizontally),
                         color = Color.White.copy(0.3f)
                     )
                 }
@@ -407,14 +435,11 @@ fun MainScreen(
                     // --- LISTA DE DESPESAS ---
                     if (despesasFiltradas.isEmpty()) {
                         item {
-                            Text(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                fontSize = 16.sp,
-                                color = TextWhite.copy(alpha = 0.6f),
-                                textAlign = TextAlign.Center,
-                                text = "Nenhuma movimentação neste mês."
+                            EmptyStateSection(
+                                onAddClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    showAddDespesaDialog = true
+                                }
                             )
                         }
                     } else {
@@ -434,7 +459,16 @@ fun MainScreen(
                 }
             }
         }
-
+        if (showAddDespesaDialog) {
+            AddDespesaDialog(
+                categorias = repository.categorias.map { it.title },
+                contaSelecionada = contaSelecionadaId.orEmpty(),
+                getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
+                viewModel = contaVM,
+                parentScope = parentScope,
+                onDismiss = { showAddDespesaDialog = false } // Fecha o Dialog
+            )
+        }
         // --- CAMADAS SOBREPOSTAS (Dialogs) ---
         orcamentoSelecionado?.let { orcamento ->
             DetalheOrcamentoBottomSheet(

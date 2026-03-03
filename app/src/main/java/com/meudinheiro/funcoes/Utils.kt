@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.os.PowerManager
+import androidx.compose.animation.core.EaseInOutSine
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -16,6 +17,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,6 +44,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -61,7 +66,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color.Companion.White
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.colorspace.WhitePoint
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -69,6 +76,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -712,5 +720,78 @@ fun FloatingActionButtonMeuDinheiro(
             contentDescription = "Adicionar Despesa",
             modifier = Modifier.size(32.dp)
         )
+    }
+}
+
+@Composable
+fun EmptyStateSection(
+    onAddClick: () -> Unit
+) {
+    // Animação de flutuação para o ícone
+    val infiniteTransition = rememberInfiniteTransition(label = "floating")
+    val translateY by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "translateY"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Ícone Flutuante
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .offset(y = translateY.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            // Um círculo de fundo bem suave
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(White.copy(alpha = 0.05f), CircleShape)
+            )
+            Text("💸", fontSize = 48.sp) // Ou um Icon(Icons.Rounded.History)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Tudo limpo por aqui!",
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+
+        Text(
+            text = "Que tal registrar seu primeiro gasto ou entrada para ver a mágica acontecer?",
+            color = Color.White.copy(alpha = 0.5f),
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Botão de Incentivo
+        Button(
+            onClick = onAddClick,
+            colors = ButtonDefaults.buttonColors(containerColor = White.copy(alpha = 0.1f)),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, White.copy(alpha = 0.3f))
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Novo Lançamento", color = White, fontWeight = FontWeight.Bold)
+        }
     }
 }
