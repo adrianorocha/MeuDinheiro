@@ -128,9 +128,9 @@ fun MainScreen(
     val mesAtual by despVM.mesSelecionado.collectAsState()
     val anoAtual by despVM.anoSelecionado.collectAsState()
 
-    val listaDespesas by despVM.despesasFiltradas.collectAsState<List<DespesasDomain>>(initial = emptyList())
+    //val listaDespesas by despVM.despesasFiltradas.collectAsState<List<DespesasDomain>>(initial = emptyList())
 
-    val listaOrcamentos by orcamentoVM.orcamentosComProgresso.collectAsState<List<OrcamentoProgresso>>(initial = emptyList())
+    //val listaOrcamentos by orcamentoVM.orcamentosComProgresso.collectAsState<List<OrcamentoProgresso>>(initial = emptyList())
 
     val totalMetas by contaVM.totalPoupado.collectAsState()
     val resumo by contaVM.resumoFinanceiro.collectAsState()
@@ -183,7 +183,7 @@ fun MainScreen(
 
     LaunchedEffect(contaSelecionadaId, filtroAtivo) {
         val idParaFiltro = contaSelecionadaId?.trim().orEmpty()
-        despVM.setfiltroAtivo(filtroAtivo)
+        despVM.setFiltro(filtroAtivo)
         despVM.setContaSelecionada(idParaFiltro)
         contaVM.carregarSaldosGlobais()
     }
