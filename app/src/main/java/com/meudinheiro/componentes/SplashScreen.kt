@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -33,10 +34,11 @@ import kotlin.random.Random
 fun SplashScreen(onTimeout: () -> Unit) {
     // Estado de início da animação
     var startAnimation by remember { mutableStateOf(false) }
+    var fadeOut by remember { mutableStateOf(false) } // Novo estado para saída suave
 
-    // 1. Animação de Entrada do Logo (Elasticidade)
+    // 1. Animação de Entrada do Logo (Mola mais elegante)
     val scale by animateFloatAsState(
-        targetValue = if (startAnimation) 1f else 0.3f,
+        targetValue = if (startAnimation) 1f else 0.5f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
@@ -44,17 +46,20 @@ fun SplashScreen(onTimeout: () -> Unit) {
         label = "logoScale"
     )
 
-    // 2. Animação de Opacidade Geral
+    // 2. Animação de Opacidade Geral (Fade In e Fade Out suaves)
     val alpha by animateFloatAsState(
-        targetValue = if (startAnimation) 1f else 0f,
-        animationSpec = tween(1000),
+        targetValue = if (fadeOut) 0f else if (startAnimation) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (fadeOut) 400 else 1200,
+            easing = EaseInOutQuart // Curva mais cinematográfica
+        ),
         label = "screenAlpha"
     )
 
-    // 3. Texto subindo suavemente
+    // 3. Texto subindo suavemente (Slide)
     val textOffsetY by animateDpAsState(
-        targetValue = if (startAnimation) 0.dp else 50.dp,
-        animationSpec = tween(1000, delayMillis = 300, easing = FastOutSlowInEasing),
+        targetValue = if (startAnimation) 0.dp else 40.dp, // Deslocamento um pouco menor para ser sutil
+        animationSpec = tween(1200, delayMillis = 200, easing = EaseOutExpo), // Desaceleração orgânica
         label = "textSlide"
     )
 
@@ -64,7 +69,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
         initialValue = 1f,
         targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500),
+            animation = tween(1500, easing = EaseInOutSine), // Sine deixa a pulsação mais natural
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulse"
@@ -72,14 +77,16 @@ fun SplashScreen(onTimeout: () -> Unit) {
 
     LaunchedEffect(Unit) {
         startAnimation = true
-        delay(2500) // Tempo total da splash
+        delay(2400) // Tempo de exposição da tela
+        fadeOut = true // Inicia o fade out antes de fechar
+        delay(400) // Aguarda o fade out terminar
         onTimeout()
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Gradiente de fundo sutil e moderno
+            // Gradiente de fundo sutil e moderno mantido
             .background(
                 Brush.linearGradient(
                     colors = listOf(
@@ -91,8 +98,8 @@ fun SplashScreen(onTimeout: () -> Unit) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        // --- 1. Partículas de Fundo (Money dust) ---
-        ParticleBackground(modifier = Modifier.fillMaxSize())
+        // --- 1. Partículas de Fundo (Money dust) com Fade ---
+        ParticleBackground(modifier = Modifier.fillMaxSize().alpha(alpha))
 
         // --- 2. Conteúdo Central ---
         Column(
@@ -145,16 +152,14 @@ fun SplashScreen(onTimeout: () -> Unit) {
 
             // Nome do App Animado
             Column(
-                modifier = Modifier
-                    .offset(y = textOffsetY)
-                    .alpha(if (startAnimation) 1f else 0f),
+                modifier = Modifier.offset(y = textOffsetY),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = "Meu Dinheiro",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                        letterSpacing = 2.sp // Aumentado um pouco para ficar mais elegante
                     ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -162,10 +167,10 @@ fun SplashScreen(onTimeout: () -> Unit) {
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "Gestão Financeira \nPessoal e Inteligente",
+                    text = "Gestão Financeira\nPessoal e Inteligente",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
-                                        letterSpacing = 3.sp,
+                    letterSpacing = 4.sp, // Aumentado para combinar com a abertura lenta
                     textAlign = TextAlign.Center
                 )
             }

@@ -2,12 +2,16 @@ package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.repository.MainRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -31,7 +35,7 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
 
     // 3. O Fluxo Unificado e Filtrado
     // Combina: Banco de Dados + Mês + Ano + Conta Selecionada
-    val despesasFiltradas = combine(
+/*    val despesasFiltradas = combine(
         repository.obterDespesas(), // Flow do Room
         _mesSelecionado,
         _anoSelecionado,
@@ -66,8 +70,14 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
-    )
+    )*/
 
+    private val _contaSelecionada = MutableStateFlow("")
+
+    // 2. A função que a MainScreen vai chamar quando o usuário trocar de conta no carrossel
+    fun setContaSelecionada(idConta: String) {
+        _contaSelecionada.value = idConta
+    }
     // --- AÇÕES ---
 
     // Esta função agora atualiza a variável CORRETA (_contaFiltro)
@@ -123,4 +133,32 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     fun setMes(mes: Int) {
         _mesSelecionado.value = mes
     }
+
+    // 1. O estado do filtro dentro do VM
+    private val _filtroAtivo = MutableStateFlow(0) // 0: Este Mês, 1: Mês Passado, 2: Total
+
+    // 2. A função que a MainScreen vai chamar
+    fun setFiltro(novoFiltro: Int) {
+        _filtroAtivo.value = novoFiltro
+    }
+
+    // 3. A MÁGICA: A lista de despesas agora "observa" o filtro e os meses
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val despesasFiltradas: StateFlow<List<DespesasDomain>> = combine(
+        _filtroAtivo,
+        _mesSelecionado,
+        _anoSelecionado,
+        _contaSelecionada
+    ) { filtro, mes, ano, conta ->
+        when (filtro) {
+            0 -> repository.getDespesasPorMes(mes, ano, conta)
+            1 -> repository.getDespesasMesAnterior(mes, ano, conta)
+            else -> repository.getTodasDespesas(conta)
+        }
+    }.flatMapLatest { it }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList<DespesasDomain>() // <--- Dica: já force a tipagem aqui também!
+        )
 }

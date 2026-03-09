@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -27,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,12 +37,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -71,6 +75,8 @@ import com.meudinheiro.viewModel.OrcamentoViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.meudinheiro.data.Despesa
+import kotlin.collections.emptyList
 
 // Cores Globais Premium
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -86,18 +92,24 @@ fun MainScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+
     // --- ViewModels ---
     val application = context.applicationContext as Application
     val repository = remember { MainRepository(context) }
     val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
-    val contaVM: ContaSaldoViewModel =
-        viewModel(factory = ContaSaldoViewModelFactory(application, repository))
+    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(application, repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
 
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
     var showAddDespesaDialog by remember { mutableStateOf(false) }
+
+    val filtroAtivo = contaVM.filtroAtual
+
+    // --- Controle das Novas Abas ---
+    var mainTabSelecionada by remember { mutableIntStateOf(0) }
+    val mainTabs = listOf("Saldo", "Contas", "Cofrinhos", "Investimentos")
 
     // --- Estados (Preferences & User) ---
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
@@ -108,7 +120,7 @@ fun MainScreen(
     var emCadastro by remember { mutableStateOf(false) }
     var showAddOrcamentoDialog by remember { mutableStateOf(false) }
 
-    // --- Estados de Dados ---
+    // --- Estados de Dados Globais ---
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
     val contaSelecionadaId by contaVM.contaSelecionadaId.observeAsState(null)
     val dashboardState by contaVM.dashboardState.collectAsState()
@@ -116,9 +128,12 @@ fun MainScreen(
     val mesAtual by despVM.mesSelecionado.collectAsState()
     val anoAtual by despVM.anoSelecionado.collectAsState()
 
-    val despesasFiltradas by despVM.despesasFiltradas.collectAsState()
-    val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
+    val listaDespesas by despVM.despesasFiltradas.collectAsState<List<DespesasDomain>>(initial = emptyList())
+
+    val listaOrcamentos by orcamentoVM.orcamentosComProgresso.collectAsState<List<OrcamentoProgresso>>(initial = emptyList())
+
     val totalMetas by contaVM.totalPoupado.collectAsState()
+    val resumo by contaVM.resumoFinanceiro.collectAsState()
 
     val saidasMesAnterior by despVM.getDespesaMesAnterior(mesAtual, anoAtual)
         .collectAsState(initial = 0.0)
@@ -130,25 +145,21 @@ fun MainScreen(
         selectedIndex = index
     }
 
+
     // --- Verificações de Inicialização ---
     if (nomeState == null) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White),
+            modifier = Modifier.fillMaxSize().background(Color.White),
             contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = PremiumDarkBlue)
-        }
+        ) { CircularProgressIndicator(color = PremiumDarkBlue) }
         return
     }
 
     val nome = nomeState
     if (nome!!.isBlank() || emCadastro) {
         CadastroUsuarioScreen(
-            userPrefs = userPrefs,
-            onBack = { emCadastro = false },
-            onFinished = { emCadastro = false })
+            userPrefs = userPrefs, onBack = { emCadastro = false }, onFinished = { emCadastro = false }
+        )
         return
     }
 
@@ -161,7 +172,7 @@ fun MainScreen(
     }
 
     // --- LÓGICA DE SELEÇÃO DE CONTA ---
-    LaunchedEffect(contas) {
+    LaunchedEffect(contas, filtroAtivo) {
         if (contas.isNotEmpty()) {
             val current = contaSelecionadaId
             if (current.isNullOrBlank() || contas.none { it.conta == current }) {
@@ -170,8 +181,9 @@ fun MainScreen(
         }
     }
 
-    LaunchedEffect(contaSelecionadaId) {
+    LaunchedEffect(contaSelecionadaId, filtroAtivo) {
         val idParaFiltro = contaSelecionadaId?.trim().orEmpty()
+        despVM.setfiltroAtivo(filtroAtivo)
         despVM.setContaSelecionada(idParaFiltro)
         contaVM.carregarSaldosGlobais()
     }
@@ -182,30 +194,24 @@ fun MainScreen(
             .fillMaxSize()
             .background(Brush.verticalGradient(colors = listOf(PremiumDarkBlue, PremiumLightBlue)))
     ) {
-
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                NavigationSection(
-                    selectedIndex = selectedIndex,
-                    onItemSelected = ::onItemSelected
-                )
+                NavigationSection(selectedIndex = selectedIndex, onItemSelected = ::onItemSelected)
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showAddDespesaDialog = true
-                    },
-                    containerColor = Color(0xFF69F0AE),
-                    shape = CircleShape,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Nova Despesa",
-                        tint = PremiumDarkBlue
-                    )
+                if (mainTabSelecionada == 0 || mainTabSelecionada == 1) {
+                    FloatingActionButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showAddDespesaDialog = true
+                        },
+                        containerColor = Color(0xFF69F0AE),
+                        shape = CircleShape,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Nova Despesa", tint = PremiumDarkBlue)
+                    }
                 }
             }
         ) { innerPadding ->
@@ -216,7 +222,7 @@ fun MainScreen(
                     .padding(innerPadding)
             ) {
 
-                // 1. HEADER (Fixo no topo)
+                // 1. HEADER (Fixo no topo da tela)
                 HeaderSection(
                     nome = nome,
                     fotoUri = fotoSalva.takeIf { it.isNotBlank() },
@@ -232,233 +238,277 @@ fun MainScreen(
                     isPrivateMode = isPrivate,
                     onTogglePrivate = { scope.launch { userPrefs.togglePrivateMode() } }
                 )
-                SeletorPeriodo(
-                    filtroSelecionado = contaVM.filtroAtual,
-                    onFiltroSelected = { contaVM.alterarFiltro(it) }
-                )
-                val resumo by contaVM.resumoFinanceiro.collectAsState()
-                val totalMetas by contaVM.totalPoupado.collectAsState()
 
-                val lista by despVM.despesasFiltradas.collectAsState(initial = emptyList())
+                Spacer(modifier = Modifier.height(8.dp))
 
-                val dadosGrafico = remember(lista) {
-                    lista.groupBy { it.categoria }
-                        .map { (categoria, despesasDaCategoria) ->
-                            PieChartData(
-                                categoria = categoria,
-                                valor = despesasDaCategoria.sumOf { it.valor },
-                                // AQUI GARANTIMOS A COR DIFERENTE:
-                                cor = gerarCorParaCategoria(categoria)
-                            )
-                        }
-                }
-                // Resumo Geral (Donut Animado)
-                ResumoGeralCard(
-                    receitaTotal = resumo.entradas,
-                    despesaTotal = resumo.saidas,
-                    despesaMesAnterior = saidasMesAnterior,
-                    metasTotal = totalMetas,
-                    isPrivate = isPrivate,
-                    dadosGrafico = dadosGrafico
-                )
-
-                if (dadosGrafico.isNotEmpty()) {
-                    CompactCategoryGrid(
-                        dados = dadosGrafico,
-                        isPrivate = isPrivate
+                // 2. FILTRO GLOBAL (Fixo fora das abas)
+                Box(modifier = Modifier.padding(horizontal = 8.dp)) {
+                    SeletorPeriodo(
+                        filtroSelecionado = contaVM.filtroAtual,
+                        onFiltroSelected = { contaVM.alterarFiltro(it) }
                     )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 3. SELETOR DE ABAS (Estilo Folder)
+                ScrollableTabRow(
+                    selectedTabIndex = mainTabSelecionada,
+                    containerColor = Color.Transparent,
+                    contentColor = Color(0xFF69F0AE),
+                    edgePadding = 16.dp,
+                    indicator = { },
+                    divider = { }
+                ) {
+                    mainTabs.forEachIndexed { index, title ->
+                        val selecionado = mainTabSelecionada == index
+                        Tab(
+                            selected = selecionado,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                mainTabSelecionada = index
+                            },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                                .background(if (selecionado) PremiumLightBlue else Color.Transparent),
+                            text = {
+                                Text(
+                                    text = title,
+                                    color = if (selecionado) TextWhite else TextWhite.copy(alpha = 0.5f),
+                                    fontWeight = if (selecionado) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        )
+                    }
+                }
+
+                // 4. O CORPO DA PASTA
+                val folderShape = if (mainTabSelecionada == 0) {
+                    RoundedCornerShape(topStart = 0.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
                 } else {
-                    // Feedback caso não tenha nada
-                    Text(
-                        "Nenhum gasto este mês",
-                        modifier = Modifier
-                            .padding(32.dp)
-                            .align(Alignment.CenterHorizontally),
-                        color = Color.White.copy(0.3f)
-                    )
+                    RoundedCornerShape(24.dp)
                 }
-                // 2. CONTEÚDO SCROLLÁVEL
-                LazyColumn(
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    contentPadding = PaddingValues(bottom = 16.dp)
+                        .weight(1f)
+                        .clip(folderShape)
+                        .background(PremiumLightBlue)
                 ) {
 
-                    // Item: Carrossel de Contas
-                    item {
-                        if (contas.isNotEmpty()) {
-                            key(dashboardState, contaSelecionadaId) {
-                                CardSection(
-                                    contas = contas,
-                                    contasSelecionadaId = contaSelecionadaId,
-                                    isPrivate = isPrivate,
-                                    onExcluir = { conta ->
-                                        contaVM.removerContaSaldo(conta.id)
-                                        contaVM.carregarSaldosGlobais()
-                                    },
-                                    onContaSelecionada = { novaContaId ->
-                                        contaVM.selecionarConta(novaContaId)
-                                    },
-                                    onAtualizar = {},
-                                    getReceitaConta = { id -> contaVM.obterReceitaPorConta(id) },
-                                    getDespesaConta = { id -> contaVM.obterDespesaPorConta(id) }
+                    val dadosGrafico = remember(despesasFiltradas) {
+                        despesasFiltradas.groupBy { it.categoria }
+                            .map { (categoria, despesasDaCategoria) ->
+                                PieChartData(
+                                    categoria = categoria,
+                                    valor = despesasDaCategoria.sumOf { it.valor },
+                                    cor = gerarCorParaCategoria(categoria)
                                 )
                             }
-                        } else {
-                            Text(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 16.dp),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextWhite.copy(alpha = 0.5f),
-                                textAlign = TextAlign.Center,
-                                text = "Nenhuma Conta Cadastrada"
-                            )
-                        }
                     }
 
-                    // Item: Ações Rápidas
-                    item {
-                        Box(modifier = Modifier.padding(top = 8.dp)) {
-                            ActionButtonRow(
-                                categorias = repository.categorias.map { it.title },
-                                getPicCategoria = { nomeCategoria ->
-                                    repository.getPicCategoria(nomeCategoria)
-                                },
-                                contaSelecionada = contaSelecionadaId.orEmpty(),
-                                viewModel = contaVM,
-                                onConfigClick = onOpenAvisos
-                            )
-                        }
-                    }
-
-                    // --- MUDANÇA AQUI: SESSÃO ORÇAMENTOS COM BOTÃO AO LADO DO TÍTULO ---
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Orçamentos do Mês",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            TextButton(
-                                onClick = { showAddOrcamentoDialog = true },
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    // --- CONTEÚDO DINÂMICO DAS ABAS ---
+                    when (mainTabSelecionada) {
+                        0 -> {
+                            // --- ABA 0: SALDO (Apenas Gráfico e Resumo) ---
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color(0xFF69F0AE)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    text = "Configurar",
-                                    color = Color(0xFF69F0AE),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                // Resumo Geral (Gráfico Donut e Barras Neon)
+                                item {
+                                    ResumoGeralCard(
+                                        receitaTotal = resumo.entradas,
+                                        despesaTotal = resumo.saidas,
+                                        despesaMesAnterior = saidasMesAnterior,
+                                        metasTotal = totalMetas,
+                                        isPrivate = isPrivate,
+                                        dadosGrafico = dadosGrafico
+                                    )
+                                }
+
+                                // Grade Compacta de Categorias
+                                item {
+                                    if (dadosGrafico.isNotEmpty()) {
+                                        CompactCategoryGrid(dados = dadosGrafico, isPrivate = isPrivate)
+                                    } else {
+                                        Text(
+                                            "Nenhum gasto neste período",
+                                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                            color = Color.White.copy(0.3f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
                             }
                         }
-                    }
 
-                    item {
-                        val gruposDeQuatro = orcamentosComProgresso.chunked(4)
+                        1 -> {
+                            // --- ABA 1: CONTAS (Operacional: Contas, Ações, Orçamentos e Extrato) ---
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
+                            ) {
+                                // 1. Carrossel de Contas
+                                item {
+                                    if (contas.isNotEmpty()) {
+                                        key(contaSelecionadaId, filtroAtivo) {
+                                            CardSection(
+                                                contas = contas,
+                                                contasSelecionadaId = contaSelecionadaId,
+                                                isPrivate = isPrivate,
+                                                onExcluir = { conta ->
+                                                    contaVM.removerContaSaldo(conta.id)
+                                                    contaVM.carregarSaldosGlobais()
+                                                },
+                                                onContaSelecionada = { novaContaId -> contaVM.selecionarConta(novaContaId) },
+                                                onAtualizar = {},
+                                                getReceitaConta = { id -> contaVM.obterReceitaPorConta(id) },
+                                                getDespesaConta = { id -> contaVM.obterDespesaPorConta(id) }
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                            fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                                            color = TextWhite.copy(alpha = 0.5f), textAlign = TextAlign.Center,
+                                            text = "Você ainda não possui contas cadastradas."
+                                        )
+                                    }
+                                }
 
-                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                            gruposDeQuatro.forEach { linhaDeOrcamentos ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    linhaDeOrcamentos.forEach { orcamento ->
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            OrcamentoCard(
-                                                item = orcamento,
-                                                onClick = { orcamentoSelecionado = orcamento })
+                                // 2. Botões de Ações Rápidas
+                                item {
+                                    Box(modifier = Modifier.padding(top = 8.dp)) {
+                                        ActionButtonRow(
+                                            categorias = repository.categorias.map { it.title },
+                                            getPicCategoria = { nomeCategoria -> repository.getPicCategoria(nomeCategoria) },
+                                            contaSelecionada = contaSelecionadaId.orEmpty(),
+                                            viewModel = contaVM,
+                                            onConfigClick = onOpenAvisos
+                                        )
+                                    }
+                                }
+
+                                // 3. Sessão de Orçamentos
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Orçamentos",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        TextButton(
+                                            onClick = { showAddOrcamentoDialog = true },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF69F0AE))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Configurar", color = Color(0xFF69F0AE), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-                                    repeat(4 - linhaDeOrcamentos.size) {
-                                        Spacer(modifier = Modifier.weight(1f))
+                                }
+
+                                item {
+                                    val gruposDeQuatro = orcamentosComProgresso.chunked(4)
+                                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                        gruposDeQuatro.forEach { linhaDeOrcamentos ->
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                linhaDeOrcamentos.forEach { orcamento ->
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        OrcamentoCard(item = orcamento, onClick = { orcamentoSelecionado = orcamento })
+                                                    }
+                                                }
+                                                repeat(4 - linhaDeOrcamentos.size) { Spacer(modifier = Modifier.weight(1f)) }
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                        }
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-                        }
-                    }
 
-                    // --- SELETOR DE MÊS ---
-                    item {
-                        val meses = remember {
-                            listOf(
-                                "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-                                "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-                            )
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            IconButton(onClick = { despVM.mesAnterior() }) {
-                                Icon(Icons.Rounded.ChevronLeft, "Anterior", tint = TextWhite)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = meses.getOrElse(mesAtual) { "" },
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = TextWhite
-                                )
-                                Text(
-                                    text = "$anoAtual",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextWhite.copy(alpha = 0.6f)
-                                )
-                            }
-                            IconButton(onClick = { despVM.proximoMes() }) {
-                                Icon(Icons.Rounded.ChevronRight, "Próximo", tint = TextWhite)
-                            }
-                        }
-                    }
+                                // 4. Seletor de Meses Direto (Para a Lista de Despesas)
+                                item {
+                                    val meses = remember {
+                                        listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        IconButton(onClick = { despVM.mesAnterior() }) {
+                                            Icon(Icons.Rounded.ChevronLeft, "Anterior", tint = TextWhite)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = meses.getOrElse(mesAtual) { "" },
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = TextWhite
+                                            )
+                                            Text(
+                                                text = "$anoAtual",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextWhite.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                        IconButton(onClick = { despVM.proximoMes() }) {
+                                            Icon(Icons.Rounded.ChevronRight, "Próximo", tint = TextWhite)
+                                        }
+                                    }
+                                }
 
-                    // --- LISTA DE DESPESAS ---
-                    if (despesasFiltradas.isEmpty()) {
-                        item {
-                            EmptyStateSection(
-                                onAddClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    showAddDespesaDialog = true
+                                // 5. Lista de Despesas / Extrato
+                                if (despesasFiltradas.isEmpty()) {
+                                    item {
+                                        EmptyStateSection(
+                                            onAddClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showAddDespesaDialog = true
+                                            }
+                                        )
+                                    }
+                                } else {
+                                    items(despesasFiltradas, key = { it.id }) { item ->
+                                        DespesasItem(
+                                            item = item,
+                                            isPrivate = isPrivate,
+                                            onRemover = { despesa -> contaVM.removerDespesa(despesa) },
+                                            onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) }
+                                        )
+                                    }
                                 }
-                            )
+                            }
                         }
-                    } else {
-                        items(despesasFiltradas, key = { it.id }) { item ->
-                            DespesasItem(
-                                item = item,
-                                isPrivate = isPrivate,
-                                onRemover = { despesa ->
-                                    contaVM.removerDespesa(despesa)
-                                },
-                                onTogglePago = { itemClicado ->
-                                    contaVM.alternarStatusDespesa(itemClicado)
-                                }
-                            )
+
+                        2 -> {
+                            // --- ABA 2: COFRINHOS ---
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("Suas Metas e Cofrinhos aparecerão aqui.", color = TextWhite.copy(alpha = 0.5f))
+                            }
+                        }
+
+                        3 -> {
+                            // --- ABA 3: INVESTIMENTOS ---
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("Acompanhe seus Investimentos em breve.", color = TextWhite.copy(alpha = 0.5f))
+                            }
                         }
                     }
                 }
             }
         }
+
+        // ==========================================
+        // --- CAMADAS SOBREPOSTAS (Dialogs) ---
+        // ==========================================
+
         if (showAddDespesaDialog) {
             AddDespesaDialog(
                 categorias = repository.categorias.map { it.title },
@@ -466,10 +516,10 @@ fun MainScreen(
                 getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
                 viewModel = contaVM,
                 parentScope = parentScope,
-                onDismiss = { showAddDespesaDialog = false } // Fecha o Dialog
+                onDismiss = { showAddDespesaDialog = false }
             )
         }
-        // --- CAMADAS SOBREPOSTAS (Dialogs) ---
+
         orcamentoSelecionado?.let { orcamento ->
             DetalheOrcamentoBottomSheet(
                 item = orcamento,
@@ -494,6 +544,7 @@ fun MainScreen(
             )
         }
 
+        // Navegação de abas inferiores
         if (selectedIndex == 0) {
             ContaBancaria(
                 viewModelFactory = ContaSaldoViewModelFactory(application, repository),
@@ -508,7 +559,6 @@ fun MainScreen(
                 onBack = { selectedIndex = -1 }
             )
         }
-
         if (selectedIndex == 2) {
             MetasScreen(
                 viewModel = metaVM,

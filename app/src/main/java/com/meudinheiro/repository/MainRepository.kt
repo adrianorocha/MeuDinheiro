@@ -717,4 +717,21 @@ class MainRepository(private val context: Context) {
         return despesaDao.getTotalPorMesEAno(mesFormatado, anoFormatado)
             .map { it ?: 0.0 } // Se for nulo, retorna 0.0
     }
+
+    // Puxa as despesas de um mês específico (e filtra a conta se tiver uma selecionada)
+    fun getDespesasPorMes(mes: Int, ano: Int, contaId: String): Flow<List<DespesasDomain>> {
+        return despesaDao.getDespesasPorMes(mes, ano, contaId)
+    }
+
+    // Puxa as despesas do mês anterior
+    fun getDespesasMesAnterior(mes: Int, ano: Int, contaId: String): Flow<List<DespesasDomain>> {
+        val mesAnterior = if (mes == 1) 12 else mes - 1
+        val anoAnterior = if (mes == 1) ano - 1 else ano
+        return despesaDao.getDespesasPorMes(mesAnterior, anoAnterior, contaId)
+    }
+
+    // Puxa TODAS as despesas (Filtro "Total")
+    fun getTodasDespesas(contaId: String): Flow<List<DespesasDomain>> {
+        return despesaDao.getTodasDespesas(contaId)
+    }
 }

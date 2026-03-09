@@ -8,9 +8,12 @@ import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -96,4 +99,18 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
             }
         }
     }
+
+    private val _filtroAtivo = MutableStateFlow(0)
+
+    fun setFiltro(novoFiltro: Int) {
+        _filtroAtivo.value = novoFiltro
+    }
+
+    // O progresso dos orçamentos reage ao filtro
+    /*@OptIn(ExperimentalCoroutinesApi::class)
+    val orcamentosComProgresso = _filtroAtivo.flatMapLatest { filtro ->
+        // Aqui o repositório deve calcular o somatório das despesas
+        // por categoria dentro do período do filtro
+        repository.getOrcamentosComProgresso(filtro)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())*/
 }

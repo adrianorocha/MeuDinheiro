@@ -143,4 +143,10 @@ suspend fun atualizarStatusPago(id: Long, status: Boolean)
     AND strftime('%Y', data / 1000, 'unixepoch') = :ano
 """)
     fun getTotalPorMesEAno(mes: String, ano: String): Flow<Double?>
+
+    @Query("SELECT * FROM despesas WHERE mes = :mes AND ano = :ano AND (conta = :contaId OR :contaId = '')")
+    fun getDespesasPorMes(mes: Int, ano: Int, contaId: String): Flow<List<DespesasDomain>>
+
+    @Query("SELECT * FROM despesas WHERE (conta = :contaId OR :contaId = '')")
+    fun getTodasDespesas(contaId: String): Flow<List<DespesasDomain>>
 }

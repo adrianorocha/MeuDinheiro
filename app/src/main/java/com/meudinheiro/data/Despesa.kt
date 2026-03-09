@@ -16,6 +16,9 @@ data class Despesa(
     val pic: String,
     val tipo: TipoDespesa,
 
+    val mes: Int,
+    val ano: Int,
+
     val valorOriginal: Double = 0.0, // Ex: 50.00
     val moedaOriginal: String = "BRL", // Ex: "USD"
     val cotacaoNaData: Double = 1.0,    // Ex: 5.25
