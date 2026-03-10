@@ -3,6 +3,7 @@ package com.meudinheiro.componentes
 import android.app.Application
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -214,7 +215,22 @@ fun MainScreen(
             bottomBar = {
                 NavigationSection(selectedIndex = selectedIndex, onItemSelected = ::onItemSelected)
             },
-
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState) { data ->
+                    // O componente visual Snackbar SÓ PODE ser chamado aqui!
+                    Snackbar(
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .border(1.dp, Color(0xFF69F0AE).copy(0.3f), RoundedCornerShape(16.dp)),
+                        containerColor = Color(0xFF1E2B3E),
+                        contentColor = Color.White,
+                        actionContentColor = Color(0xFF69F0AE),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(data.visuals.message) // Esse Text está seguro aqui dentro
+                    }
+                }
+            },
             floatingActionButton = {
                 if (mainTabSelecionada == 0 || mainTabSelecionada == 1) {
                     FloatingActionButton(
@@ -501,7 +517,7 @@ fun MainScreen(
 
                         2 -> {
                             // --- ABA 2: COFRINHOS ---
-                            CofrinhosTab(viewModel = metaVM, isPrivate = isPrivate)                        }
+                            CofrinhosTab(viewModel = metaVM, isPrivate = isPrivate,snackbarHostState = snackbarHostState)                        }
 
                         3 -> {
                             // --- ABA 3: INVESTIMENTOS ---

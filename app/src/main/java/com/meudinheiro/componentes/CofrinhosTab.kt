@@ -12,59 +12,67 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import com.meudinheiro.data.Meta
-import com.meudinheiro.viewModel.MetaViewModel
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.IconButton
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meudinheiro.data.ConfeteState
+import com.meudinheiro.data.Meta
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.viewModel.MetaViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun CofrinhosTab(
     viewModel: MetaViewModel,
-    isPrivate: Boolean
+    isPrivate: Boolean,
+    snackbarHostState: SnackbarHostState
 ) {
     // Escuta o banco de dados em tempo real
     val metas by viewModel.metas.collectAsState(initial = emptyList())
     val contasBancarias by viewModel.contas.observeAsState(emptyList())
+    val scope = rememberCoroutineScope()
+
+    // Sistema de Confetes
+    val confettiState = remember { ConfeteState() }
+    var screenWidth by remember { mutableStateOf(0f) }
 
     // Controles de Diálogos
     var showAddDialog by remember { mutableStateOf(false) }
@@ -98,8 +106,32 @@ fun CofrinhosTab(
                 }
             )
         }
+        ConfettiOverlay(state = confettiState)
     }
+    metaParaAportar?.let { meta ->
+        AporteMetaDialog(
+            contasDisponiveis = contasBancarias,
+            onDismiss = { metaParaAportar = null },
+            onConfirmar = { contaId, valor ->
+                val novoTotal = meta.valorGuardado + valor
 
+                // DISPARO DA CELEBRAÇÃO 🎊
+                if (novoTotal >= meta.valorObjetivo && meta.valorGuardado < meta.valorObjetivo) {
+                    confettiState.disparar(screenWidth / 2, 800f) // Explode no centro
+
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "Parabéns, Adriano! Meta '${meta.nome}' concluída! 🏆",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+
+                viewModel.realizarAporteReal(meta, contaId, valor)
+                metaParaAportar = null
+            }
+        )
+    }
     // --- DIÁLOGOS (Os mesmos que já refatoramos, chamados aqui dentro da Tab) ---
     if (showAddDialog) {
         AddMetaDialog(
