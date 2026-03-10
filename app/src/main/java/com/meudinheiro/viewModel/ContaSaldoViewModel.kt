@@ -1,19 +1,16 @@
 package com.meudinheiro.viewModel
 
 import android.app.Application
-import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.platform.LocalContext
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.componentes.FiltroPeriodo
@@ -32,7 +29,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -50,7 +46,7 @@ data class DashboardFinanceiroState(
 )
 
 class ContaSaldoViewModel(
-    application: Application, // <-- Recebe o application aqui
+    application: Application,
     private val repository: MainRepository
 ) : AndroidViewModel(application) {
 
@@ -90,13 +86,8 @@ class ContaSaldoViewModel(
 
     // --- CARREGAMENTO DE DADOS (GLOBAL / ACUMULADO) ---
 
-    /**
-     * Busca TODAS as despesas do banco, sem filtro de mês.
-     * Atualiza o Header e os Cards de Conta com o saldo real.
-     */
     fun carregarSaldosGlobais() {
         viewModelScope.launch(Dispatchers.IO) {
-            // Certifique-se que seu Repository chama o DAO: SELECT ... GROUP BY conta, tipo
             val listaResumoGlobal = repository.obterResumoGlobalPorConta()
 
             var recAcumulada = 0.0
@@ -104,8 +95,7 @@ class ContaSaldoViewModel(
             val mapaContas = mutableMapOf<String, Pair<Double, Double>>()
 
             listaResumoGlobal.forEach { dto ->
-                // Tratamento seguro de nulos
-                val valor = dto.valorTotal // Se for DTO com Double (não nulo), ok. Se for Double?, use ?: 0.0
+                val valor = dto.valorTotal
 
                 // 1. Soma para o Header (Total Geral Acumulado)
                 if (dto.tipo == TipoDespesa.CREDITO) {
@@ -123,7 +113,6 @@ class ContaSaldoViewModel(
                 }
             }
 
-            // Atualiza o StateFlow de forma atômica
             _dashboardState.update {
                 DashboardFinanceiroState(
                     receitaGlobal = recAcumulada,
@@ -134,8 +123,6 @@ class ContaSaldoViewModel(
         }
     }
 
-    // Mantido para compatibilidade, mas apenas chama o Global
-    // Se no futuro quiser ver "Apenas Mês", altere aqui.
     fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
         carregarSaldosGlobais()
     }
@@ -146,7 +133,7 @@ class ContaSaldoViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             repository.inserirDespesa(despesa)
             repository.recalcularSaldoTotal(despesa.conta)
-            carregarSaldosGlobais() // Atualiza UI
+            carregarSaldosGlobais()
         }
     }
 
@@ -156,7 +143,6 @@ class ContaSaldoViewModel(
             val formatador = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
             val textoTotal = formatador.format(valorTotal)
 
-            // Lógica de Centavos
             val valorParcelaBase = floor((valorTotal / numeroParcelas) * 100) / 100.0
             val totalBase = (valorParcelaBase * 100).roundToInt() * numeroParcelas
             val totalReal = (valorTotal * 100).roundToInt()
@@ -166,9 +152,7 @@ class ContaSaldoViewModel(
             calendar.timeInMillis = dataSelecionada
 
             for (i in 1..numeroParcelas) {
-                // Última parcela absorve a diferença de centavos
                 val valorFinal = if (i == numeroParcelas) valorParcelaBase + diferenca else valorParcelaBase
-
                 val novaDescricao = "${despesa.descricao} ($i/$numeroParcelas) • Total: $textoTotal"
 
                 val novaDespesa = despesa.copy(
@@ -183,18 +167,15 @@ class ContaSaldoViewModel(
             }
 
             repository.recalcularSaldoTotal(despesa.conta)
-            carregarSaldosGlobais() // Atualiza UI
+            carregarSaldosGlobais()
         }
     }
 
-    fun removerDespesa(despesas: DespesasDomain) {
+    fun removerDespesa(item: DespesasDomain) {
         viewModelScope.launch(Dispatchers.IO) {
-            val despesa = repository.obterDespesaPorId(despesas.id)
-            //if (despesa != null) {
-                repository.excluirDespesa(despesas.id)
-                repository.recalcularSaldoTotal(despesas.conta)
-                carregarSaldosGlobais() // Atualiza UI
-            //}
+            repository.excluirDespesa(item.id)
+            repository.recalcularSaldoTotal(item.conta)
+            carregarSaldosGlobais()
         }
     }
 
@@ -202,14 +183,14 @@ class ContaSaldoViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             repository.atualizarStatusPago(item.id.toLong(), !item.pago)
             repository.recalcularSaldoTotal(item.conta)
-            carregarSaldosGlobais() // Atualiza UI
+            carregarSaldosGlobais()
         }
     }
 
     // --- GETTERS E AUXILIARES DE CONTA ---
 
     fun selecionarConta(contaId: String) {
-        _contaSelecionadaId.value = contaId
+        _contaSelecionadaId.postValue(contaId) // postValue é mais seguro se chamado de threads IO por acidente
     }
 
     fun adicionarContaSaldo(contaSaldo: ContaSaldo) {
@@ -220,11 +201,10 @@ class ContaSaldoViewModel(
 
     fun removerContaSaldo(id: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.excluirConta(id) // O Repository deve lidar com a exclusão em cascata se necessário
+            repository.excluirConta(id)
         }
     }
 
-    // Getters rápidos para UI (opcional, já que temos o dashboardState exposto)
     fun obterReceitaPorConta(conta: String): Double {
         return _dashboardState.value.dadosPorConta[conta]?.first ?: 0.0
     }
@@ -243,34 +223,27 @@ class ContaSaldoViewModel(
                 pic = despesaBase.pic,
                 tipo = despesaBase.tipo,
                 diaVencimento = diaVencimento,
-                ultimaDataLancamento = null // Nunca lançada
+                ultimaDataLancamento = null
             )
-
-            // Salva e já tenta lançar a deste mês se o dia já chegou
             repository.salvarDespesaFixa(novaFixa)
-
-            // Atualiza a UI
             carregarSaldosGlobais()
         }
     }
 
-    // Estado para a lista de assinaturas/fixas
     private val _recorrencias = MutableStateFlow<List<DespesaFixa>>(emptyList())
     val recorrencias = _recorrencias.asStateFlow()
 
-    // Carrega a lista (Chame isso quando abrir a tela de gerenciamento)
     fun carregarRecorrencias() {
         viewModelScope.launch(Dispatchers.IO) {
-            val lista = repository.obterTodasRecorrencias() // Certifique-se que seu Repo tem essa função chamando o DAO
+            val lista = repository.obterTodasRecorrencias()
             _recorrencias.value = lista
         }
     }
 
-    // Cancela a assinatura (Exclui da tabela despesas_fixas)
     fun cancelarRecorrencia(id: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.excluirRecorrencia(id) // Certifique-se que seu Repo tem essa função
-            carregarRecorrencias() // Atualiza a lista
+            repository.excluirRecorrencia(id)
+            carregarRecorrencias()
         }
     }
 
@@ -280,16 +253,15 @@ class ContaSaldoViewModel(
     var filtroAtual by mutableStateOf(FiltroPeriodo.ESTE_MES)
         private set
 
-    // Este Flow vai reagir sempre que o filtro mudar
+    // REVISADO: Substituído o let aninhado por um if/else seguro e limpo
     val resumoFinanceiro = snapshotFlow { filtroAtual }
         .mapLatest { filtro ->
-            val intervalo = obterIntervalo(filtro)
             val (inicio, fim) = obterIntervalo(filtro)
-            inicio?.let { i ->
-                fim?.let { f ->
-                    repository.obterResumoPorPeriodo(java.util.Date(i), java.util.Date(f))
-                }
-            } ?: repository.obterResumoGlobal()
+            if (inicio != null && fim != null) {
+                repository.obterResumoPorPeriodo(Date(inicio), Date(fim))
+            } else {
+                repository.obterResumoGlobal()
+            }
         }
         .stateIn(
             scope = viewModelScope,
@@ -310,7 +282,6 @@ class ContaSaldoViewModel(
             apply()
         }
 
-        // Notifica o Glance para redesenhar o widget
         viewModelScope.launch {
             SaldoWidget().updateAll(context)
         }
@@ -320,14 +291,13 @@ class ContaSaldoViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val resumo = repository.obterResumoGlobal()
-                val saldoTotal = (resumo.entradas- resumo.saidas) ?: 0.0
+                // REVISADO: Removido o elvis operator redundante (assumindo primitivos no DTO)
+                val saldoTotal = resumo.entradas - resumo.saidas
 
-                // 2. Busca a meta mais relevante (ex: a que vence primeiro ou a mais próxima de 100%)
                 val metaDestaque = repository.obterTodasAsMetasSync().firstOrNull()
 
-                // 3. Dispara a atualização para o "mundo externo" (SharedPreferences + Glance)
                 atualizarInformacoesWidget(
-                    context = getApplication(), // Necessário ser AndroidViewModel para ter o contexto
+                    context = getApplication(),
                     saldo = saldoTotal,
                     metaNome = metaDestaque?.nome ?: "Nenhuma meta ativa",
                     metaId = metaDestaque?.id?.toString() ?: ""

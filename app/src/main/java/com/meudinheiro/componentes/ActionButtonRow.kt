@@ -110,6 +110,7 @@ fun ActionButtonRow(
 
     var exibirFormulario by remember { mutableStateOf(false) }
     var exibirDeposito by remember { mutableStateOf(false) }
+    var exibirAssinaturas by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -155,6 +156,21 @@ fun ActionButtonRow(
             )
 
             ActionButton(
+                icon = R.drawable.assinaturas,
+                text = "Assinaturas ",
+                color = Color(0xFF2196F3),
+                modifier = modifierItem,
+                onClick = {
+                    if (contaSelecionada.isBlank()) Toast.makeText(
+                        currentContext,
+                        "Selecione uma conta",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    else exibirAssinaturas = true
+                }
+            )
+
+            ActionButton(
                 icon = R.drawable.sim_chip,
                 text = "Configurações",
                 color = Color(0xFFFFC107),
@@ -181,6 +197,12 @@ fun ActionButtonRow(
             viewModel = viewModel,
             parentScope = parentScope,
             onDismiss = { exibirDeposito = false }
+        )
+    }
+    if (exibirAssinaturas) {
+        GerenciarRecorrenciaDialog(
+            viewModel = viewModel,
+            onDismiss = { exibirAssinaturas = false }
         )
     }
 }
@@ -352,7 +374,9 @@ private fun DepositDialog(
                                 pic = "deposit",
                                 conta = contaSelecionada,
                                 tipo = TipoDespesa.CREDITO,
-                                pago = true
+                                pago = true,
+                                mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                                ano = Calendar.getInstance().get(Calendar.YEAR)
                             )
                             viewModel.adicionarDespesa(dep)
                             parentScope.launch {
@@ -509,7 +533,9 @@ fun AddDespesaDialog(
                                     pic = getPicCategoria(categoriaSelecionada!!),
                                     conta = contaAtual,
                                     tipo = TipoDespesa.DEBITO,
-                                    pago = false
+                                    pago = false,
+                                    mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                                    ano = Calendar.getInstance().get(Calendar.YEAR)
                                 )
 
                                 parentScope.launch {

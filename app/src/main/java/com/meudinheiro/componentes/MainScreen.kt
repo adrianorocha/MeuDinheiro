@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.CompactCategoryGrid
@@ -75,7 +77,6 @@ import com.meudinheiro.viewModel.OrcamentoViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.meudinheiro.data.Despesa
 import kotlin.collections.emptyList
 
 // Cores Globais Premium
@@ -105,6 +106,7 @@ fun MainScreen(
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
     var showAddDespesaDialog by remember { mutableStateOf(false) }
 
+    // CORREÇÃO 1: Usando 'by' para extrair o valor real do MutableState
     val filtroAtivo = contaVM.filtroAtual
 
     // --- Controle das Novas Abas ---
@@ -119,6 +121,7 @@ fun MainScreen(
     val fotoSalva by homeVM.userPhoto.collectAsState(initial = "")
     var emCadastro by remember { mutableStateOf(false) }
     var showAddOrcamentoDialog by remember { mutableStateOf(false) }
+    var showRecorrenciaDialog by remember { mutableStateOf(false) }
 
     // --- Estados de Dados Globais ---
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
@@ -128,9 +131,10 @@ fun MainScreen(
     val mesAtual by despVM.mesSelecionado.collectAsState()
     val anoAtual by despVM.anoSelecionado.collectAsState()
 
-    //val listaDespesas by despVM.despesasFiltradas.collectAsState<List<DespesasDomain>>(initial = emptyList())
-
-    //val listaOrcamentos by orcamentoVM.orcamentosComProgresso.collectAsState<List<OrcamentoProgresso>>(initial = emptyList())
+    // CORREÇÃO 2: Descomentado e renomeado para bater exatamente com a UI lá embaixo
+    // Forçamos o tipo <List<Despesa>> para evitar o erro de inferência "T"
+    val despesasFiltradas by despVM.despesasFiltradas.collectAsState()
+    val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
 
     val totalMetas by contaVM.totalPoupado.collectAsState()
     val resumo by contaVM.resumoFinanceiro.collectAsState()
@@ -144,7 +148,6 @@ fun MainScreen(
     fun onItemSelected(index: Int) {
         selectedIndex = index
     }
-
 
     // --- Verificações de Inicialização ---
     if (nomeState == null) {
@@ -183,7 +186,10 @@ fun MainScreen(
 
     LaunchedEffect(contaSelecionadaId, filtroAtivo) {
         val idParaFiltro = contaSelecionadaId?.trim().orEmpty()
-        despVM.setFiltro(filtroAtivo)
+
+        // O '.ordinal' transforma ESTE_MES em 0, MES_PASSADO em 1 e TOTAL em 2
+        despVM.setFiltro(filtroAtivo.ordinal)
+
         despVM.setContaSelecionada(idParaFiltro)
         contaVM.carregarSaldosGlobais()
     }
@@ -243,6 +249,9 @@ fun MainScreen(
 
                 // 2. FILTRO GLOBAL (Fixo fora das abas)
                 Box(modifier = Modifier.padding(horizontal = 8.dp)) {
+                    // Cuidado aqui: contaVM.filtroAtual é o State completo.
+                    // Se o SeletorPeriodo esperar o valor numérico/enum, passe 'filtroAtivo'
+                    // Mas se ele esperar o State em si, mantenha como está.
                     SeletorPeriodo(
                         filtroSelecionado = contaVM.filtroAtual,
                         onFiltroSelected = { contaVM.alterarFiltro(it) }
@@ -317,7 +326,6 @@ fun MainScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
                             ) {
-                                // Resumo Geral (Gráfico Donut e Barras Neon)
                                 item {
                                     ResumoGeralCard(
                                         receitaTotal = resumo.entradas,
@@ -329,7 +337,6 @@ fun MainScreen(
                                     )
                                 }
 
-                                // Grade Compacta de Categorias
                                 item {
                                     if (dadosGrafico.isNotEmpty()) {
                                         CompactCategoryGrid(dados = dadosGrafico, isPrivate = isPrivate)
@@ -346,12 +353,11 @@ fun MainScreen(
                         }
 
                         1 -> {
-                            // --- ABA 1: CONTAS (Operacional: Contas, Ações, Orçamentos e Extrato) ---
+                            // --- ABA 1: CONTAS (Operacional) ---
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
                             ) {
-                                // 1. Carrossel de Contas
                                 item {
                                     if (contas.isNotEmpty()) {
                                         key(contaSelecionadaId, filtroAtivo) {
@@ -379,7 +385,6 @@ fun MainScreen(
                                     }
                                 }
 
-                                // 2. Botões de Ações Rápidas
                                 item {
                                     Box(modifier = Modifier.padding(top = 8.dp)) {
                                         ActionButtonRow(
@@ -392,7 +397,16 @@ fun MainScreen(
                                     }
                                 }
 
-                                // 3. Sessão de Orçamentos
+/*                                item {
+                                    ActionButtonRow(
+                                        categorias = repository.categorias.map { it.title },
+                                        getPicCategoria = { repository.getPicCategoria(it) },
+                                        contaSelecionada = contaSelecionadaId.orEmpty(),
+                                        viewModel = contaVM,
+                                        onConfigClick = { showRecorrenciaDialog = true } // Abre o Dialog de Recorrências
+                                    )
+                                }*/
+
                                 item {
                                     Row(
                                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
@@ -433,7 +447,6 @@ fun MainScreen(
                                     }
                                 }
 
-                                // 4. Seletor de Meses Direto (Para a Lista de Despesas)
                                 item {
                                     val meses = remember {
                                         listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
@@ -464,7 +477,6 @@ fun MainScreen(
                                     }
                                 }
 
-                                // 5. Lista de Despesas / Extrato
                                 if (despesasFiltradas.isEmpty()) {
                                     item {
                                         EmptyStateSection(
@@ -505,10 +517,6 @@ fun MainScreen(
             }
         }
 
-        // ==========================================
-        // --- CAMADAS SOBREPOSTAS (Dialogs) ---
-        // ==========================================
-
         if (showAddDespesaDialog) {
             AddDespesaDialog(
                 categorias = repository.categorias.map { it.title },
@@ -520,6 +528,12 @@ fun MainScreen(
             )
         }
 
+        if (showRecorrenciaDialog) {
+            GerenciarRecorrenciaDialog(
+                viewModel = contaVM,
+                onDismiss = { showRecorrenciaDialog = false }
+            )
+        }
         orcamentoSelecionado?.let { orcamento ->
             DetalheOrcamentoBottomSheet(
                 item = orcamento,
@@ -544,7 +558,6 @@ fun MainScreen(
             )
         }
 
-        // Navegação de abas inferiores
         if (selectedIndex == 0) {
             ContaBancaria(
                 viewModelFactory = ContaSaldoViewModelFactory(application, repository),

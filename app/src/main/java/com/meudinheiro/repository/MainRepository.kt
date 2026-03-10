@@ -320,7 +320,9 @@ class MainRepository(private val context: Context) {
                     pic = regra.pic,
                     tipo = regra.tipo,
                     data = dataDesteMes.time,
-                    pago = false // Nasce como não paga (pendente)
+                    pago = false, // Nasce como não paga (pendente),
+                    mes = dataDesteMes.get(Calendar.MONTH) + 1,
+                    ano = dataDesteMes.get(Calendar.YEAR)
                 )
 
                 // Insere na tabela de extrato
@@ -647,7 +649,9 @@ class MainRepository(private val context: Context) {
                     categoria = "Reserva",
                     pic = "reserva",
                     tipo = TipoDespesa.DEBITO,
-                    pago = true
+                    pago = true,
+                    mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                    ano = Calendar.getInstance().get(Calendar.YEAR)
                 )
 
                 // 4. Usa a função que você especificou
@@ -675,7 +679,9 @@ class MainRepository(private val context: Context) {
                         categoria = "Reserva",
                         pic = "reserva",
                         tipo = TipoDespesa.CREDITO, // Entra como crédito
-                        pago = true
+                        pago = true,
+                        mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                        ano = Calendar.getInstance().get(Calendar.YEAR)
                     )
                     despesaDao.inserirDespesa(transacaoEstorno)
                 }

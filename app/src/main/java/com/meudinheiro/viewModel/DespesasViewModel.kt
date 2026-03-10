@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
-import java.util.Date
 
 class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
 
@@ -35,42 +34,42 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
 
     // 3. O Fluxo Unificado e Filtrado
     // Combina: Banco de Dados + Mês + Ano + Conta Selecionada
-/*    val despesasFiltradas = combine(
-        repository.obterDespesas(), // Flow do Room
-        _mesSelecionado,
-        _anoSelecionado,
-        _contaFiltro
-    ) { lista, mes, ano, contaId ->
+    /*    val despesasFiltradas = combine(
+            repository.obterDespesas(), // Flow do Room
+            _mesSelecionado,
+            _anoSelecionado,
+            _contaFiltro
+        ) { lista, mes, ano, contaId ->
 
-        // Normalização do filtro (remove espaços extras)
-        val filtroContaLimpo = contaId?.trim()
+            // Normalização do filtro (remove espaços extras)
+            val filtroContaLimpo = contaId?.trim()
 
-        lista.filter { despesa ->
-            val cal = Calendar.getInstance()
-            cal.time = Date(despesa.data)
+            lista.filter { despesa ->
+                val cal = Calendar.getInstance()
+                cal.time = Date(despesa.data)
 
-            val mesmoMes = cal.get(Calendar.MONTH) == mes
-            val mesmoAno = cal.get(Calendar.YEAR) == ano
+                val mesmoMes = cal.get(Calendar.MONTH) == mes
+                val mesmoAno = cal.get(Calendar.YEAR) == ano
 
-            // Lógica de Comparação Segura
-            val mesmaConta = if (filtroContaLimpo.isNullOrBlank()) {
-                // Se não tiver conta selecionada, retorna TRUE (mostra tudo) ou FALSE (não mostra nada)
-                // Para a MainScreen funcionar bem, geralmente deixamos true ou garantimos a seleção na UI.
-                true
-            } else {
-                // Compara ignorando maiúsculas/minúsculas e espaços
-                // Ex: "Nubank" bate com "nubank "
-                despesa.conta.trim().equals(filtroContaLimpo, ignoreCase = true)
-            }
+                // Lógica de Comparação Segura
+                val mesmaConta = if (filtroContaLimpo.isNullOrBlank()) {
+                    // Se não tiver conta selecionada, retorna TRUE (mostra tudo) ou FALSE (não mostra nada)
+                    // Para a MainScreen funcionar bem, geralmente deixamos true ou garantimos a seleção na UI.
+                    true
+                } else {
+                    // Compara ignorando maiúsculas/minúsculas e espaços
+                    // Ex: "Nubank" bate com "nubank "
+                    despesa.conta.trim().equals(filtroContaLimpo, ignoreCase = true)
+                }
 
-            mesmoMes && mesmoAno && mesmaConta
-        }.sortedByDescending { it.data } // Ordena: Mais recentes primeiro
+                mesmoMes && mesmoAno && mesmaConta
+            }.sortedByDescending { it.data } // Ordena: Mais recentes primeiro
 
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )*/
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )*/
 
     private val _contaSelecionada = MutableStateFlow("")
 
@@ -81,10 +80,6 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     // --- AÇÕES ---
 
     // Esta função agora atualiza a variável CORRETA (_contaFiltro)
-    fun setContaSelecionada(contaId: String?) {
-        _contaFiltro.value = contaId
-    }
-
     fun mesAnterior() {
         if (_mesSelecionado.value == 0) {
             _mesSelecionado.value = 11
@@ -142,6 +137,10 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         _filtroAtivo.value = novoFiltro
     }
 
+    fun setDataAtual(mes: Int, ano: Int) {
+        _mesSelecionado.value = mes
+        _anoSelecionado.value = ano
+    }
     // 3. A MÁGICA: A lista de despesas agora "observa" o filtro e os meses
     @OptIn(ExperimentalCoroutinesApi::class)
     val despesasFiltradas: StateFlow<List<DespesasDomain>> = combine(
