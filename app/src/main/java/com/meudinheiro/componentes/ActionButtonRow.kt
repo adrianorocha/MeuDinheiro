@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -281,8 +282,16 @@ fun PremiumTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None, // O parâmetro que faltava!
     readOnly: Boolean = false,
+    onClick: () -> Unit,
     trailingIcon: @Composable (() -> Unit)? = null
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Dispara o onClick quando detecta o pressionamento
+    LaunchedEffect(isPressed) {
+        if (isPressed) onClick?.invoke()
+    }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -337,7 +346,8 @@ private fun DepositDialog(
                 value = valor,
                 onValueChange = { valor = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
                 label = "Valor (R$)",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                onClick = {  }
             )
 
             PremiumTextField(
@@ -348,6 +358,7 @@ private fun DepositDialog(
                 onValueChange = {},
                 label = "Data",
                 readOnly = true,
+                onClick = { mostrarCalendario = true },
                 trailingIcon = {
                     IconButton(onClick = { mostrarCalendario = true }) {
                         Icon(Icons.Default.CalendarMonth, null, tint = TextColor)
@@ -444,129 +455,132 @@ fun AddDespesaDialog(
         return novosErros.isEmpty()
     }
 
-    // --- DIÁLOGO DE CALENDÁRIO ---
-    if (mostrarCalendario.value) {
-        CustomCalendarDialog(
-            onDismiss = { mostrarCalendario.value = false },
-            onDateSelected = { y, m, d ->
-                dataMillis.value = Calendar.getInstance().apply { set(y, m, d) }.timeInMillis
-                mostrarCalendario.value = false
-            }
-        )
-    }
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        PremiumDialogCard(
-            modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .wrapContentHeight()
-                .padding(vertical = 16.dp)
-                .imePadding()
-        ) {
-            Crossfade(targetState = mostrarSucesso, animationSpec = tween(500)) { sucesso ->
-            if (sucesso) {
-                SuccessAnimation(onFinished = onDismiss)
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(scrollState)
-                        .padding(16.dp)
-                ) {
-                    HeaderSection(contaAtual)
-                    Spacer(Modifier.height(16.dp))
+        Box(contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize()) {
+            PremiumDialogCard(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .wrapContentHeight()
+                    .padding(vertical = 16.dp)
+                    .imePadding()
+            ) {
+                Crossfade(targetState = mostrarSucesso, animationSpec = tween(500)) { sucesso ->
+                    if (sucesso) {
+                        SuccessAnimation(onFinished = onDismiss)
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(scrollState)
+                                .padding(16.dp)
+                        ) {
+                            HeaderSection(contaAtual)
+                            Spacer(Modifier.height(16.dp))
 
-                    FrequenciaSelector(frequencia) { frequencia = it }
-                    Spacer(Modifier.height(16.dp))
+                            FrequenciaSelector(frequencia) { frequencia = it }
+                            Spacer(Modifier.height(16.dp))
 
-                    ValueSection(
-                        moeda = moedaSelecionada,
-                        valor = valorTexto,
-                        cotacao = cotacaoTexto,
-                        onMoedaChange = { moedaSelecionada = it },
-                        onValorChange = { valorTexto = it },
-                        onCotacaoChange = { cotacaoTexto = it },
-                        erroValor = erros["valor"]
-                    )
+                            ValueSection(
+                                moeda = moedaSelecionada,
+                                valor = valorTexto,
+                                cotacao = cotacaoTexto,
+                                onMoedaChange = { moedaSelecionada = it },
+                                onValorChange = { valorTexto = it },
+                                onCotacaoChange = { cotacaoTexto = it },
+                                erroValor = erros["valor"]
+                            )
 
-                    CategoryAndDescSection(
-                        categorias = categorias,
-                        expandido = expandidoCategoria,
-                        setExpandido = { expandidoCategoria = it },
-                        selecionada = categoriaSelecionada,
-                        onSelect = { categoriaSelecionada = it },
-                        descricao = descricao,
-                        onDescChange = { descricao = it },
-                        erroCat = erros["cat"],
-                        erroDesc = erros["desc"]
-                    )
+                            CategoryAndDescSection(
+                                categorias = categorias,
+                                expandido = expandidoCategoria,
+                                setExpandido = { expandidoCategoria = it },
+                                selecionada = categoriaSelecionada,
+                                onSelect = { categoriaSelecionada = it },
+                                descricao = descricao,
+                                onDescChange = { descricao = it },
+                                erroCat = erros["cat"],
+                                erroDesc = erros["desc"]
+                            )
 
-                    DateAndInstallmentSection(
-                        frequencia = frequencia,
-                        dataMillis = dataMillis.value,
-                        onOpenCalendar = { mostrarCalendario.value = true },
-                        parcelas = numeroParcelas,
-                        onParcelasChange = { numeroParcelas = it },
-                        erroParc = erros["parc"]
-                    )
+                            DateAndInstallmentSection(
+                                frequencia = frequencia,
+                                dataMillis = dataMillis.value,
+                                onOpenCalendar = { mostrarCalendario.value = true },
+                                parcelas = numeroParcelas,
+                                onParcelasChange = { numeroParcelas = it },
+                                erroParc = erros["parc"]
+                            )
 
-                    Spacer(Modifier.height(24.dp))
+                            Spacer(Modifier.height(24.dp))
 
-                    ActionButtons(
-                        onCancel = onDismiss,
-                        onSave = {
-                            if (validar()) {
-                                val vCotacao =
-                                    cotacaoTexto.replace(",", ".").toDoubleOrNull() ?: 1.0
-                                val vOriginal = (valorTexto.toDoubleOrNull() ?: 0.0) / 100.0
-                                val vFinalBRL = vOriginal * vCotacao
+                            ActionButtons(
+                                onCancel = onDismiss,
+                                onSave = {
+                                    if (validar()) {
+                                        val vCotacao =
+                                            cotacaoTexto.replace(",", ".").toDoubleOrNull() ?: 1.0
+                                        val vOriginal = (valorTexto.toDoubleOrNull() ?: 0.0) / 100.0
+                                        val vFinalBRL = vOriginal * vCotacao
 
-                                val desp = Despesa(
-                                    id = 0,
-                                    descricao = descricao.trim(),
-                                    valor = vFinalBRL,
-                                    data = Date(dataMillis.value!!),
-                                    categoria = categoriaSelecionada!!,
-                                    pic = getPicCategoria(categoriaSelecionada!!),
-                                    conta = contaAtual,
-                                    tipo = TipoDespesa.DEBITO,
-                                    pago = false,
-                                    mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
-                                    ano = Calendar.getInstance().get(Calendar.YEAR)
-                                )
-
-                                parentScope.launch {
-                                    when (frequencia) {
-                                        Frequencia.UNICA -> viewModel.adicionarDespesa(desp)
-                                        Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(
-                                            desp,
-                                            numeroParcelas.toInt(),
-                                            dataMillis.value!!
+                                        val desp = Despesa(
+                                            id = 0,
+                                            descricao = descricao.trim(),
+                                            valor = vFinalBRL,
+                                            data = Date(dataMillis.value!!),
+                                            categoria = categoriaSelecionada!!,
+                                            pic = getPicCategoria(categoriaSelecionada!!),
+                                            conta = contaAtual,
+                                            tipo = TipoDespesa.DEBITO,
+                                            pago = false,
+                                            mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                                            ano = Calendar.getInstance().get(Calendar.YEAR)
                                         )
 
-                                        Frequencia.FIXA -> viewModel.salvarDespesaRecorrente(
-                                            desp,
-                                            Calendar.getInstance()
-                                                .apply { timeInMillis = dataMillis.value!! }
-                                                .get(Calendar.DAY_OF_MONTH)
-                                        )
+                                        parentScope.launch {
+                                            when (frequencia) {
+                                                Frequencia.UNICA -> viewModel.adicionarDespesa(desp)
+                                                Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(
+                                                    desp,
+                                                    numeroParcelas.toInt(),
+                                                    dataMillis.value!!
+                                                )
+
+                                                Frequencia.FIXA -> viewModel.salvarDespesaRecorrente(
+                                                    desp,
+                                                    Calendar.getInstance()
+                                                        .apply { timeInMillis = dataMillis.value!! }
+                                                        .get(Calendar.DAY_OF_MONTH)
+                                                )
+                                            }
+                                            mostrarSucesso = true
+
+                                            delay(100)
+
+                                            val bitmap = gerarBitmapComprovante(desp)
+                                            compartilharComprovante(currentContext, bitmap)
+                                            onDismiss()
+                                        }
                                     }
-                                    mostrarSucesso = true
-
-                                    delay(100)
-
-                                    val bitmap = gerarBitmapComprovante(desp)
-                                    compartilharComprovante(currentContext, bitmap)
-                                    onDismiss()
                                 }
-                            }
+                            )
                         }
-                    )
+                    }
                 }
             }
+            // --- DIÁLOGO DE CALENDÁRIO ---
+            if (mostrarCalendario.value) {
+                CustomCalendarDialog(
+                    onDismiss = { mostrarCalendario.value = false },
+                    onDateSelected = { y, m, d ->
+                        dataMillis.value =
+                            Calendar.getInstance().apply { set(y, m, d) }.timeInMillis
+                        mostrarCalendario.value = false
+                    }
+                )
             }
         }
     }
@@ -627,13 +641,16 @@ fun ValueSection(
                 },
                 label = "Valor ($moeda)", modifier = Modifier.weight(1f),
                 visualTransformation = CurrencyVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                onClick = {  }
+
             )
             if (moeda != "BRL") {
                 PremiumTextField(
                     value = cotacao, onValueChange = onCotacaoChange,
                     label = "Cotação", modifier = Modifier.weight(0.7f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    onClick = {  }
                 )
             }
         }
@@ -656,6 +673,7 @@ fun CategoryAndDescSection(
                 onValueChange = {},
                 readOnly = true,
                 label = "Categoria",
+                onClick = { setExpandido(true) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
                 modifier = Modifier
                     .menuAnchor()
@@ -675,7 +693,8 @@ fun CategoryAndDescSection(
             value = descricao,
             onValueChange = onDescChange,
             label = "Descrição",
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {  }
         )
         erroDesc?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
     }
@@ -698,17 +717,22 @@ fun DateAndInstallmentSection(
             } ?: "",
             onValueChange = {}, readOnly = true, label = "Data",
             modifier = Modifier
-                .weight(1f)
-                .clickable { onOpenCalendar() },
-            trailingIcon = { Icon(Icons.Default.CalendarMonth, null, tint = Color.White) }
-        )
+                .weight(1f),
+            onClick = onOpenCalendar,
+//                .clickable { onOpenCalendar() },
+            trailingIcon = {
+                IconButton(onClick = onOpenCalendar) {
+                    Icon(Icons.Default.CalendarMonth, null, tint = Color.White)
+                }
+            }        )
         if (frequencia == Frequencia.PARCELADA) {
             Column(Modifier.weight(0.6f)) {
                 PremiumTextField(
                     value = parcelas,
                     onValueChange = onParcelasChange,
                     label = "x Vezes",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onClick = {  }
                 )
                 erroParc?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
             }

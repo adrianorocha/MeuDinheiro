@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.repository.MainRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,58 +29,76 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     private val _anoSelecionado = MutableStateFlow(calendar.get(Calendar.YEAR))
     val anoSelecionado = _anoSelecionado.asStateFlow()
 
-    // 2. Estado de Conta (Onde estava o erro)
-    // Agora temos apenas UMA fonte de verdade para a conta selecionada
-    private val _contaFiltro = MutableStateFlow<String?>(null)
-
-    // 3. O Fluxo Unificado e Filtrado
-    // Combina: Banco de Dados + Mês + Ano + Conta Selecionada
-    /*    val despesasFiltradas = combine(
-            repository.obterDespesas(), // Flow do Room
-            _mesSelecionado,
-            _anoSelecionado,
-            _contaFiltro
-        ) { lista, mes, ano, contaId ->
-
-            // Normalização do filtro (remove espaços extras)
-            val filtroContaLimpo = contaId?.trim()
-
-            lista.filter { despesa ->
-                val cal = Calendar.getInstance()
-                cal.time = Date(despesa.data)
-
-                val mesmoMes = cal.get(Calendar.MONTH) == mes
-                val mesmoAno = cal.get(Calendar.YEAR) == ano
-
-                // Lógica de Comparação Segura
-                val mesmaConta = if (filtroContaLimpo.isNullOrBlank()) {
-                    // Se não tiver conta selecionada, retorna TRUE (mostra tudo) ou FALSE (não mostra nada)
-                    // Para a MainScreen funcionar bem, geralmente deixamos true ou garantimos a seleção na UI.
-                    true
-                } else {
-                    // Compara ignorando maiúsculas/minúsculas e espaços
-                    // Ex: "Nubank" bate com "nubank "
-                    despesa.conta.trim().equals(filtroContaLimpo, ignoreCase = true)
-                }
-
-                mesmoMes && mesmoAno && mesmaConta
-            }.sortedByDescending { it.data } // Ordena: Mais recentes primeiro
-
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )*/
-
+    // 2. Estado de Conta
     private val _contaSelecionada = MutableStateFlow("")
 
-    // 2. A função que a MainScreen vai chamar quando o usuário trocar de conta no carrossel
-    fun setContaSelecionada(idConta: String) {
-        _contaSelecionada.value = idConta
-    }
-    // --- AÇÕES ---
+    // 1. O estado do filtro dentro do VM
+    private val _filtroAtivo = MutableStateFlow(0) // 0: Este Mês, 1: Mês Passado, 2: Total
 
-    // Esta função agora atualiza a variável CORRETA (_contaFiltro)
+    // 3. A MÁGICA: A lista de despesas agora "observa" o filtro e os meses
+// 3. A MÁGICA: A lista de despesas agora "observa" o filtro e os meses
+// 3. A MÁGICA: Filtro absoluto em memória (À prova de falhas do Room)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val despesasFiltradas: StateFlow<List<DespesasDomain>> = combine(
+        repository.obterDespesas(), // <--- Usa a sua função que traz TODA a base
+        _filtroAtivo,
+        _mesSelecionado,
+        _anoSelecionado,
+        _contaSelecionada
+    ) { listaCompleta, filtro, mesDaTela, anoDaTela, contaId ->
+
+        val filtroContaLimpo = contaId.trim()
+
+        listaCompleta.filter { despesa ->
+            // Extrai o mês e o ano REAIS direto da data da despesa
+            val cal = Calendar.getInstance()
+            cal.time = java.util.Date(despesa.data) // Usa a data exata do lançamento
+
+            val despesaMes = cal.get(Calendar.MONTH)
+            val despesaAno = cal.get(Calendar.YEAR)
+
+            // Regra 1: Bate com a conta selecionada?
+            val mesmaConta = if (filtroContaLimpo.isEmpty()) {
+                true // Se não tem conta selecionada, mostra todas
+            } else {
+                despesa.conta.trim().equals(filtroContaLimpo, ignoreCase = true)
+            }
+
+            // Regra 2: Bate com o período selecionado?
+            val mesmoPeriodo = when (filtro) {
+                0 -> {
+                    // ESTE MÊS
+                    despesaMes == mesDaTela && despesaAno == anoDaTela
+                }
+                1 -> {
+                    // MÊS PASSADO
+                    val mesPassado = if (mesDaTela == 0) 11 else mesDaTela - 1
+                    val anoPassado = if (mesDaTela == 0) anoDaTela - 1 else anoDaTela
+                    despesaMes == mesPassado && despesaAno == anoPassado
+                }
+                else -> {
+                    // TOTAL
+                    true
+                }
+            }
+
+            // Só passa no filtro quem acertar a conta E o período
+            mesmaConta && mesmoPeriodo
+
+        }.sortedByDescending { it.data } // Mantém os mais recentes no topo
+
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )    // --- AÇÕES ---
+
+    // A função que a MainScreen vai chamar quando o usuário trocar de conta no carrossel
+    // Ajustada para String? para não dar conflito (clash) na compilação JVM
+    fun setContaSelecionada(idConta: String?) {
+        _contaSelecionada.value = idConta?.trim().orEmpty()
+    }
+
     fun mesAnterior() {
         if (_mesSelecionado.value == 0) {
             _mesSelecionado.value = 11
@@ -99,7 +118,7 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     }
 
     fun removerDespesaComRestituicao(id: Int) {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.excluirDespesaComRestituicao(id)
             // Não precisa recarregar nada manualmente, o Flow (obterDespesas) avisa o combine automaticamente
         }
@@ -129,10 +148,7 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         _mesSelecionado.value = mes
     }
 
-    // 1. O estado do filtro dentro do VM
-    private val _filtroAtivo = MutableStateFlow(0) // 0: Este Mês, 1: Mês Passado, 2: Total
-
-    // 2. A função que a MainScreen vai chamar
+    // A função que a MainScreen vai chamar
     fun setFiltro(novoFiltro: Int) {
         _filtroAtivo.value = novoFiltro
     }
@@ -141,23 +157,4 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         _mesSelecionado.value = mes
         _anoSelecionado.value = ano
     }
-    // 3. A MÁGICA: A lista de despesas agora "observa" o filtro e os meses
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val despesasFiltradas: StateFlow<List<DespesasDomain>> = combine(
-        _filtroAtivo,
-        _mesSelecionado,
-        _anoSelecionado,
-        _contaSelecionada
-    ) { filtro, mes, ano, conta ->
-        when (filtro) {
-            0 -> repository.getDespesasPorMes(mes, ano, conta)
-            1 -> repository.getDespesasMesAnterior(mes, ano, conta)
-            else -> repository.getTodasDespesas(conta)
-        }
-    }.flatMapLatest { it }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList<DespesasDomain>() // <--- Dica: já force a tipagem aqui também!
-        )
 }

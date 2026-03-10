@@ -1,6 +1,7 @@
 package com.meudinheiro.componentes
 
 import android.app.Application
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,7 +60,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.CompactCategoryGrid
@@ -77,7 +80,7 @@ import com.meudinheiro.viewModel.OrcamentoViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.collections.emptyList
+import java.util.Calendar
 
 // Cores Globais Premium
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -93,6 +96,7 @@ fun MainScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // --- ViewModels ---
     val application = context.applicationContext as Application
@@ -191,6 +195,11 @@ fun MainScreen(
         despVM.setFiltro(filtroAtivo.ordinal)
 
         despVM.setContaSelecionada(idParaFiltro)
+
+        if (filtroAtivo == FiltroPeriodo.ESTE_MES) {
+            val hoje = Calendar.getInstance()
+            despVM.setDataAtual(hoje.get(Calendar.MONTH), hoje.get(Calendar.YEAR))
+        }
         contaVM.carregarSaldosGlobais()
     }
 
@@ -205,6 +214,7 @@ fun MainScreen(
             bottomBar = {
                 NavigationSection(selectedIndex = selectedIndex, onItemSelected = ::onItemSelected)
             },
+
             floatingActionButton = {
                 if (mainTabSelecionada == 0 || mainTabSelecionada == 1) {
                     FloatingActionButton(
@@ -397,16 +407,6 @@ fun MainScreen(
                                     }
                                 }
 
-/*                                item {
-                                    ActionButtonRow(
-                                        categorias = repository.categorias.map { it.title },
-                                        getPicCategoria = { repository.getPicCategoria(it) },
-                                        contaSelecionada = contaSelecionadaId.orEmpty(),
-                                        viewModel = contaVM,
-                                        onConfigClick = { showRecorrenciaDialog = true } // Abre o Dialog de Recorrências
-                                    )
-                                }*/
-
                                 item {
                                     Row(
                                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
@@ -501,10 +501,7 @@ fun MainScreen(
 
                         2 -> {
                             // --- ABA 2: COFRINHOS ---
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Suas Metas e Cofrinhos aparecerão aqui.", color = TextWhite.copy(alpha = 0.5f))
-                            }
-                        }
+                            CofrinhosTab(viewModel = metaVM, isPrivate = isPrivate)                        }
 
                         3 -> {
                             // --- ABA 3: INVESTIMENTOS ---

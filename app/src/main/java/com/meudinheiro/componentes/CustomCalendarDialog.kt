@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,90 +44,68 @@ fun CustomCalendarDialog(
     onDismiss: () -> Unit,
     onDateSelected: (Int, Int, Int) -> Unit
 ) {
-    val calendar = remember { Calendar.getInstance() }
-    var displayedMonth by remember { mutableStateOf(calendar.get(Calendar.MONTH)) }
-    var displayedYear by remember { mutableStateOf(calendar.get(Calendar.YEAR)) }
+    // 1. Estados de navegação
+    var displayedMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
+    var displayedYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
     var selectedDay by remember { mutableStateOf<Int?>(null) }
 
-    val daysInMonth = remember(displayedMonth, displayedYear) {
+    // 2. Cálculo dinâmico do nome do mês (CORREÇÃO AQUI)
+    val monthName = remember(displayedMonth) {
         val cal = Calendar.getInstance()
-        cal.set(displayedYear, displayedMonth, 1)
-        cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        cal.set(Calendar.MONTH, displayedMonth)
+        cal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())
+            ?.replaceFirstChar { it.uppercase() } ?: ""
+    }
+
+    val daysInMonth = remember(displayedMonth, displayedYear) {
+        Calendar.getInstance().apply {
+            set(displayedYear, displayedMonth, 1)
+        }.getActualMaximum(Calendar.DAY_OF_MONTH)
     }
 
     val firstDayOfWeek = remember(displayedMonth, displayedYear) {
-        val cal = Calendar.getInstance()
-        cal.set(displayedYear, displayedMonth, 1)
-        cal.get(Calendar.DAY_OF_WEEK) // 1=Domingo, 7=Sábado
+        Calendar.getInstance().apply {
+            set(displayedYear, displayedMonth, 1)
+        }.get(Calendar.DAY_OF_WEEK)
     }
 
-    // Criação da lista de dias para o calendário
+    // Grid de dias
     val days = remember(daysInMonth, firstDayOfWeek) {
-        mutableListOf<Int?>().apply {
-            // Adiciona dias vazios antes do primeiro dia
-            for (i in 1 until firstDayOfWeek) {
-                add(null)
-            }
-            // Adiciona os dias do mês
-            for (day in 1..daysInMonth) {
-                add(day)
-            }
-        }
+        List(firstDayOfWeek - 1) { null } + (1..daysInMonth).toList()
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = CardBg, // Fundo escuro
-        titleContentColor = TextWhite,
-        textContentColor = TextWhite,
+        containerColor = CardBg,
         confirmButton = {
             TextButton(
+                enabled = selectedDay != null,
                 onClick = {
                     selectedDay?.let { day ->
-                        val selectedCalendar = Calendar.getInstance()
-                        selectedCalendar.set(displayedYear, displayedMonth, day, 0, 0, 0)
-                        selectedCalendar.set(Calendar.MILLISECOND, 0)
-
-                        onDateSelected(
-                            selectedCalendar.get(Calendar.YEAR),
-                            selectedCalendar.get(Calendar.MONTH),
-                            selectedCalendar.get(Calendar.DAY_OF_MONTH)
-                        )
+                        onDateSelected(displayedYear, displayedMonth, day)
+                        onDismiss()
                     }
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)
+                }
             ) {
-                Text("OK", fontWeight = FontWeight.Bold)
+                Text("OK", color = if (selectedDay != null) Color(0xFF69F0AE) else Color.Gray)
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                colors = ButtonDefaults.textButtonColors(contentColor = TextWhite.copy(alpha = 0.7f))
-            ) {
-                Text("Cancelar")
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = TextWhite.copy(alpha = 0.7f))
             }
         },
-        title = {
-            Text(
-                text = "Selecionar Data",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextWhite
-            )
-        },
+        title = { Text("Selecionar Data", color = TextWhite) },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Header com mês e ano
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Header de Navegação
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = {
+                        selectedDay = null // Reseta seleção ao mudar mês
                         if (displayedMonth == 0) {
                             displayedMonth = 11
                             displayedYear -= 1
@@ -133,17 +113,19 @@ fun CustomCalendarDialog(
                             displayedMonth -= 1
                         }
                     }) {
-                        Text("<", color = TextWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("<", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     }
 
+                    // AQUI EXIBIMOS O NOME CORRETO
                     Text(
-                        text = "${calendar.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())?.replaceFirstChar { it.uppercase() }} $displayedYear",
+                        text = "$monthName $displayedYear",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite
                     )
 
                     IconButton(onClick = {
+                        selectedDay = null
                         if (displayedMonth == 11) {
                             displayedMonth = 0
                             displayedYear += 1
@@ -151,59 +133,50 @@ fun CustomCalendarDialog(
                             displayedMonth += 1
                         }
                     }) {
-                        Text(">", color = TextWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(">", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     }
                 }
 
-                // Dias da semana
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    listOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb").forEach {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Dias da Semana
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    listOf("D", "S", "T", "Q", "Q", "S", "S").forEach {
                         Text(
                             text = it,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 12.sp,
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center,
-                            color = TextWhite.copy(alpha = 0.6f) // Dias da semana mais apagados
+                            color = TextWhite.copy(alpha = 0.4f),
+                            fontSize = 12.sp
                         )
                     }
                 }
 
-                // Dias do calendário
+                // Grade de Dias
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(7),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp)
+                    modifier = Modifier.height(250.dp).padding(top = 8.dp)
                 ) {
                     items(days.size) { index ->
                         val day = days[index]
-                        val isSelected = (day == selectedDay)
-
-                        // Cores do item
-                        val bgColor = if (isSelected) Color.White else Color.Transparent
-                        val textColor = if (isSelected) PremiumDarkBlue else TextWhite
+                        val isSelected = day == selectedDay
 
                         Box(
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .padding(4.dp)
-                                .clip(CircleShape) // Forma circular fica mais moderna
-                                .background(bgColor)
-                                .clickable(enabled = day != null) {
-                                    if (day != null) selectedDay = day
-                                },
+                                .padding(2.dp)
+                                .clip(CircleShape)
+                                .background(if (isSelected) Color(0xFF69F0AE) else Color.Transparent)
+                                .clickable(enabled = day != null) { selectedDay = day },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = day?.toString() ?: "",
-                                fontSize = 14.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = textColor
-                            )
+                            if (day != null) {
+                                Text(
+                                    text = day.toString(),
+                                    color = if (isSelected) PremiumDarkBlue else TextWhite,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
                         }
                     }
                 }
