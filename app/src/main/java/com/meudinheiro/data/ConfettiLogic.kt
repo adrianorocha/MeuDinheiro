@@ -30,7 +30,12 @@ class ConfeteState {
                 y = origemY,
                 vx = Math.cos(angulo.toDouble()).toFloat() * forca,
                 vy = Math.sin(angulo.toDouble()).toFloat() * forca,
-                cor = listOf(Color(0xFF69F0AE), Color(0xFF00E676), Color.White, Color.Yellow).random(),
+                cor = listOf(
+                    Color(0xFF69F0AE),
+                    Color(0xFF00E676),
+                    Color.White,
+                    Color.Yellow
+                ).random(),
                 tamanho = (10f..20f).random(),
                 peso = (0.5f..1.2f).random()
             )

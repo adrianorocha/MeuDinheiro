@@ -1,11 +1,9 @@
 package com.meudinheiro.dao
 
 import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.meudinheiro.data.Meta
 import com.meudinheiro.data.Orcamento
 import kotlinx.coroutines.flow.Flow
 
@@ -32,6 +30,7 @@ interface OrcamentoDao {
 
     @Query("DELETE FROM orcamentos")
     suspend fun limparTudo()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(orcamentos: List<Orcamento>)
 }

@@ -1,7 +1,6 @@
 package com.meudinheiro.componentes
 
 import android.app.Application
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +24,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FabPosition
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,6 +81,8 @@ import com.meudinheiro.viewModel.MetaViewModel
 import com.meudinheiro.viewModel.MetaViewModelFactory
 import com.meudinheiro.viewModel.OrcamentoViewModel
 import com.meudinheiro.viewModel.OrcamentoViewModelFactory
+import com.meudinheiro.viewModel.TransacaoViewModel
+import com.meudinheiro.viewModel.TransacaoViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -106,13 +108,20 @@ fun MainScreen(
     val application = context.applicationContext as Application
     val repository = remember { MainRepository(context) }
     val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
-    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(application, repository))
+    val contaVM: ContaSaldoViewModel =
+        viewModel(factory = ContaSaldoViewModelFactory(application, repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
     val db = AppDatabase.getDatabase(context)
     val factory = InvestimentoViewModelFactory(db.investimentoDao())
     val investimentoVM: InvestimentoViewModel = viewModel(factory = factory)
+
+    val transacaoVM: TransacaoViewModel = viewModel(
+        factory = TransacaoViewModelFactory(db.transacaoDao())
+    )
+
+    val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
 
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
     var showAddDespesaDialog by remember { mutableStateOf(false) }
@@ -157,6 +166,9 @@ fun MainScreen(
 
     val parentScope = rememberCoroutineScope()
 
+    var showInvestDialog by remember { mutableStateOf(false) }
+    var showGastoDialog by remember { mutableStateOf(false) }
+
     var selectedIndex by remember { mutableStateOf(-1) }
     fun onItemSelected(index: Int) {
         selectedIndex = index
@@ -176,7 +188,9 @@ fun MainScreen(
     val nome = nomeState
     if (nome!!.isBlank() || emCadastro) {
         CadastroUsuarioScreen(
-            userPrefs = userPrefs, onBack = { emCadastro = false }, onFinished = { emCadastro = false }
+            userPrefs = userPrefs,
+            onBack = { emCadastro = false },
+            onFinished = { emCadastro = false }
         )
         return
     }
@@ -241,19 +255,21 @@ fun MainScreen(
                     }
                 }
             },
+
             floatingActionButton = {
-                if (mainTabSelecionada == 0 || mainTabSelecionada == 1) {
-                    FloatingActionButton(
-                        onClick = {
+                // Agora o FAB aparece nas abas: Home (0), Despesas (1) e Investimentos (3)
+                if (mainTabSelecionada in listOf(0, 1, 3)) {
+                    SpeedDialFAB(
+                        onNovoGasto = {
+                            // Feedback tátil premium do S25
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             showAddDespesaDialog = true
                         },
-                        containerColor = Color(0xFF69F0AE),
-                        shape = CircleShape,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Nova Despesa", tint = PremiumDarkBlue)
-                    }
+                        onNovoInvestimento = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showInvestDialog = true
+                        }
+                    )
                 }
             }
         ) { innerPadding ->
@@ -283,12 +299,12 @@ fun MainScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-/*                BluMacawInfiniteCard(
-                    nomeUsuario = nome ?: "Viajante",
-                    saldoTotal = dashboardState.receitaGlobal - dashboardState.despesaGlobal, // O cálculo do seu saldo
-                    isPrivate = isPrivate
-                )
-                Spacer(modifier = Modifier.height(16.dp))*/
+                /*                BluMacawInfiniteCard(
+                                    nomeUsuario = nome ?: "Viajante",
+                                    saldoTotal = dashboardState.receitaGlobal - dashboardState.despesaGlobal, // O cálculo do seu saldo
+                                    isPrivate = isPrivate
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))*/
                 NotificacaoRendimentoCard(
                     rendimentoNoMes = rendimentoTotal,
                     isPrivate = isPrivate
@@ -342,7 +358,12 @@ fun MainScreen(
 
                 // 4. O CORPO DA PASTA
                 val folderShape = if (mainTabSelecionada == 0) {
-                    RoundedCornerShape(topStart = 0.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
+                    RoundedCornerShape(
+                        topStart = 0.dp,
+                        topEnd = 24.dp,
+                        bottomStart = 24.dp,
+                        bottomEnd = 24.dp
+                    )
                 } else {
                     RoundedCornerShape(24.dp)
                 }
@@ -387,7 +408,10 @@ fun MainScreen(
 
                                 item {
                                     if (dadosGrafico.isNotEmpty()) {
-                                        CompactCategoryGrid(dados = dadosGrafico, isPrivate = isPrivate)
+                                        CompactCategoryGrid(
+                                            dados = dadosGrafico,
+                                            isPrivate = isPrivate
+                                        )
                                     } else {
                                         Text(
                                             "Nenhum gasto neste período",
@@ -419,29 +443,53 @@ fun MainScreen(
                                                     contaVM.removerContaSaldo(conta.id)
                                                     contaVM.carregarSaldosGlobais()
                                                 },
-                                                onContaSelecionada = { novaContaId -> contaVM.selecionarConta(novaContaId) },
+                                                onContaSelecionada = { novaContaId ->
+                                                    contaVM.selecionarConta(
+                                                        novaContaId
+                                                    )
+                                                },
                                                 onAtualizar = {},
-                                                getReceitaConta = { id -> contaVM.obterReceitaPorConta(id) },
-                                                getDespesaConta = { id -> contaVM.obterDespesaPorConta(id) }
+                                                getReceitaConta = { id ->
+                                                    contaVM.obterReceitaPorConta(
+                                                        id
+                                                    )
+                                                },
+                                                getDespesaConta = { id ->
+                                                    contaVM.obterDespesaPorConta(
+                                                        id
+                                                    )
+                                                }
                                             )
+                                            TransacoesRecentesSection(
+                                                transacoes = listaTransacoes,
+                                                isPrivate = isPrivate
+                                            )
+
                                         }
                                     } else {
                                         Text(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .padding(32.dp),
-                                            fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                                            color = TextWhite.copy(alpha = 0.5f), textAlign = TextAlign.Center,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextWhite.copy(alpha = 0.5f),
+                                            textAlign = TextAlign.Center,
                                             text = "Você ainda não possui contas cadastradas."
                                         )
                                     }
                                 }
 
+
                                 item {
                                     Box(modifier = Modifier.padding(top = 8.dp)) {
                                         ActionButtonRow(
                                             categorias = repository.categorias.map { it.title },
-                                            getPicCategoria = { nomeCategoria -> repository.getPicCategoria(nomeCategoria) },
+                                            getPicCategoria = { nomeCategoria ->
+                                                repository.getPicCategoria(
+                                                    nomeCategoria
+                                                )
+                                            },
                                             contaSelecionada = contaSelecionadaId.orEmpty(),
                                             viewModel = contaVM,
                                             onConfigClick = onOpenAvisos
@@ -470,11 +518,24 @@ fun MainScreen(
                                         )
                                         TextButton(
                                             onClick = { showAddOrcamentoDialog = true },
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                            contentPadding = PaddingValues(
+                                                horizontal = 12.dp,
+                                                vertical = 4.dp
+                                            )
                                         ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF69F0AE))
+                                            Icon(
+                                                Icons.Default.Add,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                                tint = Color(0xFF69F0AE)
+                                            )
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Configurar", color = Color(0xFF69F0AE), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                "Configurar",
+                                                color = Color(0xFF69F0AE),
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
@@ -483,13 +544,26 @@ fun MainScreen(
                                     val gruposDeQuatro = orcamentosComProgresso.chunked(4)
                                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                                         gruposDeQuatro.forEach { linhaDeOrcamentos ->
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
                                                 linhaDeOrcamentos.forEach { orcamento ->
                                                     Box(modifier = Modifier.weight(1f)) {
-                                                        OrcamentoCard(item = orcamento, onClick = { orcamentoSelecionado = orcamento })
+                                                        OrcamentoCard(
+                                                            item = orcamento,
+                                                            onClick = {
+                                                                orcamentoSelecionado = orcamento
+                                                            })
                                                     }
                                                 }
-                                                repeat(4 - linhaDeOrcamentos.size) { Spacer(modifier = Modifier.weight(1f)) }
+                                                repeat(4 - linhaDeOrcamentos.size) {
+                                                    Spacer(
+                                                        modifier = Modifier.weight(
+                                                            1f
+                                                        )
+                                                    )
+                                                }
                                             }
                                             Spacer(modifier = Modifier.height(8.dp))
                                         }
@@ -498,7 +572,20 @@ fun MainScreen(
 
                                 item {
                                     val meses = remember {
-                                        listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
+                                        listOf(
+                                            "Janeiro",
+                                            "Fevereiro",
+                                            "Março",
+                                            "Abril",
+                                            "Maio",
+                                            "Junho",
+                                            "Julho",
+                                            "Agosto",
+                                            "Setembro",
+                                            "Outubro",
+                                            "Novembro",
+                                            "Dezembro"
+                                        )
                                     }
                                     Row(
                                         modifier = Modifier
@@ -508,12 +595,18 @@ fun MainScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         IconButton(onClick = { despVM.mesAnterior() }) {
-                                            Icon(Icons.Rounded.ChevronLeft, "Anterior", tint = TextWhite)
+                                            Icon(
+                                                Icons.Rounded.ChevronLeft,
+                                                "Anterior",
+                                                tint = TextWhite
+                                            )
                                         }
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
                                                 text = meses.getOrElse(mesAtual) { "" },
-                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontWeight = FontWeight.Bold
+                                                ),
                                                 color = TextWhite
                                             )
                                             Text(
@@ -523,7 +616,11 @@ fun MainScreen(
                                             )
                                         }
                                         IconButton(onClick = { despVM.proximoMes() }) {
-                                            Icon(Icons.Rounded.ChevronRight, "Próximo", tint = TextWhite)
+                                            Icon(
+                                                Icons.Rounded.ChevronRight,
+                                                "Próximo",
+                                                tint = TextWhite
+                                            )
                                         }
                                     }
                                 }
@@ -543,7 +640,11 @@ fun MainScreen(
                                             item = item,
                                             isPrivate = isPrivate,
                                             onRemover = { despesa -> contaVM.removerDespesa(despesa) },
-                                            onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) }
+                                            onTogglePago = { itemClicado ->
+                                                contaVM.alternarStatusDespesa(
+                                                    itemClicado
+                                                )
+                                            }
                                         )
                                     }
                                 }
@@ -568,6 +669,15 @@ fun MainScreen(
                 }
             }
         }
+        if (showInvestDialog) {
+            AddInvestimentoDialog(
+                onDismiss = { showInvestDialog = false },
+                onGuardar = { n, t, vi, va ->
+                    investimentoVM.salvarInvestimento(n, t, vi, va)
+                    showInvestDialog = false
+                }
+            )
+        }
 
         if (showAddDespesaDialog) {
             AddDespesaDialog(
@@ -579,7 +689,21 @@ fun MainScreen(
                 onDismiss = { showAddDespesaDialog = false }
             )
         }
+        /*if (showGastoDialog) {
+            AddGastoDialog(
+                contas = contas, // Suas contas do banco
+                onDismiss = { showGastoDialog = false },
+                onSalvar = { desc, valor, banco, cat, corHex ->
+                    // Chama o ViewModel que criamos
+                    transacaoVM.adicionarGasto(desc, valor, banco, cat, corHex)
 
+                    // DICA: Atualizar o saldo da conta também!
+                    // contaVM.debitarValor(banco, valor)
+
+                    showGastoDialog = false
+                }
+            )
+        }*/
         if (showRecorrenciaDialog) {
             GerenciarRecorrenciaDialog(
                 viewModel = contaVM,

@@ -1,7 +1,6 @@
 package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.data.Categoria
 import com.meudinheiro.data.CategoriaDomain

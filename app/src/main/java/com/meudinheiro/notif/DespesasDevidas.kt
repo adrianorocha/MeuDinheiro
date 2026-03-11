@@ -64,7 +64,8 @@ object DespesasDevidas {
         val total = pendentes.sumOf { it.valor }
 
         val title = "Despesas a vencer"
-        val text = "${pendentes.size} pendente(s) nos próximos $daysAhead dia(s) — Total: ${nf.format(total)}"
+        val text =
+            "${pendentes.size} pendente(s) nos próximos $daysAhead dia(s) — Total: ${nf.format(total)}"
 
         val lines = pendentes
             .sortedBy { it.data.time }

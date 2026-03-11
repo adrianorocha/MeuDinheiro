@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,7 +59,6 @@ import com.meudinheiro.data.Meta
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.viewModel.MetaViewModel
 import kotlinx.coroutines.launch
-import androidx.compose.ui.layout.onGloballyPositioned
 
 @Composable
 fun CofrinhosTab(
@@ -140,9 +140,11 @@ fun CofrinhosTab(
             onConfirmar = { contaId, valorAporte ->
 
                 // 1. Cálculo preciso para evitar problemas com Double no Kotlin
-                val totalAposAporte = "%.2f".format(metal.valorGuardado + valorAporte).replace(",", ".").toDouble()
+                val totalAposAporte =
+                    "%.2f".format(metal.valorGuardado + valorAporte).replace(",", ".").toDouble()
                 val objetivo = "%.2f".format(metal.valorObjetivo).replace(",", ".").toDouble()
-                val valorGuardadoAtual = "%.2f".format(metal.valorGuardado).replace(",", ".").toDouble()
+                val valorGuardadoAtual =
+                    "%.2f".format(metal.valorGuardado).replace(",", ".").toDouble()
 
                 println("BLU MACAW DEBUG -> Guardado: $valorGuardadoAtual | Aporte: $valorAporte | Total: $totalAposAporte | Objetivo: $objetivo")
 

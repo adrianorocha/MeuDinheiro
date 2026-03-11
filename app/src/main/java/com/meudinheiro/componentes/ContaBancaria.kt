@@ -47,7 +47,7 @@ fun ContaBancaria(
                 banco = banco.trim(),
                 agencia = agencia.trim(),
                 conta = contaCorrente.trim(),
-                pic = repository.getPicBanco(banco.trim()) ,
+                pic = repository.getPicBanco(banco.trim()),
                 saldo = 0.00,
                 titular = ""
             )

@@ -6,10 +6,22 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,12 +48,18 @@ fun BluMacawInfiniteCard(
     // Animação com efeito "Mola" (Spring) para voltar ao centro suavemente
     val animatedRotX by animateFloatAsState(
         targetValue = rotX,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
         label = "rotX"
     )
     val animatedRotY by animateFloatAsState(
         targetValue = rotY,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
         label = "rotY"
     )
 
@@ -92,13 +110,16 @@ fun BluMacawInfiniteCard(
             .graphicsLayer {
                 rotationX = animatedRotX
                 rotationY = animatedRotY
-                cameraDistance = 16f * density // Distância da "câmera" para dar o efeito de profundidade
+                cameraDistance =
+                    16f * density // Distância da "câmera" para dar o efeito de profundidade
             }
             .clip(RoundedCornerShape(24.dp))
             .background(cardGradient)
     ) {
         // Camada 1: O Fundo de Brilho Holográfico
-        Box(modifier = Modifier.fillMaxSize().background(holoGradient))
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .background(holoGradient))
 
         // Camada 2: Grafismos do Cartão (Bolas estilizadas simulando a logo da Mastercard)
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -116,7 +137,9 @@ fun BluMacawInfiniteCard(
 
         // Camada 3: Os Dados do Cartão
         Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Topo do Cartão: Logo e Chip
@@ -141,9 +164,24 @@ fun BluMacawInfiniteCard(
                         .background(Color(0xFFFFD54F).copy(alpha = 0.8f)) // Dourado
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawLine(Color.Black.copy(0.2f), Offset(size.width * 0.3f, 0f), Offset(size.width * 0.3f, size.height), 2f)
-                        drawLine(Color.Black.copy(0.2f), Offset(size.width * 0.7f, 0f), Offset(size.width * 0.7f, size.height), 2f)
-                        drawLine(Color.Black.copy(0.2f), Offset(0f, size.height * 0.5f), Offset(size.width, size.height * 0.5f), 2f)
+                        drawLine(
+                            Color.Black.copy(0.2f),
+                            Offset(size.width * 0.3f, 0f),
+                            Offset(size.width * 0.3f, size.height),
+                            2f
+                        )
+                        drawLine(
+                            Color.Black.copy(0.2f),
+                            Offset(size.width * 0.7f, 0f),
+                            Offset(size.width * 0.7f, size.height),
+                            2f
+                        )
+                        drawLine(
+                            Color.Black.copy(0.2f),
+                            Offset(0f, size.height * 0.5f),
+                            Offset(size.width, size.height * 0.5f),
+                            2f
+                        )
                     }
                 }
             }

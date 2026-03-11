@@ -203,8 +203,12 @@ fun ResumoGeralCard(
 
                 // Barra 2: Poupado (Metas)
                 HorizontalBalanceBarSlim(
-                    label = "Poupado", value = metasTotal, progress = animBarMetas,
-                    color = Color(0xFF00E676), isPrivate = isPrivate, isLoading = !animationPlayed // Verde um pouco mais forte
+                    label = "Poupado",
+                    value = metasTotal,
+                    progress = animBarMetas,
+                    color = Color(0xFF00E676),
+                    isPrivate = isPrivate,
+                    isLoading = !animationPlayed // Verde um pouco mais forte
                 )
 
                 // Barra 3: Saídas

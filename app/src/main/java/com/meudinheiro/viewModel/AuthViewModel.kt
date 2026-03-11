@@ -28,11 +28,11 @@ class AuthViewModel(private val prefs: UserPreferences) : ViewModel() {
     fun loadInitial() {
         viewModelScope.launch {
             nomeCompletoState.value = prefs.userNameFlow.firstOrNull().orEmpty()
-            usuarioState.value      = prefs.userLoginFlow.firstOrNull().orEmpty()
-            passState.value         = prefs.userPassFlow.firstOrNull().orEmpty()
-            userPhotoState.value    = prefs.userPhotoFlow.firstOrNull().orEmpty()
-            confirmState.value      = ""
-            useBiometric.value      = prefs.biometricEnabledFlow.firstOrNull() ?: false
+            usuarioState.value = prefs.userLoginFlow.firstOrNull().orEmpty()
+            passState.value = prefs.userPassFlow.firstOrNull().orEmpty()
+            userPhotoState.value = prefs.userPhotoFlow.firstOrNull().orEmpty()
+            confirmState.value = ""
+            useBiometric.value = prefs.biometricEnabledFlow.firstOrNull() ?: false
         }
     }
 
@@ -55,6 +55,7 @@ class AuthViewModel(private val prefs: UserPreferences) : ViewModel() {
             onSuccess()
         }
     }
+
     fun canUseBiometric(context: Context): Boolean {
         val bm = BiometricManager.from(context)
         return bm.canAuthenticate(
@@ -66,8 +67,8 @@ class AuthViewModel(private val prefs: UserPreferences) : ViewModel() {
     // agora recebe uma FragmentActivity de verdade
     fun promptBiometric(
         activity: FragmentActivity,
-        onAuthenticated: ()->Unit,
-        onError: (String)->Unit
+        onAuthenticated: () -> Unit,
+        onError: (String) -> Unit
     ) {
         if (activity.isFinishing || activity.isDestroyed) {
             onError("A atividade está inativa.")
@@ -78,7 +79,8 @@ class AuthViewModel(private val prefs: UserPreferences) : ViewModel() {
         val executor = ContextCompat.getMainExecutor(activity)
 
         // Criar o prompt de biometria
-        val prompt = BiometricPrompt(activity, executor,
+        val prompt = BiometricPrompt(
+            activity, executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     useBiometric.value = true

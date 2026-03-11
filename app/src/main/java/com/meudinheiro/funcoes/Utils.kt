@@ -68,7 +68,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color.Companion.White
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.colorspace.WhitePoint
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -110,7 +109,8 @@ fun lembrarEstadoPerformance(): Boolean {
                 isLowPower = manager.isPowerSaveMode
             }
         }
-        context.registerReceiver(receiver,
+        context.registerReceiver(
+            receiver,
             IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         )
         onDispose { context.unregisterReceiver(receiver) }
@@ -118,6 +118,7 @@ fun lembrarEstadoPerformance(): Boolean {
 
     return isLowPower
 }
+
 fun compartilharComprovante(ctx: Context, bitmap: Bitmap) {
     val cachePath = File(ctx.cacheDir, "images")
     cachePath.mkdirs()
@@ -163,7 +164,12 @@ fun gerarBitmapComprovante(despesa: Despesa): Bitmap {
     paintText.textSize = 30f
     paintText.color = android.graphics.Color.LTGRAY
     canvas.drawText("Categoria: ${despesa.categoria}", width / 2f, 400f, paintText)
-    canvas.drawText("Data: ${SimpleDateFormat("dd/MM/yyyy").format(despesa.data)}", width / 2f, 460f, paintText)
+    canvas.drawText(
+        "Data: ${SimpleDateFormat("dd/MM/yyyy").format(despesa.data)}",
+        width / 2f,
+        460f,
+        paintText
+    )
 
     // 4. LINHA DIVISÓRIA
     val paintLine = android.graphics.Paint().apply {
@@ -201,7 +207,11 @@ fun gerarBitmapQRCode(conteudo: String, tamanho: Int): Bitmap {
     for (x in 0 until width) {
         for (y in 0 until height) {
             // Usamos o caminho completo para evitar erro de referência
-            val cor = if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+            val cor = if (bitMatrix.get(
+                    x,
+                    y
+                )
+            ) android.graphics.Color.BLACK else android.graphics.Color.WHITE
             bitmap.setPixel(x, y, cor)
         }
     }
@@ -243,7 +253,12 @@ fun SuccessAnimation(onFinished: () -> Unit) {
             )
         } else {
             // Se o arquivo sumiu, mostra um ícone reserva para o app não ficar vazio
-            Icon(Icons.Default.CheckCircle, "Sucesso", tint = Color.Green, modifier = Modifier.size(100.dp))
+            Icon(
+                Icons.Default.CheckCircle,
+                "Sucesso",
+                tint = Color.Green,
+                modifier = Modifier.size(100.dp)
+            )
         }
 
         Spacer(Modifier.height(16.dp))
@@ -296,36 +311,37 @@ fun PremiumPieChart(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(dados) {
-                detectTapGestures { offset ->
-                    // 1. Calcula o centro e a distância do toque
-                    val centerX = size.width / 2f
-                    val centerY = size.height / 2f
-                    val dx = offset.x - centerX
-                    val dy = offset.y - centerY
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(dados) {
+                    detectTapGestures { offset ->
+                        // 1. Calcula o centro e a distância do toque
+                        val centerX = size.width / 2f
+                        val centerY = size.height / 2f
+                        val dx = offset.x - centerX
+                        val dy = offset.y - centerY
 
-                    // 2. Transforma (x,y) em ângulo (graus)
-                    var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                        // 2. Transforma (x,y) em ângulo (graus)
+                        var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
 
-                    // Ajusta para o sistema do Canvas (-90 graus é o topo)
-                    angle += 90f
-                    if (angle < 0) angle += 360f
+                        // Ajusta para o sistema do Canvas (-90 graus é o topo)
+                        angle += 90f
+                        if (angle < 0) angle += 360f
 
-                    // 3. Verifica em qual fatia o ângulo caiu
-                    var currentStartAngle = 0f
-                    dados.forEachIndexed { index, fatia ->
-                        val sweepAngle = (fatia.valor.toFloat() / total) * 360f
-                        if (angle in currentStartAngle..(currentStartAngle + sweepAngle)) {
-                            // Se clicar na mesma, desmarca. Se não, seleciona a nova.
-                            selectedIndex = if (selectedIndex == index) -1 else index
-                            return@detectTapGestures
+                        // 3. Verifica em qual fatia o ângulo caiu
+                        var currentStartAngle = 0f
+                        dados.forEachIndexed { index, fatia ->
+                            val sweepAngle = (fatia.valor.toFloat() / total) * 360f
+                            if (angle in currentStartAngle..(currentStartAngle + sweepAngle)) {
+                                // Se clicar na mesma, desmarca. Se não, seleciona a nova.
+                                selectedIndex = if (selectedIndex == index) -1 else index
+                                return@detectTapGestures
+                            }
+                            currentStartAngle += sweepAngle
                         }
-                        currentStartAngle += sweepAngle
                     }
                 }
-            }
         ) {
             var startAngle = -90f
             dados.forEachIndexed { index, fatia ->
@@ -336,7 +352,9 @@ fun PremiumPieChart(
                 val strokeWidth = if (isSelected) 28f else 18f
 
                 drawArc(
-                    color = if (selectedIndex == -1 || isSelected) fatia.cor else fatia.cor.copy(alpha = 0.3f),
+                    color = if (selectedIndex == -1 || isSelected) fatia.cor else fatia.cor.copy(
+                        alpha = 0.3f
+                    ),
                     startAngle = startAngle,
                     sweepAngle = sweepAngle * progresso,
                     useCenter = false,
@@ -361,16 +379,16 @@ fun PremiumPieChart(
                     text = formatarMoedaBR(item.valor, isPrivate),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
+                    color = White
                 )
             } else {
                 // Mostra o total geral
-                Text("TOTAL", fontSize = 8.sp, color = Color.White.copy(0.5f))
+                Text("TOTAL", fontSize = 8.sp, color = White.copy(0.5f))
                 Text(
                     text = formatarMoedaBR(total.toDouble(), isPrivate),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
+                    color = White
                 )
             }
         }
@@ -413,27 +431,31 @@ fun HorizontalBalanceBarSlim(
             verticalAlignment = Alignment.Bottom
         ) {
             if (isLoading) {
-                Box(modifier = Modifier
-                    .width(60.dp)
-                    .height(12.dp)
-                    .shimmerEffect())
-                Box(modifier = Modifier
-                    .width(80.dp)
-                    .height(12.dp)
-                    .shimmerEffect())
+                Box(
+                    modifier = Modifier
+                        .width(60.dp)
+                        .height(12.dp)
+                        .shimmerEffect()
+                )
+                Box(
+                    modifier = Modifier
+                        .width(80.dp)
+                        .height(12.dp)
+                        .shimmerEffect()
+                )
             } else {
                 Text(
                     text = label.uppercase(),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 1.sp,
-                    color = Color.White.copy(alpha = 0.4f)
+                    color = White.copy(alpha = 0.4f)
                 )
                 Text(
                     text = formatarMoedaBR(value, isPrivate),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = White
                 )
             }
         }
@@ -442,10 +464,12 @@ fun HorizontalBalanceBarSlim(
 
         // A nossa nova barra neon
         if (isLoading) {
-            Box(modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .shimmerEffect())
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .shimmerEffect()
+            )
         } else {
             NeonProgressBar(
                 progress = progress,
@@ -477,7 +501,7 @@ fun CategoryGridItem(
             Spacer(Modifier.width(6.dp))
             Text(
                 text = fatia.categoria,
-                color = Color.White.copy(alpha = 0.7f),
+                color = White.copy(alpha = 0.7f),
                 fontSize = 10.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -486,8 +510,8 @@ fun CategoryGridItem(
 
         // Valor logo abaixo
         Text(
-            text = formatarMoedaBR(fatia.valor,isPrivate),
-            color = Color.White,
+            text = formatarMoedaBR(fatia.valor, isPrivate),
+            color = White,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 14.dp) // Alinha abaixo do nome
@@ -502,12 +526,14 @@ fun CompactCategoryGrid(
     isPrivate: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp)) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
         Text(
             text = "DISTRIBUIÇÃO POR CATEGORIA",
-            color = Color.White.copy(alpha = 0.4f),
+            color = White.copy(alpha = 0.4f),
             fontSize = 9.sp,
             fontWeight = FontWeight.Black,
             modifier = Modifier.padding(bottom = 8.dp, start = 8.dp)
@@ -563,12 +589,12 @@ fun TrendIndicator(
         Spacer(Modifier.width(4.dp))
         Text(
             text = "vs mês ant.",
-            color = Color.White.copy(alpha = 0.4f),
+            color = White.copy(alpha = 0.4f),
             fontSize = 10.sp
         )
     }
 
-    }
+}
 
 fun obterCorDaCategoria(categoria: String): Color {
     return when (categoria.lowercase().trim()) {
@@ -600,7 +626,7 @@ fun NeonProgressBar(
             .fillMaxWidth()
             .height(6.dp) // Um pouco mais grossa para o gradiente aparecer
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.05f)) // Trilho de fundo
+            .background(White.copy(alpha = 0.05f)) // Trilho de fundo
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width * animProgress
@@ -766,7 +792,7 @@ fun EmptyStateSection(
 
         Text(
             text = "Tudo limpo por aqui!",
-            color = Color.White,
+            color = White,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
@@ -774,7 +800,7 @@ fun EmptyStateSection(
 
         Text(
             text = "Que tal registrar seu primeiro gasto ou entrada para ver a mágica acontecer?",
-            color = Color.White.copy(alpha = 0.5f),
+            color = White.copy(alpha = 0.5f),
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -789,7 +815,12 @@ fun EmptyStateSection(
             shape = RoundedCornerShape(12.dp),
             border = BorderStroke(1.dp, White.copy(alpha = 0.3f))
         ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(18.dp))
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = White,
+                modifier = Modifier.size(18.dp)
+            )
             Spacer(Modifier.width(8.dp))
             Text("Novo Lançamento", color = White, fontWeight = FontWeight.Bold)
         }

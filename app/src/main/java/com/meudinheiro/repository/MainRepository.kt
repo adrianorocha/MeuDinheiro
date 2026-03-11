@@ -25,12 +25,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
-import kotlin.Double
-import kotlin.collections.emptyList
 
 class MainRepository(private val context: Context) {
     private val database = AppDatabase.getDatabase(context)
     private val db = AppDatabase.getInstance(context)
+
     // DAOs
     private val despesaDao = db.despesaDao()
     private val contaSaldoDao = db.contaSaldoDao()

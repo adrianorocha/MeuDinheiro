@@ -69,7 +69,10 @@ fun ContaBancariaDialog(
             shape = RoundedCornerShape(24.dp), // Arredondamento maior
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             colors = CardDefaults.cardColors(containerColor = CardBg),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)) // Borda sutil (Glass effect)
+            border = BorderStroke(
+                1.dp,
+                Color.White.copy(alpha = 0.1f)
+            ) // Borda sutil (Glass effect)
         ) {
             Column(
                 modifier = Modifier

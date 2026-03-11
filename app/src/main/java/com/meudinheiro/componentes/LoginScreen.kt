@@ -65,6 +65,7 @@ import com.meudinheiro.viewModel.AuthViewModelFactory
 
 // Cores "Premium" Locais
 private val PremiumAccent = Color(0xFF415A77)
+
 @Composable
 fun LoginScreen(
     userPrefs: UserPreferences,
@@ -80,7 +81,7 @@ fun LoginScreen(
     var recoveredPassword by remember { mutableStateOf("") }
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    rememberCoroutineScope()
 
     // Verificação de Activity para Biometria
     val activity = remember {
@@ -105,12 +106,17 @@ fun LoginScreen(
     // Função de Autenticação Biométrica para Recuperação
     fun authenticateForRecovery() {
         if (!canBiometric) {
-            Toast.makeText(context, "Biometria não disponível para recuperação.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                "Biometria não disponível para recuperação.",
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
 
         val executor = ContextCompat.getMainExecutor(context)
-        val biometricPrompt = BiometricPrompt(activity, executor,
+        val biometricPrompt = BiometricPrompt(
+            activity, executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
@@ -118,6 +124,7 @@ fun LoginScreen(
                     recoveredPassword = savedPass
                     recoveryStep = 1
                 }
+
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
                     Toast.makeText(context, "Erro: $errString", Toast.LENGTH_SHORT).show()
@@ -160,7 +167,11 @@ fun LoginScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(8.dp))
-                        Text("Anote-a em local seguro.", color = TextWhite.copy(0.5f), fontSize = 12.sp)
+                        Text(
+                            "Anote-a em local seguro.",
+                            color = TextWhite.copy(0.5f),
+                            fontSize = 12.sp
+                        )
                     }
                 }
             },
@@ -217,7 +228,10 @@ fun LoginScreen(
                 modifier = Modifier.size(80.dp),
                 shape = CircleShape,
                 color = PremiumAccent.copy(alpha = 0.2f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    Color.White.copy(alpha = 0.1f)
+                )
             ) {
                 Icon(
                     imageVector = Icons.Rounded.AttachMoney,
@@ -286,14 +300,26 @@ fun LoginScreen(
                 onClick = {
                     when {
                         !hasUser -> {
-                            Toast.makeText(context, "Nenhum usuário cadastrado.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                "Nenhum usuário cadastrado.",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
+
                         username.isBlank() || password.isBlank() -> {
-                            Toast.makeText(context, "Preencha todos os campos!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Preencha todos os campos!", Toast.LENGTH_SHORT)
+                                .show()
                         }
+
                         username.trim() != savedUser.trim() || password != savedPass -> {
-                            Toast.makeText(context, "Usuário ou senha inválidos.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                "Usuário ou senha inválidos.",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
+
                         else -> onLoginSuccess()
                     }
                 },
@@ -318,7 +344,9 @@ fun LoginScreen(
                         authVm.promptBiometric(
                             activity = activity,
                             onAuthenticated = { onLoginSuccess() },
-                            onError = { msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+                            onError = { msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
                         )
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = TextWhite)

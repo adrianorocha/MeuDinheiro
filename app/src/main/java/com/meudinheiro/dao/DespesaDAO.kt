@@ -16,6 +16,7 @@ interface DespesaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirDespesa(despesa: Despesa)
+
     @Query("SELECT * FROM despesas ORDER BY data DESC")
     fun obterDespesas(): Flow<List<DespesasDomain>>
 
@@ -34,84 +35,115 @@ interface DespesaDao {
     @Query("SELECT * FROM despesas WHERE data BETWEEN :inicioMillis AND :fimMillis ORDER BY data ASC")
     suspend fun obterDespesasVencendo(inicioMillis: Date, fimMillis: Date): List<Despesa>
 
-    @Query("""
+    @Query(
+        """
     SELECT * FROM despesas 
     WHERE conta = :contaId AND data BETWEEN :inicioMillis AND :fimMillis
     ORDER BY data ASC
-""")
-    suspend fun obterDespesasVencendoPorConta(contaId: String, inicioMillis: Long, fimMillis: Long): List<Despesa>
+"""
+    )
+    suspend fun obterDespesasVencendoPorConta(
+        contaId: String,
+        inicioMillis: Long,
+        fimMillis: Long
+    ): List<Despesa>
 
-    @Query("""
+    @Query(
+        """
     SELECT * FROM despesas
     WHERE conta = :contaId
       AND pago = 0
       AND data BETWEEN :inicioMillis AND :fimMillis
     ORDER BY data ASC
-""")
-    suspend fun obterPendentesVencendoPorConta(contaId: String, inicioMillis: Long, fimMillis: Long): List<Despesa>
+"""
+    )
+    suspend fun obterPendentesVencendoPorConta(
+        contaId: String,
+        inicioMillis: Long,
+        fimMillis: Long
+    ): List<Despesa>
 
     @Query("UPDATE despesas SET pago = :pago WHERE id = :id")
     suspend fun setPago(id: Int, pago: Boolean)
 
-    @Query("""
+    @Query(
+        """
     SELECT * FROM despesas
     WHERE pago = 0
       AND data BETWEEN :inicioMillis AND :fimMillis
     ORDER BY data ASC
-""")
+"""
+    )
     suspend fun obterPendentesVencendo(inicioMillis: Long, fimMillis: Long): List<Despesa>
 
-    @Query("""
+    @Query(
+        """
 SELECT * FROM despesas
 WHERE pago = 0
 AND data BETWEEN :inicio AND :fim
 ORDER BY data ASC
-""")
+"""
+    )
     suspend fun obterPendentesVencendoDate(inicio: Date, fim: Date): List<Despesa>
 
-    @Query("""
+    @Query(
+        """
 SELECT * FROM despesas
 WHERE pago = 0
 AND tipo = :tipo
 AND data BETWEEN :inicio AND :fim
 ORDER BY data ASC
-""")
-    suspend fun obterPendentesVencendoDatePorTipo(inicio: Date, fim: Date, tipo: TipoDespesa): List<Despesa>
+"""
+    )
+    suspend fun obterPendentesVencendoDatePorTipo(
+        inicio: Date,
+        fim: Date,
+        tipo: TipoDespesa
+    ): List<Despesa>
 
-    @Query("""
+    @Query(
+        """
 SELECT * FROM despesas
 WHERE pago = 0
 AND data < :inicio
 ORDER BY data ASC
-""")
+"""
+    )
     suspend fun obterPendentesAtrasadas(inicio: Date): List<Despesa>
 
-    @Query("""
+    @Query(
+        """
 SELECT * FROM despesas
 WHERE pago = 0
 AND tipo = :tipo
 AND data < :inicio
 ORDER BY data ASC
-""")
+"""
+    )
     suspend fun obterPendentesAtrasadasPorTipo(inicio: Date, tipo: TipoDespesa): List<Despesa>
 
-    @Query("""
+    @Query(
+        """
     SELECT conta, tipo, pago, SUM(valor) as valorTotal
     FROM despesas
     WHERE data BETWEEN :inicio AND :fim
     GROUP BY conta, tipo, pago
-""")
+"""
+    )
     suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): List<ResumoFinanceiroDto>
 
     // No DespesasDao.kt
-    @Query("""
+    @Query(
+        """
     SELECT conta, tipo, SUM(valor) as valorTotal 
     FROM despesas 
     GROUP BY conta, tipo
-""")
+"""
+    )
     fun obterResumoGlobalPorConta(): List<ResumoFinanceiroDto>
-@Query("UPDATE Despesas SET pago = :status WHERE id = :id")
-suspend fun atualizarStatusPago(id: Long, status: Boolean)
+
+    @Query("UPDATE Despesas SET pago = :status WHERE id = :id")
+    suspend fun atualizarStatusPago(id: Long, status: Boolean)
 
     @Query("SELECT * FROM despesas")
     suspend fun obterTodasStatic(): List<Despesa>
@@ -137,11 +169,13 @@ suspend fun atualizarStatusPago(id: Long, status: Boolean)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(despesas: List<Despesa>) // <--- O nome que o Repository procura
 
-    @Query("""
+    @Query(
+        """
     SELECT SUM(valor) FROM despesas 
     WHERE strftime('%m', data / 1000, 'unixepoch') = :mes 
     AND strftime('%Y', data / 1000, 'unixepoch') = :ano
-""")
+"""
+    )
     fun getTotalPorMesEAno(mes: String, ano: String): Flow<Double?>
 
     @Query("SELECT * FROM despesas WHERE mes = :mes AND ano = :ano AND (conta = :contaId OR :contaId = '')")

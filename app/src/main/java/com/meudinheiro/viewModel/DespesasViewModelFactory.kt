@@ -6,7 +6,7 @@ import com.meudinheiro.repository.MainRepository
 
 class DespesasViewModelFactory(
     private val repository: MainRepository
-): ViewModelProvider.Factory {
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         if (modelClass.isAssignableFrom(DespesasViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")

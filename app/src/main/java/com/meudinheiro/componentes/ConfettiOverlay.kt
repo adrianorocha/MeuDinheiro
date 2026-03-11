@@ -32,7 +32,10 @@ fun ConfettiOverlay(state: ConfeteState) {
 
     Canvas(Modifier.fillMaxSize()) {
         state.partículas.forEachIndexed { index, c ->
-            rotate(degrees = tempo.value * (if(index % 2 == 0) 1f else -1f), pivot = Offset(c.x, c.y)) {
+            rotate(
+                degrees = tempo.value * (if (index % 2 == 0) 1f else -1f),
+                pivot = Offset(c.x, c.y)
+            ) {
                 drawRoundRect(
                     color = c.cor,
                     topLeft = Offset(c.x, c.y),

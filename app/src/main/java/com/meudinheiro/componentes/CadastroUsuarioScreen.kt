@@ -103,11 +103,11 @@ private fun evaluatePasswordStrength(pass: String): PasswordStrengthUi {
         0, 1 -> PasswordStrengthUi("Fraca", weakColor, 0.33f)
         2, 3 -> PasswordStrengthUi("Média", mediumColor, 0.66f)
         4, 5 -> PasswordStrengthUi("Forte", strongColor, 1.0f)
-        5,6 -> PasswordStrengthUi("Muito forte", strongColor, 1.0f)
-        6,7 -> PasswordStrengthUi("Extremamente forte", strongColor, 1.0f)
-        7,8 -> PasswordStrengthUi("Muito muito forte", strongColor, 1.0f)
-        8,9 -> PasswordStrengthUi("Muito muito muito forte", strongColor, 1.0f)
-        9,10 -> PasswordStrengthUi("Muito muito muito muito forte", strongColor, 1.0f)
+        5, 6 -> PasswordStrengthUi("Muito forte", strongColor, 1.0f)
+        6, 7 -> PasswordStrengthUi("Extremamente forte", strongColor, 1.0f)
+        7, 8 -> PasswordStrengthUi("Muito muito forte", strongColor, 1.0f)
+        8, 9 -> PasswordStrengthUi("Muito muito muito forte", strongColor, 1.0f)
+        9, 10 -> PasswordStrengthUi("Muito muito muito muito forte", strongColor, 1.0f)
         else -> PasswordStrengthUi("", Color.Transparent, 0f) // Deveria ser inalcançável
     }
 }

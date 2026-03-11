@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -70,12 +69,14 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
                     // ESTE MÊS
                     despesaMes == mesDaTela && despesaAno == anoDaTela
                 }
+
                 1 -> {
                     // MÊS PASSADO
                     val mesPassado = if (mesDaTela == 0) 11 else mesDaTela - 1
                     val anoPassado = if (mesDaTela == 0) anoDaTela - 1 else anoDaTela
                     despesaMes == mesPassado && despesaAno == anoPassado
                 }
+
                 else -> {
                     // TOTAL
                     true
@@ -130,14 +131,14 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
 
     fun getDespesaMesAnterior(mesAtual: Int, anoAtual: Int): Flow<Double> {
         // Lógica para retroceder o mês
-        val calendar = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.YEAR, anoAtual)
-            set(java.util.Calendar.MONTH, mesAtual - 1)
-            add(java.util.Calendar.MONTH, -1)
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.YEAR, anoAtual)
+            set(Calendar.MONTH, mesAtual - 1)
+            add(Calendar.MONTH, -1)
         }
 
-        val mesAnterior = calendar.get(java.util.Calendar.MONTH) + 1
-        val anoAnterior = calendar.get(java.util.Calendar.YEAR)
+        val mesAnterior = calendar.get(Calendar.MONTH) + 1
+        val anoAnterior = calendar.get(Calendar.YEAR)
 
         // O erro do 'it' acontece se você não usar as chaves {} corretamente no map
         return repository.getTotalDespesasPorPeriodo(mesAnterior, anoAnterior)

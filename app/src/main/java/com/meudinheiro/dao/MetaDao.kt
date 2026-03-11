@@ -5,7 +5,6 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Meta
 import kotlinx.coroutines.flow.Flow
 
@@ -37,6 +36,7 @@ interface MetaDao {
 
     @Query("DELETE FROM metas")
     suspend fun limparTudo()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(contas: List<Meta>)
 }

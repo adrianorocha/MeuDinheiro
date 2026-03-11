@@ -140,7 +140,8 @@ class ContaSaldoViewModel(
     fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val valorTotal = despesa.valor
-            val formatador = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
+            val formatador =
+                java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
             val textoTotal = formatador.format(valorTotal)
 
             val valorParcelaBase = floor((valorTotal / numeroParcelas) * 100) / 100.0
@@ -152,7 +153,8 @@ class ContaSaldoViewModel(
             calendar.timeInMillis = dataSelecionada
 
             for (i in 1..numeroParcelas) {
-                val valorFinal = if (i == numeroParcelas) valorParcelaBase + diferenca else valorParcelaBase
+                val valorFinal =
+                    if (i == numeroParcelas) valorParcelaBase + diferenca else valorParcelaBase
                 val novaDescricao = "${despesa.descricao} ($i/$numeroParcelas) • Total: $textoTotal"
 
                 val novaDespesa = despesa.copy(
@@ -273,7 +275,12 @@ class ContaSaldoViewModel(
         filtroAtual = novoFiltro
     }
 
-    fun atualizarInformacoesWidget(context: Context, saldo: Double, metaNome: String, metaId: String) {
+    fun atualizarInformacoesWidget(
+        context: Context,
+        saldo: Double,
+        metaNome: String,
+        metaId: String
+    ) {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         prefs.edit().apply {
             putFloat("saldo_atual", saldo.toFloat())

@@ -52,6 +52,7 @@ import java.util.Date
 private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.9f)
 private val GreenColor = Color(0xFF69F0AE)
 private val RedColor = Color(0xFFEF5350)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DespesasItem(

@@ -32,6 +32,7 @@ class MetaViewModel(private val repository: MainRepository) : ViewModel() {
             repository.excluirMetaComRestituicao(meta, contaId)
         }
     }
+
     fun editarMeta(meta: Meta) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.salvarMeta(meta)

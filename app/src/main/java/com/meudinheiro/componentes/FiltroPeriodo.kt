@@ -18,6 +18,7 @@ fun obterIntervalo(filtro: FiltroPeriodo): Pair<Long?, Long?> {
             cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
             inicio to cal.timeInMillis
         }
+
         FiltroPeriodo.MES_PASSADO -> {
             cal.add(Calendar.MONTH, -1)
             cal.set(Calendar.DAY_OF_MONTH, 1)
@@ -25,6 +26,7 @@ fun obterIntervalo(filtro: FiltroPeriodo): Pair<Long?, Long?> {
             cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
             inicio to cal.timeInMillis
         }
+
         FiltroPeriodo.TOTAL -> null to null // Sem filtro de data
     }
 }

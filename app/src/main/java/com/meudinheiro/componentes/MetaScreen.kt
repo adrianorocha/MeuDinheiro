@@ -5,7 +5,18 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -19,9 +30,32 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,7 +108,13 @@ fun MetasScreen(
             containerColor = PremiumDarkBlue,
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text("Minhas Metas", color = TextWhite, fontWeight = FontWeight.Bold) },
+                    title = {
+                        Text(
+                            "Minhas Metas",
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.Default.ArrowBack, "Voltar", tint = TextWhite)
@@ -94,7 +134,9 @@ fun MetasScreen(
             }
         ) { padding ->
             if (metas.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Box(Modifier
+                    .fillMaxSize()
+                    .padding(padding), contentAlignment = Alignment.Center) {
                     Text(
                         text = "Você ainda não tem metas.\nClique no + para começar!",
                         color = TextWhite.copy(alpha = 0.5f),
@@ -104,7 +146,9 @@ fun MetasScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.padding(padding).fillMaxSize(),
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize(),
                     contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 80.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -198,7 +242,10 @@ fun MetaCard(
             containerColor = if (isConcluida) NeonGreen.copy(0.08f) else PremiumLightBlue
         ),
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, if (isConcluida) NeonGreen.copy(0.4f) else Color.White.copy(0.05f))
+        border = BorderStroke(
+            1.dp,
+            if (isConcluida) NeonGreen.copy(0.4f) else Color.White.copy(0.05f)
+        )
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
@@ -207,17 +254,36 @@ fun MetaCard(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(meta.nome, color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(
+                        meta.nome,
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
                     if (isConcluida) {
-                        Text("Objetivo Alcançado 🎉", color = NeonGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Objetivo Alcançado 🎉",
+                            color = NeonGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isConcluida) {
-                        Icon(Icons.Default.CheckCircle, null, tint = NeonGreen, modifier = Modifier.size(24.dp))
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            null,
+                            tint = NeonGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
                     } else {
-                        Text("${(progresso * 100).toInt()}%", color = NeonGreen, fontWeight = FontWeight.Black)
+                        Text(
+                            "${(progresso * 100).toInt()}%",
+                            color = NeonGreen,
+                            fontWeight = FontWeight.Black
+                        )
                     }
                     IconButton(onClick = onEditClick, modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.Edit, null, tint = TextWhite.copy(0.5f))
@@ -252,11 +318,18 @@ fun MetaCard(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("Guardado", fontSize = 10.sp, color = TextWhite.copy(0.5f))
-                    Text(formatarMoedaBR(meta.valorGuardado, isPrivate), color = TextWhite, fontWeight = FontWeight.Bold)
+                    Text(
+                        formatarMoedaBR(meta.valorGuardado, isPrivate),
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Objetivo", fontSize = 10.sp, color = TextWhite.copy(0.5f))
-                    Text(formatarMoedaBR(meta.valorObjetivo, isPrivate), color = TextWhite.copy(0.7f))
+                    Text(
+                        formatarMoedaBR(meta.valorObjetivo, isPrivate),
+                        color = TextWhite.copy(0.7f)
+                    )
                 }
             }
 
@@ -283,7 +356,12 @@ fun MetaCard(
 // ============================================================================
 
 @Composable
-fun DialogTextField(value: String, onValueChange: (String) -> Unit, label: String, isDecimal: Boolean = false) {
+fun DialogTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    isDecimal: Boolean = false
+) {
     OutlinedTextField(
         value = value,
         onValueChange = { input ->
@@ -310,9 +388,12 @@ fun DialogTextField(value: String, onValueChange: (String) -> Unit, label: Strin
 }
 
 
-
 @Composable
-fun SeletorContaButton(contas: List<ContaSaldo>, selecionadaId: String?, onSelecionar: (String) -> Unit) {
+fun SeletorContaButton(
+    contas: List<ContaSaldo>,
+    selecionadaId: String?,
+    onSelecionar: (String) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxWidth()) {
@@ -325,7 +406,8 @@ fun SeletorContaButton(contas: List<ContaSaldo>, selecionadaId: String?, onSelec
             contentPadding = PaddingValues(16.dp)
         ) {
             Text(
-                text = contas.find { it.conta == selecionadaId }?.let { "${it.conta} (R$ ${it.saldo})" } ?: "Selecionar Banco",
+                text = contas.find { it.conta == selecionadaId }
+                    ?.let { "${it.conta} (R$ ${it.saldo})" } ?: "Selecionar Banco",
                 color = TextWhite,
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Start
@@ -336,7 +418,9 @@ fun SeletorContaButton(contas: List<ContaSaldo>, selecionadaId: String?, onSelec
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(PremiumLightBlue).fillMaxWidth(0.8f)
+            modifier = Modifier
+                .background(PremiumLightBlue)
+                .fillMaxWidth(0.8f)
         ) {
             contas.forEach { conta ->
                 DropdownMenuItem(
@@ -362,8 +446,17 @@ fun AddMetaDialog(onSalvar: (String, Double) -> Unit, onDismiss: () -> Unit) {
         title = { Text("Nova Meta Financeira", color = TextWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                DialogTextField(value = nome, onValueChange = { nome = it }, label = "Nome (Ex: Viagem)")
-                DialogTextField(value = objetivo, onValueChange = { objetivo = it }, label = "Valor do Objetivo (R$)", isDecimal = true)
+                DialogTextField(
+                    value = nome,
+                    onValueChange = { nome = it },
+                    label = "Nome (Ex: Viagem)"
+                )
+                DialogTextField(
+                    value = objetivo,
+                    onValueChange = { objetivo = it },
+                    label = "Valor do Objetivo (R$)",
+                    isDecimal = true
+                )
             }
         },
         confirmButton = {
@@ -385,9 +478,17 @@ fun AddMetaDialog(onSalvar: (String, Double) -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun AporteMetaDialog(contasDisponiveis: List<ContaSaldo>, onConfirmar: (String, Double) -> Unit, onDismiss: () -> Unit) {
+fun AporteMetaDialog(
+    contasDisponiveis: List<ContaSaldo>,
+    onConfirmar: (String, Double) -> Unit,
+    onDismiss: () -> Unit
+) {
     var valorTexto by remember { mutableStateOf("") }
-    var contaSelecionadaId by remember { mutableStateOf(contasDisponiveis.firstOrNull()?.conta ?: "") }
+    var contaSelecionadaId by remember {
+        mutableStateOf(
+            contasDisponiveis.firstOrNull()?.conta ?: ""
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -395,8 +496,17 @@ fun AporteMetaDialog(contasDisponiveis: List<ContaSaldo>, onConfirmar: (String, 
         title = { Text("Realizar Aporte", color = TextWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                DialogTextField(value = valorTexto, onValueChange = { valorTexto = it }, label = "Valor do Aporte (R$)", isDecimal = true)
-                Text("De qual conta o dinheiro vai sair?", color = TextWhite.copy(0.7f), fontSize = 12.sp)
+                DialogTextField(
+                    value = valorTexto,
+                    onValueChange = { valorTexto = it },
+                    label = "Valor do Aporte (R$)",
+                    isDecimal = true
+                )
+                Text(
+                    "De qual conta o dinheiro vai sair?",
+                    color = TextWhite.copy(0.7f),
+                    fontSize = 12.sp
+                )
                 SeletorContaButton(
                     contas = contasDisponiveis,
                     selecionadaId = contaSelecionadaId,
@@ -423,7 +533,12 @@ fun AporteMetaDialog(contasDisponiveis: List<ContaSaldo>, onConfirmar: (String, 
 }
 
 @Composable
-fun DeleteMetaDialog(meta: Meta, contas: List<ContaSaldo>, onConfirm: (String?) -> Unit, onDismiss: () -> Unit) {
+fun DeleteMetaDialog(
+    meta: Meta,
+    contas: List<ContaSaldo>,
+    onConfirm: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
     var contaSelecionadaId by remember { mutableStateOf(contas.firstOrNull()?.conta) }
 
     AlertDialog(
@@ -432,12 +547,21 @@ fun DeleteMetaDialog(meta: Meta, contas: List<ContaSaldo>, onConfirm: (String?) 
         title = { Text("Excluir Meta?", color = TextWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Deseja excluir '${meta.nome}'? Esta ação é irreversível.", color = TextWhite.copy(0.8f), fontSize = 14.sp)
+                Text(
+                    "Deseja excluir '${meta.nome}'? Esta ação é irreversível.",
+                    color = TextWhite.copy(0.8f),
+                    fontSize = 14.sp
+                )
 
                 if (meta.valorGuardado > 0) {
                     Divider(color = Color.White.copy(0.1f))
                     Text(
-                        "Você tem ${formatarMoedaBR(meta.valorGuardado, false)} guardados aqui.\nPara qual conta devemos devolver esse dinheiro?",
+                        "Você tem ${
+                            formatarMoedaBR(
+                                meta.valorGuardado,
+                                false
+                            )
+                        } guardados aqui.\nPara qual conta devemos devolver esse dinheiro?",
                         color = NeonGreen, fontSize = 13.sp, fontWeight = FontWeight.Medium
                     )
                     SeletorContaButton(
@@ -472,7 +596,12 @@ fun EditMetaDialog(meta: Meta, onConfirmar: (String, Double) -> Unit, onDismiss:
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 DialogTextField(value = nome, onValueChange = { nome = it }, label = "Nome da Meta")
-                DialogTextField(value = objetivo, onValueChange = { objetivo = it }, label = "Novo Valor (R$)", isDecimal = true)
+                DialogTextField(
+                    value = objetivo,
+                    onValueChange = { objetivo = it },
+                    label = "Novo Valor (R$)",
+                    isDecimal = true
+                )
             }
         },
         confirmButton = {

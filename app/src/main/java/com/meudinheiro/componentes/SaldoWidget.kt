@@ -49,7 +49,7 @@ class SaldoWidget : GlanceAppWidget() {
 
         // 2. Calcule a porcentagem (entre 0.0 e 1.0)
         val progresso = (valorAlcancado / valorMeta).coerceIn(0f, 1f)
-        val porcentagemTexto = "${(progresso * 100).toInt()}%"
+        "${(progresso * 100).toInt()}%"
 
         provideContent {
             GlanceTheme {

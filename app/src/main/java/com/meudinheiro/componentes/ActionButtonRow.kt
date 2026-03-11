@@ -347,7 +347,7 @@ private fun DepositDialog(
                 onValueChange = { valor = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
                 label = "Valor (R$)",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                onClick = {  }
+                onClick = { }
             )
 
             PremiumTextField(
@@ -459,8 +459,10 @@ fun AddDespesaDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(contentAlignment = Alignment.Center,
-        modifier = Modifier.fillMaxSize()) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
             PremiumDialogCard(
                 modifier = Modifier
                     .fillMaxWidth(0.95f)
@@ -642,7 +644,7 @@ fun ValueSection(
                 label = "Valor ($moeda)", modifier = Modifier.weight(1f),
                 visualTransformation = CurrencyVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                onClick = {  }
+                onClick = { }
 
             )
             if (moeda != "BRL") {
@@ -650,7 +652,7 @@ fun ValueSection(
                     value = cotacao, onValueChange = onCotacaoChange,
                     label = "Cotação", modifier = Modifier.weight(0.7f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    onClick = {  }
+                    onClick = { }
                 )
             }
         }
@@ -694,7 +696,7 @@ fun CategoryAndDescSection(
             onValueChange = onDescChange,
             label = "Descrição",
             modifier = Modifier.fillMaxWidth(),
-            onClick = {  }
+            onClick = { }
         )
         erroDesc?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
     }
@@ -724,7 +726,7 @@ fun DateAndInstallmentSection(
                 IconButton(onClick = onOpenCalendar) {
                     Icon(Icons.Default.CalendarMonth, null, tint = Color.White)
                 }
-            }        )
+            })
         if (frequencia == Frequencia.PARCELADA) {
             Column(Modifier.weight(0.6f)) {
                 PremiumTextField(
@@ -732,7 +734,7 @@ fun DateAndInstallmentSection(
                     onValueChange = onParcelasChange,
                     label = "x Vezes",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    onClick = {  }
+                    onClick = { }
                 )
                 erroParc?.let { Text(it, color = Color.Red, fontSize = 10.sp) }
             }

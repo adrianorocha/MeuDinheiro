@@ -160,6 +160,7 @@ fun ShowApp() {
                 }
             )
         }
+
         AppStage.Cadastro -> {
             CadastroUsuarioScreen(
                 userPrefs = userPrefs,

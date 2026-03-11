@@ -2,8 +2,8 @@ package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meudinheiro.data.Investimento
 import com.meudinheiro.dao.InvestimentoDao
+import com.meudinheiro.data.Investimento
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn

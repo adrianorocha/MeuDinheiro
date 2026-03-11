@@ -46,6 +46,7 @@ import com.meudinheiro.R
 // Cores Premium Locais
 private val DockBg = Color(0xFF1E2B3E).copy(alpha = 0.95f)
 private val AccentGold = Color(0xFFFFD700)
+
 @Composable
 fun NavigationSection(
     selectedIndex: Int,

@@ -1,6 +1,5 @@
 package com.meudinheiro.componentes
 
-import android.R.attr.onClick
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -8,7 +7,18 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -17,8 +27,22 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -44,6 +68,7 @@ private val BgDark = Color(0xFF1B263B)
 private val CardBg = Color(0xFF263248)
 private val NeonCyan = Color(0xFF00E5FF)
 private val NeonGreen = Color(0xFF69F0AE)
+
 // Modelo temporário para a interface
 data class AtivoInvestimento(
     val id: Int,
@@ -91,13 +116,20 @@ fun InvestimentosTab(
         item {
             Button(
                 onClick = { showAddDialog = true }, // Abre o diálogo
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF).copy(alpha = 0.15f)),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF00E5FF))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Novo Investimento", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(
+                    "Novo Investimento",
+                    color = Color(0xFF00E5FF),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
             }
         }
 
@@ -150,7 +182,6 @@ fun InvestimentosTab(
 // ============================================================================
 
 
-
 @Composable
 fun PatrimonioChartCard(
     total: Double,
@@ -169,13 +200,17 @@ fun PatrimonioChartCard(
     LaunchedEffect(Unit) { animationPlayed = true }
 
     Card(
-        modifier = Modifier.fillMaxWidth().height(260.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp),
         colors = CardDefaults.cardColors(containerColor = CardBg),
         shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(8.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(top = 24.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // VALORES
@@ -199,10 +234,20 @@ fun PatrimonioChartCard(
                     .background(NeonGreen.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
-                Icon(Icons.Default.TrendingUp, contentDescription = null, tint = NeonGreen, modifier = Modifier.size(16.dp))
+                Icon(
+                    Icons.Default.TrendingUp,
+                    contentDescription = null,
+                    tint = NeonGreen,
+                    modifier = Modifier.size(16.dp)
+                )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = if (isPrivate) "R$ ••• (••%)" else "+${formatarMoedaBR(rendimento, false)} (+$porcentagem%)",
+                    text = if (isPrivate) "R$ ••• (••%)" else "+${
+                        formatarMoedaBR(
+                            rendimento,
+                            false
+                        )
+                    } (+$porcentagem%)",
                     color = NeonGreen,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp
@@ -212,7 +257,9 @@ fun PatrimonioChartCard(
             Spacer(modifier = Modifier.weight(1f))
 
             // GRÁFICO DE LINHA NEON COM CURVA BEZIER
-            Box(modifier = Modifier.fillMaxWidth().height(100.dp)) {
+            Box(modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     // Pontos simulados de crescimento do patrimônio (escala Y invertida no Canvas)
                     val points = listOf(
@@ -288,14 +335,18 @@ fun AtivoRowCard(
     val porcentagemFormatada = "%.2f".format(ativo.rentabilidadePercentual)
 
     Card(
-        modifier = Modifier.fillMaxWidth().height(80.dp)
-        .clickable { onClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp)
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = Color(0xFF263248)),
         shape = RoundedCornerShape(20.dp),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -377,18 +428,29 @@ fun EditValorDialog(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Atualizar Valor", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(
+                    "Atualizar Valor",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
                 Text(investimento.nome, color = Color(0xFF00E5FF), fontSize = 14.sp)
 
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Info de Custo (Não editável aqui, apenas para referência)
                 Row(
-                    modifier = Modifier.fillMaxWidth().alpha(0.6f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(0.6f),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Custo de Compra:", color = Color.White, fontSize = 12.sp)
-                    Text(formatarMoedaBR(investimento.valorInvestido, false), color = Color.White, fontSize = 12.sp)
+                    Text(
+                        formatarMoedaBR(investimento.valorInvestido, false),
+                        color = Color.White,
+                        fontSize = 12.sp
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -410,17 +472,29 @@ fun EditValorDialog(
 
                 // Feedback de lucro instantâneo
                 Text(
-                    text = "Resultado: ${if (lucroSimulado >= 0) "+" else ""}${formatarMoedaBR(lucroSimulado, false)}",
+                    text = "Resultado: ${if (lucroSimulado >= 0) "+" else ""}${
+                        formatarMoedaBR(
+                            lucroSimulado,
+                            false
+                        )
+                    }",
                     color = corLucro,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp).align(Alignment.End)
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .align(Alignment.End)
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("Cancelar", color = Color.White.copy(0.5f)) }
+                    TextButton(onClick = onDismiss) {
+                        Text(
+                            "Cancelar",
+                            color = Color.White.copy(0.5f)
+                        )
+                    }
                     Button(
                         onClick = { onConfirmar(novoValor) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))

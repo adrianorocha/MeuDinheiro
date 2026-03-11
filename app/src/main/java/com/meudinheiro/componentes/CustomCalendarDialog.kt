@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -113,7 +112,12 @@ fun CustomCalendarDialog(
                             displayedMonth -= 1
                         }
                     }) {
-                        Text("<", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(
+                            "<",
+                            color = Color(0xFF69F0AE),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
                     }
 
                     // AQUI EXIBIMOS O NOME CORRETO
@@ -133,7 +137,12 @@ fun CustomCalendarDialog(
                             displayedMonth += 1
                         }
                     }) {
-                        Text(">", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(
+                            ">",
+                            color = Color(0xFF69F0AE),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
                     }
                 }
 
@@ -155,7 +164,9 @@ fun CustomCalendarDialog(
                 // Grade de Dias
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(7),
-                    modifier = Modifier.height(250.dp).padding(top = 8.dp)
+                    modifier = Modifier
+                        .height(250.dp)
+                        .padding(top = 8.dp)
                 ) {
                     items(days.size) { index ->
                         val day = days[index]

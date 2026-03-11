@@ -1,6 +1,13 @@
 package com.meudinheiro.componentes
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -9,8 +16,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,7 +65,7 @@ fun ExtratoScreen(
     // Cálculo do saldo do período filtrado
     val totalMes = listaFiltrada.sumOf {
         when (it.tipo.name) {
-            "RECEITA", "CREDITO" ->  it.valor  // Soma se for dinheiro entrando
+            "RECEITA", "CREDITO" -> it.valor  // Soma se for dinheiro entrando
             "DEBITO" -> -it.valor // Subtrai se for gasto (independente da forma)
             else -> -it.valor // Por segurança, trata qualquer outro tipo como saída
         }
@@ -52,7 +75,13 @@ fun ExtratoScreen(
         containerColor = PremiumDarkBlue,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Extrato Detalhado", color = TextWhite, fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        "Extrato Detalhado",
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 // --- ADICIONADO: ÍCONE DE VOLTAR ---
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -103,7 +132,9 @@ fun ExtratoScreen(
 
             // Card de Resumo do Filtro
             Card(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(0.05f)),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -112,7 +143,8 @@ fun ExtratoScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        val labelTexto = if (categoriaFiltro == null) "Saldo Total do Mês" else "Total em $categoriaFiltro"
+                        val labelTexto =
+                            if (categoriaFiltro == null) "Saldo Total do Mês" else "Total em $categoriaFiltro"
                         Text(labelTexto, fontSize = 12.sp, color = TextWhite.copy(0.6f))
                         Text(
                             text = formatarMoedaBR(totalMes, isPrivate),
@@ -154,7 +186,9 @@ private fun chipColors() = FilterChipDefaults.filterChipColors(
     labelColor = TextWhite.copy(0.7f),
     selectedContainerColor = Color(0xFF69F0AE).copy(0.2f),
     selectedLabelColor = Color(0xFF69F0AE)
-)@Composable
+)
+
+@Composable
 fun MonthSelector(
     mesAtual: Int,
     anoAtual: Int,

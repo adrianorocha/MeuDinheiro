@@ -2,25 +2,18 @@ package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meudinheiro.data.Despesa
-import com.meudinheiro.data.Orcamento
 import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
-import kotlin.collections.emptyList
-import kotlin.collections.filter
-import kotlin.collections.map
 
 class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
 
@@ -73,6 +66,7 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
     fun salvarOrcamento(categoria: String, valor: Double) {
         viewModelScope.launch(Dispatchers.IO) {
             // Chama a função do repositório para salvar no banco de dados (Room)
@@ -90,6 +84,7 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
             }
         }
     }
+
     fun atualizarOrcamento(categoria: String, novoValor: Double) {
         viewModelScope.launch {
             try {
