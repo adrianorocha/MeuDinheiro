@@ -25,7 +25,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 @Database(
     entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class,
         Categoria::class, Orcamento::class, Meta::class, Investimento::class, Transacao::class],
-    version = 1
+    version = 2
 )
 @TypeConverters(Converters::class)
 

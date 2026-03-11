@@ -56,7 +56,7 @@ fun SpeedDialFAB(
 
                 // Opção: Novo Gasto
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Gasto", color = Color.White, fontSize = 12.dp.value.sp, modifier = Modifier.padding(end = 8.dp))
+                    Text("Nova Despesa", color = Color.White, fontSize = 12.dp.value.sp, modifier = Modifier.padding(end = 8.dp))
                     SmallFloatingActionButton(
                         onClick = {
                             expanded = false

@@ -4,7 +4,7 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-03-11T11:08:51.952693900Z">
+        <DropdownSelection timestamp="2026-03-11T16:44:22.183161800Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\arocha\.android\avd\Android_16_Play_Store_2.avd" />

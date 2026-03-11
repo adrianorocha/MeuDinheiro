@@ -1,10 +1,15 @@
 package com.meudinheiro.funcoes
 
+import android.R.attr.textSize
+import android.R.attr.typeface
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.DashPathEffect
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.os.PowerManager
 import androidx.compose.animation.core.EaseInOutSine
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -67,6 +72,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color.Companion.White
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -94,6 +100,7 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.util.Locale
 import kotlin.math.atan2
 
 @Composable
@@ -139,58 +146,142 @@ fun compartilharComprovante(ctx: Context, bitmap: Bitmap) {
 
 fun gerarBitmapComprovante(despesa: Despesa): Bitmap {
     val width = 800
-    val height = 1200 // Aumentamos de 1000 para 1200 para caber o QR
+    val height = 1350 // Mais espaço para organizar os dados com elegância
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
 
-    // 1. Fundo
-    canvas.drawColor(android.graphics.Color.parseColor("#1E2B3E"))
+    // 1. Fundo Exterior (Fundo escuro do ecrã)
+    canvas.drawColor(android.graphics.Color.parseColor("#0D1B2A"))
 
-    val paintText = android.graphics.Paint().apply {
-        color = android.graphics.Color.WHITE
+    // 2. Fundo do "Cartão" do Comprovante
+    val paintCard = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#1B263B")
         isAntiAlias = true
+    }
+    val cardRect = RectF(40f, 40f, width - 40f, height - 40f)
+    canvas.drawRoundRect(cardRect, 32f, 32f, paintCard)
+
+    // --- PAINTS (Pincéis para os textos) ---
+    val paintTitle = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        textSize = 36f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
     }
 
-    // 2. Cabeçalho e Valor (Mantendo seu código)
-    paintText.textSize = 40f
-    canvas.drawText("Comprovante Meu Dinheiro", width / 2f, 100f, paintText)
-
-    paintText.textSize = 80f
-    paintText.color = android.graphics.Color.parseColor("#69F0AE")
-    canvas.drawText("R$ ${String.format("%.2f", despesa.valor)}", width / 2f, 280f, paintText)
-
-    // 3. Detalhes
-    paintText.textSize = 30f
-    paintText.color = android.graphics.Color.LTGRAY
-    canvas.drawText("Categoria: ${despesa.categoria}", width / 2f, 400f, paintText)
-    canvas.drawText(
-        "Data: ${SimpleDateFormat("dd/MM/yyyy").format(despesa.data)}",
-        width / 2f,
-        460f,
-        paintText
-    )
-
-    // 4. LINHA DIVISÓRIA
-    val paintLine = android.graphics.Paint().apply {
-        color = android.graphics.Color.GRAY
-        strokeWidth = 2f
+    val paintSubtitle = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#8E9BAE")
+        textSize = 24f
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
     }
-    canvas.drawLine(100f, 550f, 700f, 550f, paintLine)
 
-    // 5. QR CODE (A MÁGICA)
-    val textoQR = "Despesa: ${despesa.descricao} | Valor: ${despesa.valor}"
-    val qrBitmap = gerarBitmapQRCode(textoQR, 300)
+    val paintAmount = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#69F0AE") // Verde Neon
+        textSize = 72f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+    }
 
-    // Centraliza o QR Code no Canvas
-    val left = (width - 300) / 2f
-    val top = 650f
-    canvas.drawBitmap(qrBitmap, left, top, null)
+    val paintLabel = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#8E9BAE")
+        textSize = 28f
+        textAlign = android.graphics.Paint.Align.LEFT
+        isAntiAlias = true
+    }
 
-    // 6. Rodapé Final
-    paintText.textSize = 25f
-    paintText.color = android.graphics.Color.GRAY
-    canvas.drawText("Escaneie para validar a transação", width / 2f, 1050f, paintText)
+    val paintValue = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        textSize = 28f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = android.graphics.Paint.Align.RIGHT
+        isAntiAlias = true
+    }
+
+    val paintDash = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#3A4B66")
+        strokeWidth = 3f
+        style = android.graphics.Paint.Style.STROKE
+        pathEffect = DashPathEffect(floatArrayOf(15f, 15f), 0f) // Cria a linha tracejada
+        isAntiAlias = true
+    }
+
+    // --- DESENHO DO CONTEÚDO ---
+
+    // Cabeçalho
+    canvas.drawText("COMPROVANTE DE TRANSAÇÃO", width / 2f, 120f, paintTitle)
+    val dataFormatada = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.getDefault()).format(despesa.data)
+    canvas.drawText(dataFormatada, width / 2f, 165f, paintSubtitle)
+
+    // Valor da Transação
+    canvas.drawText("Valor da Despesa", width / 2f, 260f, paintSubtitle)
+    canvas.drawText(String.format("R$ %.2f", despesa.valor), width / 2f, 340f, paintAmount)
+
+    // Primeira Linha Tracejada
+    canvas.drawLine(80f, 420f, width - 80f, 420f, paintDash)
+
+    // Detalhes da Transação (Layout Alinhado)
+    var startY = 500f
+    val lineSpacing = 60f
+    val leftX = 80f
+    val rightX = width - 80f
+
+    // Linha 1: Descrição
+    canvas.drawText("Descrição", leftX, startY, paintLabel)
+    // Limita o tamanho da descrição para não invadir o texto da esquerda
+    val desc = if (despesa.descricao.length > 20) despesa.descricao.take(17) + "..." else despesa.descricao
+    canvas.drawText(desc, rightX, startY, paintValue)
+
+    // Linha 2: Categoria
+    startY += lineSpacing
+    canvas.drawText("Categoria", leftX, startY, paintLabel)
+    canvas.drawText(despesa.categoria, rightX, startY, paintValue)
+
+    // Linha 3: Conta de Origem
+    startY += lineSpacing
+    canvas.drawText("Origem", leftX, startY, paintLabel)
+    canvas.drawText(despesa.conta, rightX, startY, paintValue)
+
+    // Linha 4: Autenticação (Gera um ID visual bonito com base no ID real)
+    startY += lineSpacing
+    canvas.drawText("Autenticação", leftX, startY, paintLabel)
+    val authId = "MD-${despesa.id.toString().padStart(6, '0')}-${despesa.data.time.toString().takeLast(4)}"
+    canvas.drawText(authId, rightX, startY, paintValue)
+
+    // Segunda Linha Tracejada
+    canvas.drawLine(80f, startY + 60f, width - 80f, startY + 60f, paintDash)
+
+    // --- QR CODE ---
+    // Estrutura um JSON pequeno para ficar pro no leitor de QR
+    val textoQR = "{\"app\":\"BluMacaw\",\"id\":${despesa.id},\"valor\":${despesa.valor}}"
+    val qrSize = 340
+    val qrBitmap = gerarBitmapQRCode(textoQR, qrSize)
+
+    // Fundo branco arredondado para o QR Code (destaca e melhora a leitura)
+    val qrLeft = (width - qrSize) / 2f
+    val qrTop = startY + 120f
+    val qrBgRect = RectF(qrLeft - 10f, qrTop - 10f, qrLeft + qrSize + 10f, qrTop + qrSize + 10f)
+    val paintQrBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+    canvas.drawRoundRect(qrBgRect, 16f, 16f, paintQrBg)
+
+    // Desenha o QR Code por cima
+    canvas.drawBitmap(qrBitmap, qrLeft, qrTop, null)
+
+    // Rodapé
+    paintSubtitle.textSize = 20f
+    canvas.drawText("Escaneie para validar a autenticidade", width / 2f, qrTop + qrSize + 60f, paintSubtitle)
+
+    // Branding da Blu Macaw
+    val paintBrand = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#00E5FF") // Ciano Neon
+        textSize = 18f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+    }
+    canvas.drawText("Gerado por Meu Dinheiro • Blu Macaw Lab's", width / 2f, height - 80f, paintBrand)
 
     return bitmap
 }
@@ -201,23 +292,16 @@ fun gerarBitmapQRCode(conteudo: String, tamanho: Int): Bitmap {
     val width = bitMatrix.width
     val height = bitMatrix.height
 
-    // Criamos o bitmap
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
 
     for (x in 0 until width) {
         for (y in 0 until height) {
-            // Usamos o caminho completo para evitar erro de referência
-            val cor = if (bitMatrix.get(
-                    x,
-                    y
-                )
-            ) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+            val cor = if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE
             bitmap.setPixel(x, y, cor)
         }
     }
     return bitmap
 }
-
 @Composable
 fun SuccessAnimation(onFinished: () -> Unit) {
     // 1. Tenta carregar a composição
