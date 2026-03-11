@@ -167,7 +167,7 @@ fun MainScreen(
     val parentScope = rememberCoroutineScope()
 
     var showInvestDialog by remember { mutableStateOf(false) }
-    var showGastoDialog by remember { mutableStateOf(false) }
+    var showTransferenciaDialog by remember { mutableStateOf(false) }
 
     var selectedIndex by remember { mutableStateOf(-1) }
     fun onItemSelected(index: Int) {
@@ -268,6 +268,10 @@ fun MainScreen(
                         onNovoInvestimento = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             showInvestDialog = true
+                        },
+                        onTransferencia = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showTransferenciaDialog = true
                         }
                     )
                 }
@@ -669,6 +673,24 @@ fun MainScreen(
                 }
             }
         }
+        if (showTransferenciaDialog) {
+            TransferenciaDialog(
+                contas = contas,
+                contaOrigemInicial = contaSelecionadaId.orEmpty(), // Sugere a conta que está focada no carrossel
+                onDismiss = { showTransferenciaDialog = false },
+                onConfirmar = { origem, destino, valor, dataAgendada ->
+                    if (dataAgendada == null) {
+                        // TRANSFERÊNCIA IMEDIATA
+                        contaVM.transferirValor(origem, destino, valor, context)
+                    } else {
+                        // TRANSFERÊNCIA AGENDADA (WorkManager)
+                        contaVM.agendarTransferencia(origem, destino, valor, dataAgendada, context)
+                    }
+                    showTransferenciaDialog = false
+                }
+            )
+        }
+
         if (showInvestDialog) {
             AddInvestimentoDialog(
                 onDismiss = { showInvestDialog = false },

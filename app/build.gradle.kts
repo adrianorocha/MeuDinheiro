@@ -96,6 +96,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.airbnb.android:lottie-compose:6.4.0")
     implementation(libs.androidx.compose.animation)
+    implementation(libs.ui)
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)

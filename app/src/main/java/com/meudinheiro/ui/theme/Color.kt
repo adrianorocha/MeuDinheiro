@@ -11,3 +11,7 @@ val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
 
 val Dark_Blue = Color(0xFF052559)
+
+val NeonCyan = Color(0xFF00E5FF)
+val NeonGreen = Color(0xFF69F0AE)
+val NeonRed = Color(0xFFFF8A80)

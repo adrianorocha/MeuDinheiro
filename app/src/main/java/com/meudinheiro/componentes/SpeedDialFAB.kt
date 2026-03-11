@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
@@ -19,7 +20,8 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun SpeedDialFAB(
     onNovoGasto: () -> Unit,
-    onNovoInvestimento: () -> Unit
+    onNovoInvestimento: () -> Unit,
+    onTransferencia: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -69,6 +71,23 @@ fun SpeedDialFAB(
                         Icon(Icons.Default.Payments, contentDescription = null)
                     }
                 }
+
+                // Opção: Transferência entre Contas
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Nova Despesa", color = Color.White, fontSize = 12.dp.value.sp, modifier = Modifier.padding(end = 8.dp))
+                    SmallFloatingActionButton(
+                        onClick = {
+                            expanded = false
+                            onTransferencia()
+                        },
+                        containerColor = Color(0xFF69F0AE), // Verde
+                        contentColor = Color(0xFF1B263B),
+                        shape = CircleShape
+                    ) {
+                        Icon(Icons.Default.CompareArrows, contentDescription = null)
+                    }
+                }
+
             }
         }
 

@@ -739,4 +739,30 @@ class MainRepository(private val context: Context) {
     fun getTodasDespesas(contaId: String): Flow<List<DespesasDomain>> {
         return despesaDao.getTodasDespesas(contaId)
     }
+
+    // Dentro do MainRepository.kt
+    suspend fun transferirEntreContas(origem: String, destino: String, valor: Double) {
+        // Aqui o repositório usa o dao que ele já possui internamente
+        contaSaldoDao.debitar(origem, valor)
+        contaSaldoDao.creditar(destino, valor)
+
+        // Opcional: recalcular saldos se necessário
+        recalcularSaldoTotal(origem)
+        recalcularSaldoTotal(destino)
+    }
+
+    // Busca os agendamentos como Flow
+    fun obterAgendamentosPendentesFlow(): Flow<List<TransferenciaAgendada>> {
+        return contaSaldoDao.obterAgendamentosPendentesFlow()
+    }
+
+    // Exclui o agendamento
+    suspend fun excluirAgendamento(id: Int) {
+        contaSaldoDao.excluirAgendamento(id)
+    }
+
+    // Salva um novo agendamento
+    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada) {
+        contaSaldoDao.inserirAgendamento(agendamento)
+    }
 }

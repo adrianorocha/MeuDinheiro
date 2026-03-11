@@ -3,6 +3,7 @@ package com.meudinheiro.viewModel
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
+import kotlin.collections.emptyList
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -85,7 +87,12 @@ class ContaSaldoViewModel(
     }
 
     // --- CARREGAMENTO DE DADOS (GLOBAL / ACUMULADO) ---
-
+    val agendamentosAtivos = repository.obterAgendamentosPendentesFlow()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
     fun carregarSaldosGlobais() {
         viewModelScope.launch(Dispatchers.IO) {
             val listaResumoGlobal = repository.obterResumoGlobalPorConta()
@@ -311,6 +318,32 @@ class ContaSaldoViewModel(
                 )
             } catch (e: Exception) {
                 Log.e("WidgetSync", "Erro ao sincronizar dados: ${e.message}")
+            }
+        }
+    }
+    fun transferirValor(
+        contaOrigem: String,
+        contaDestino: String,
+        valor: Double,
+        context: Context
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Chamamos o repositório em vez do dao inexistente
+                repository.transferirEntreContas(contaOrigem, contaDestino, valor)
+
+                // Atualiza o estado global para refletir nos cards e no dashboard
+                carregarSaldosGlobais()
+
+                // Feedback visual (volta para a Main Thread para mostrar o Toast)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(context, "Transferência realizada com sucesso!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(context, "Erro na transferência: ${e.message}", Toast.LENGTH_LONG).show()
+                    Log.e("Transferencia", "Erro: ${e.message}")
+                }
             }
         }
     }

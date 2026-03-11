@@ -7,6 +7,7 @@ import androidx.room.Query
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import kotlinx.coroutines.flow.Flow
+import com.meudinheiro.data.TransferenciaAgendada
 
 @Dao
 interface ContaSaldoDao {
@@ -43,4 +44,22 @@ interface ContaSaldoDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(contas: List<ContaSaldo>)
+
+    @Query("UPDATE contasaldo SET saldo = saldo - :valor WHERE conta = :contaId")
+    suspend fun debitar(contaId: String, valor: Double)
+
+    @Query("UPDATE contasaldo SET saldo = saldo + :valor WHERE conta = :contaId")
+    suspend fun creditar(contaId: String, valor: Double)
+
+    // Retorna a lista reativa de agendamentos futuros
+    @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 ORDER BY dataAgendada ASC")
+    fun obterAgendamentosPendentesFlow(): Flow<List<TransferenciaAgendada>>
+
+    // Deleta um agendamento caso o usuário cancele
+    @Query("DELETE FROM transferencias_agendadas WHERE id = :id")
+    suspend fun excluirAgendamento(id: Int)
+
+    // Insere o agendamento no banco
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada)
 }
