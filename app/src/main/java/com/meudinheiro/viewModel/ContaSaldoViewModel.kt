@@ -14,6 +14,9 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.meudinheiro.componentes.FiltroPeriodo
 import com.meudinheiro.componentes.SaldoWidget
 import com.meudinheiro.componentes.obterIntervalo
@@ -26,6 +29,7 @@ import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
+import com.meudinheiro.worker.TransferenciaWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,6 +40,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
+import java.util.concurrent.TimeUnit
 import kotlin.collections.emptyList
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -345,6 +350,30 @@ class ContaSaldoViewModel(
                     Log.e("Transferencia", "Erro: ${e.message}")
                 }
             }
+        }
+    }
+
+    fun agendarTransferencia(origem: String, destino: String, valor: Double, data: Long, context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Primeiro você salva no banco (como já fizemos)
+            val idGerado = repository.inserirAgendamento(...)
+
+            // 2. Agora você "chama" o Worker através do WorkManager
+            val delay = data - System.currentTimeMillis()
+
+            // Criamos uma tarefa única (OneTimeWorkRequest)
+            val tarefa = OneTimeWorkRequestBuilder<TransferenciaWorker>()
+                .setInitialDelay(delay, TimeUnit.MILLISECONDS) // Espera até a data escolhida
+                .addTag("transferencia_$idGerado") // Tag para podermos cancelar depois
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiresBatteryNotLow(true) // Só roda se tiver bateria (opcional)
+                        .build()
+                )
+                .build()
+
+            // Entrega para o sistema gerenciar
+            WorkManager.getInstance(context).enqueue(tarefa)
         }
     }
 }

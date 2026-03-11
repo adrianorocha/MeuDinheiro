@@ -37,6 +37,7 @@ import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
 import com.meudinheiro.notif.BackupReminderWorker
 import com.meudinheiro.notif.DespesasDevidas
+import com.meudinheiro.worker.TransferenciaWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -47,7 +48,15 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val tarefaPeriodica = PeriodicWorkRequestBuilder<TransferenciaWorker>(12, TimeUnit.HOURS)
+            .addTag("check_agendamentos_diario")
+            .build()
 
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "CheckTransferencias",
+            ExistingPeriodicWorkPolicy.KEEP, // Mantém a que já existe se já estiver agendada
+            tarefaPeriodica
+        )
         criarCanalNotificacao(this)
         agendarLembreteBackupSemanal(this)
         // Substituímos o WorkManager antigo pelo nosso novo Agendador Exato
