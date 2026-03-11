@@ -62,4 +62,11 @@ interface ContaSaldoDao {
     // Insere o agendamento no banco
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirAgendamento(agendamento: TransferenciaAgendada)
+
+    @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 AND dataAgendada <= :hoje")
+    suspend fun obterAgendamentosPendentesSync(hoje: Long): List<TransferenciaAgendada>
+
+    // Aproveite e garanta que você tem esta aqui também para o Worker marcar como feito:
+    @Query("UPDATE transferencias_agendadas SET executada = 1 WHERE id = :id")
+    suspend fun marcarAgendamentoComoExecutado(id: Int)
 }

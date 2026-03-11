@@ -19,6 +19,7 @@ import com.meudinheiro.data.Orcamento
 import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.data.TransferenciaAgendada
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -764,5 +765,15 @@ class MainRepository(private val context: Context) {
     // Salva um novo agendamento
     suspend fun inserirAgendamento(agendamento: TransferenciaAgendada) {
         contaSaldoDao.inserirAgendamento(agendamento)
+    }
+
+    // Busca a lista de transferências para o Worker processar
+    suspend fun obterAgendamentosPendentesSync(hoje: Long): List<TransferenciaAgendada> {
+        return contaSaldoDao.obterAgendamentosPendentesSync(hoje)
+    }
+
+    // Atualiza o status no banco após o sucesso
+    suspend fun marcarAgendamentoComoExecutado(id: Int) {
+        contaSaldoDao.marcarAgendamentoComoExecutado(id)
     }
 }
