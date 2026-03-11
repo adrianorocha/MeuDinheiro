@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.CompactCategoryGrid
@@ -74,6 +75,8 @@ import com.meudinheiro.viewModel.DespesasViewModel
 import com.meudinheiro.viewModel.DespesasViewModelFactory
 import com.meudinheiro.viewModel.HomeViewModel
 import com.meudinheiro.viewModel.HomeViewModelFactory
+import com.meudinheiro.viewModel.InvestimentoViewModel
+import com.meudinheiro.viewModel.InvestimentoViewModelFactory
 import com.meudinheiro.viewModel.MetaViewModel
 import com.meudinheiro.viewModel.MetaViewModelFactory
 import com.meudinheiro.viewModel.OrcamentoViewModel
@@ -107,9 +110,14 @@ fun MainScreen(
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
+    val db = AppDatabase.getDatabase(context)
+    val factory = InvestimentoViewModelFactory(db.investimentoDao())
+    val investimentoVM: InvestimentoViewModel = viewModel(factory = factory)
 
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
     var showAddDespesaDialog by remember { mutableStateOf(false) }
+
+    val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
 
     // CORREÇÃO 1: Usando 'by' para extrair o valor real do MutableState
     val filtroAtivo = contaVM.filtroAtual
@@ -157,7 +165,9 @@ fun MainScreen(
     // --- Verificações de Inicialização ---
     if (nomeState == null) {
         Box(
-            modifier = Modifier.fillMaxSize().background(Color.White),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White),
             contentAlignment = Alignment.Center
         ) { CircularProgressIndicator(color = PremiumDarkBlue) }
         return
@@ -273,6 +283,18 @@ fun MainScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+/*                BluMacawInfiniteCard(
+                    nomeUsuario = nome ?: "Viajante",
+                    saldoTotal = dashboardState.receitaGlobal - dashboardState.despesaGlobal, // O cálculo do seu saldo
+                    isPrivate = isPrivate
+                )
+                Spacer(modifier = Modifier.height(16.dp))*/
+                NotificacaoRendimentoCard(
+                    rendimentoNoMes = rendimentoTotal,
+                    isPrivate = isPrivate
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
                 // 2. FILTRO GLOBAL (Fixo fora das abas)
                 Box(modifier = Modifier.padding(horizontal = 8.dp)) {
                     // Cuidado aqui: contaVM.filtroAtual é o State completo.
@@ -369,7 +391,9 @@ fun MainScreen(
                                     } else {
                                         Text(
                                             "Nenhum gasto neste período",
-                                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                            modifier = Modifier
+                                                .padding(16.dp)
+                                                .fillMaxWidth(),
                                             color = Color.White.copy(0.3f),
                                             textAlign = TextAlign.Center
                                         )
@@ -403,7 +427,9 @@ fun MainScreen(
                                         }
                                     } else {
                                         Text(
-                                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(32.dp),
                                             fontSize = 16.sp, fontWeight = FontWeight.Bold,
                                             color = TextWhite.copy(alpha = 0.5f), textAlign = TextAlign.Center,
                                             text = "Você ainda não possui contas cadastradas."
@@ -425,7 +451,14 @@ fun MainScreen(
 
                                 item {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                start = 16.dp,
+                                                end = 8.dp,
+                                                top = 16.dp,
+                                                bottom = 8.dp
+                                            ),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -468,7 +501,9 @@ fun MainScreen(
                                         listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
                                     }
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -517,13 +552,17 @@ fun MainScreen(
 
                         2 -> {
                             // --- ABA 2: COFRINHOS ---
-                            CofrinhosTab(viewModel = metaVM, isPrivate = isPrivate,snackbarHostState = snackbarHostState)                        }
+                            CofrinhosTab(
+                                viewModel = metaVM,
+                                isPrivate = isPrivate,
+                                snackbarHostState = snackbarHostState,
+                                userName = nome ?: "Viajante"
+                            )
+                        }
 
                         3 -> {
                             // --- ABA 3: INVESTIMENTOS ---
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Acompanhe seus Investimentos em breve.", color = TextWhite.copy(alpha = 0.5f))
-                            }
+                            InvestimentosTab(viewModel = investimentoVM, isPrivate = isPrivate)
                         }
                     }
                 }

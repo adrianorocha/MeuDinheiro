@@ -58,12 +58,14 @@ import com.meudinheiro.data.Meta
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.viewModel.MetaViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.ui.layout.onGloballyPositioned
 
 @Composable
 fun CofrinhosTab(
     viewModel: MetaViewModel,
     isPrivate: Boolean,
-    snackbarHostState: SnackbarHostState
+    snackbarHostState: SnackbarHostState,
+    userName: String
 ) {
     // Escuta o banco de dados em tempo real
     val metas by viewModel.metas.collectAsState(initial = emptyList())
@@ -80,59 +82,49 @@ fun CofrinhosTab(
     var metaParaExcluir by remember { mutableStateOf<Meta?>(null) }
     var metaParaEditar by remember { mutableStateOf<Meta?>(null) }
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    // 1. Usamos o Box para criar as camadas (layers)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Pegamos a largura para o confete saber onde é o centro
+            .onGloballyPositioned { screenWidth = it.size.width.toFloat() }
     ) {
-        // 1. O Botão "Criar Meta" sempre vem primeiro, estilo Apple Home / SmartThings
-        item {
-            AddMetaDashedCard(onClick = { showAddDialog = true })
+
+        // CAMADA 0 (Fundo): A sua Grade de Metas
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 1. O Botão "Criar Meta"
+            item {
+                AddMetaDashedCard(onClick = { showAddDialog = true })
+            }
+
+            // 2. A Lista de Metas Reais
+            items(metas, key = { it.id }) { meta ->
+                CofrinhoGridCard(
+                    meta = meta,
+                    isPrivate = isPrivate,
+                    onAporteClick = { metaParaAportar = meta },
+                    onMenuClick = { action ->
+                        when (action) {
+                            "edit" -> metaParaEditar = meta
+                            "delete" -> metaParaExcluir = meta
+                        }
+                    }
+                )
+            }
         }
 
-        // 2. A Lista de Metas Reais
-        items(metas, key = { it.id }) { meta ->
-            CofrinhoGridCard(
-                meta = meta,
-                isPrivate = isPrivate,
-                onAporteClick = { metaParaAportar = meta },
-                onMenuClick = { action ->
-                    when (action) {
-                        "edit" -> metaParaEditar = meta
-                        "delete" -> metaParaExcluir = meta
-                    }
-                }
-            )
-        }
+        // CAMADA 1 (Topo): O componente de confetes
         ConfettiOverlay(state = confettiState)
     }
-    metaParaAportar?.let { meta ->
-        AporteMetaDialog(
-            contasDisponiveis = contasBancarias,
-            onDismiss = { metaParaAportar = null },
-            onConfirmar = { contaId, valor ->
-                val novoTotal = meta.valorGuardado + valor
 
-                // DISPARO DA CELEBRAÇÃO 🎊
-                if (novoTotal >= meta.valorObjetivo && meta.valorGuardado < meta.valorObjetivo) {
-                    confettiState.disparar(screenWidth / 2, 800f) // Explode no centro
+    // --- DIÁLOGOS ---
 
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = "Parabéns, Adriano! Meta '${meta.nome}' concluída! 🏆",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                }
-
-                viewModel.realizarAporteReal(meta, contaId, valor)
-                metaParaAportar = null
-            }
-        )
-    }
-    // --- DIÁLOGOS (Os mesmos que já refatoramos, chamados aqui dentro da Tab) ---
     if (showAddDialog) {
         AddMetaDialog(
             onSalvar = { nome, objetivo -> viewModel.salvarMeta(nome, objetivo) },
@@ -140,12 +132,39 @@ fun CofrinhosTab(
         )
     }
 
-    metaParaAportar?.let { meta ->
+    // AQUI ESTÁ A LÓGICA DE APORTE CORRIGIDA (SEM DUPLICAÇÃO)
+    metaParaAportar?.let { metal ->
         AporteMetaDialog(
             contasDisponiveis = contasBancarias,
             onDismiss = { metaParaAportar = null },
-            onConfirmar = { contaId, valor ->
-                viewModel.realizarAporteReal(meta, contaId, valor)
+            onConfirmar = { contaId, valorAporte ->
+
+                // 1. Cálculo preciso para evitar problemas com Double no Kotlin
+                val totalAposAporte = "%.2f".format(metal.valorGuardado + valorAporte).replace(",", ".").toDouble()
+                val objetivo = "%.2f".format(metal.valorObjetivo).replace(",", ".").toDouble()
+                val valorGuardadoAtual = "%.2f".format(metal.valorGuardado).replace(",", ".").toDouble()
+
+                println("BLU MACAW DEBUG -> Guardado: $valorGuardadoAtual | Aporte: $valorAporte | Total: $totalAposAporte | Objetivo: $objetivo")
+
+                // 2. Condição de Vitória: Chegou no alvo e antes não tinha chegado
+                if (totalAposAporte >= objetivo && valorGuardadoAtual < objetivo) {
+
+                    // Disparo com coordenadas seguras
+                    val spawnX = if (screenWidth > 0) screenWidth / 2f else 500f
+                    val spawnY = 300f // Ajustado para não cair tão rápido
+
+                    confettiState.disparar(spawnX, spawnY)
+
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "Parabéns, $userName! Meta '${metal.nome}' concluída! 🏆",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+
+                // 3. Grava no banco e fecha o diálogo
+                viewModel.realizarAporteReal(metal, contaId, valorAporte)
                 metaParaAportar = null
             }
         )
@@ -174,7 +193,6 @@ fun CofrinhosTab(
         )
     }
 }
-
 // ============================================================================
 // OS CARDS DA GRADE
 // ============================================================================
@@ -211,6 +229,7 @@ fun AddMetaDashedCard(onClick: () -> Unit) {
         }
     }
 }
+
 @Composable
 fun CofrinhoGridCard(
     meta: Meta,
@@ -301,7 +320,10 @@ fun CofrinhoGridCard(
             ) {
                 Column {
                     Text(
-                        text = if (isPrivate) "R$ •••••" else formatarMoedaBR(meta.valorGuardado, false),
+                        text = if (isPrivate) "R$ •••••" else formatarMoedaBR(
+                            meta.valorGuardado,
+                            false
+                        ),
                         color = currentColor,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp
