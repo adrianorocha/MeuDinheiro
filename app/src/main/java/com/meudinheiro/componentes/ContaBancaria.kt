@@ -26,7 +26,7 @@ fun ContaBancaria(
 
     ContaBancariaDialog(
         bancos = bancosNomes,
-        onAdicionar = { banco, agencia, contaCorrente ->
+        onAdicionar = { banco, agencia, contaCorrente ,saldoInicial->
             val exists = contasExistentes.any { domain ->
                 domain.banco.equals(banco.trim(), true) &&
                         domain.agencia.equals(agencia.trim(), true) &&
@@ -48,7 +48,7 @@ fun ContaBancaria(
                 agencia = agencia.trim(),
                 conta = contaCorrente.trim(),
                 pic = repository.getPicBanco(banco.trim()),
-                saldo = 0.00,
+                saldo = saldoInicial,
                 titular = ""
             )
 

@@ -74,7 +74,7 @@ fun SpeedDialFAB(
 
                 // Opção: Transferência entre Contas
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Nova Despesa", color = Color.White, fontSize = 12.dp.value.sp, modifier = Modifier.padding(end = 8.dp))
+                    Text("Transferência", color = Color.White, fontSize = 12.dp.value.sp, modifier = Modifier.padding(end = 8.dp))
                     SmallFloatingActionButton(
                         onClick = {
                             expanded = false

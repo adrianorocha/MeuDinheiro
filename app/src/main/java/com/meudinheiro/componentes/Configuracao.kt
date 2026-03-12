@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -129,6 +130,8 @@ fun Configuracao(
     val listaDespesas by despesasVM.despesasFiltradas.collectAsState()
     val mesIndex by despesasVM.mesSelecionado.collectAsState()
     val anoAtual by despesasVM.anoSelecionado.collectAsState()
+
+    var exibirAlertaExclusao by remember { mutableStateOf(false) }
 
     val nomesMeses = remember {
         listOf(
@@ -636,7 +639,84 @@ fun Configuracao(
                         }
                     }
                 }
+// --- CARD: ZONA DE PERIGO ---
+                item {
+                    PremiumConfigCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFFF5252)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Zona de Perigo",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFFFF5252),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
 
+                        Spacer(Modifier.height(8.dp))
+
+                        Text(
+                            "Atenção: Apagar o banco de dados é uma ação irreversível. Todos os seus lançamentos, categorias e saldos serão perdidos. Certifique-se de ter um backup recente.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextWhite.copy(0.7f)
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                exibirAlertaExclusao = false
+                                scope.launch {
+                                    processingMessage = "Limpando banco de dados..."
+                                    try {
+                                        // Executa a limpeza pesada em IO
+                                        withContext(Dispatchers.IO) {
+                                            mainRepository.limparBancoDeDadosCompleto()
+                                        }
+
+                                        // Pequeno delay para o usuário respirar e ver que deu certo
+                                        delay(800)
+
+                                        Toast.makeText(
+                                            context,
+                                            "✅ Banco de dados resetado com sucesso!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+
+                                        // DICA: Você pode forçar o fechamento da tela ou o app a reiniciar
+                                        // para garantir que os ViewModels não fiquem com dados antigos na memória.
+                                        onBack()
+
+                                    } catch (e: Exception) {
+                                        Log.e("LimpezaErro", "Falha ao resetar banco", e)
+                                        Toast.makeText(
+                                            context,
+                                            "Erro: ${e.localizedMessage}",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    } finally {
+                                        processingMessage = null
+                                    }
+                                }
+                            }, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(
+                                    0xFFFF5252
+                                )
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFFFF5252).copy(0.5f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Apagar Todos os Dados", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 item {
                     Text(
                         text = "O sistema verificará contas a vencer entre hoje e os próximos $daysAhead dias.",
@@ -658,7 +738,116 @@ fun Configuracao(
                 onDismiss = { exibirGerenciadorCategorias = false }
             )
         }
+        if (exibirAlertaExclusao) {
+            Dialog(onDismissRequest = { exibirAlertaExclusao = false }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg),
+                    border = BorderStroke(1.dp, Color(0xFFFF5252).copy(0.3f)) // Borda avermelhada
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Ícone de Alerta Gigante
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .background(Color(0xFFFF5252).copy(alpha = 0.1f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = "Atenção",
+                                tint = Color(0xFFFF5252),
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
 
+                        Spacer(Modifier.height(16.dp))
+
+                        Text(
+                            "Excluir tudo?",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Text(
+                            "Esta ação não pode ser desfeita. Todo o seu histórico financeiro será permanentemente apagado deste dispositivo.",
+                            color = Color.White.copy(0.7f),
+                            textAlign = TextAlign.Center,
+                            fontSize = 14.sp
+                        )
+
+                        Spacer(Modifier.height(24.dp))
+
+                        // Botões (Atenção à psicologia das cores: Cancelar é o botão de destaque, Apagar é o Outlined para evitar clique acidental)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Button(
+                                onClick = { exibirAlertaExclusao = false },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White,
+                                    contentColor = CardBg
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Cancelar", fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    exibirAlertaExclusao = false
+                                    scope.launch {
+                                        processingMessage = "Limpando banco de dados..."
+                                        try {
+                                            withContext(Dispatchers.IO) {
+                                                // AQUI VOCÊ CHAMA A FUNÇÃO DO SEU REPOSITÓRIO
+                                                // mainRepository.limparBancoDeDadosCompleto()
+                                            }
+                                            Toast.makeText(
+                                                context,
+                                                "Dados apagados com sucesso.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } catch (e: Exception) {
+                                            Toast.makeText(
+                                                context,
+                                                "Erro ao apagar: ${e.message}",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } finally {
+                                            processingMessage = null
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(
+                                        0xFFFF5252
+                                    )
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFFFF5252).copy(0.5f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Sim, apagar")
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (processingMessage != null) {
             Dialog(
                 onDismissRequest = { },

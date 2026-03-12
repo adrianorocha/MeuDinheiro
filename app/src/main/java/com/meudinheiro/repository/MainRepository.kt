@@ -3,6 +3,7 @@ package com.meudinheiro.repository
 import android.content.Context
 import androidx.room.withTransaction
 import com.google.gson.Gson
+import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.BackupDto
 import com.meudinheiro.data.BancoDomain
@@ -22,12 +23,13 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.TransferenciaAgendada
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
 
-class MainRepository(private val context: Context) {
+class MainRepository(private val context: Context, private val dao: ContaSaldoDao? = null) {
     private val database = AppDatabase.getDatabase(context)
     private val db = AppDatabase.getInstance(context)
 
@@ -742,15 +744,17 @@ class MainRepository(private val context: Context) {
     }
 
     // Dentro do MainRepository.kt
-    suspend fun transferirEntreContas(origem: String, destino: String, valor: Double) {
+    suspend fun transferirEntreContas(origem: String, destino: String, valor: Double): Boolean {
+        return contaSaldoDao?.transferir(origem, destino, valor) ?: false
+    }
+    /*suspend fun transferirEntreContas(origem: String, destino: String, valor: Double) {
         // Aqui o repositório usa o dao que ele já possui internamente
-        contaSaldoDao.debitar(origem, valor)
-        contaSaldoDao.creditar(destino, valor)
+        contaSaldoDao?.transferir(origem, destino, valor)
 
         // Opcional: recalcular saldos se necessário
         recalcularSaldoTotal(origem)
         recalcularSaldoTotal(destino)
-    }
+    }*/
 
     // Busca os agendamentos como Flow
     fun obterAgendamentosPendentesFlow(): Flow<List<TransferenciaAgendada>> {
@@ -759,12 +763,12 @@ class MainRepository(private val context: Context) {
 
     // Exclui o agendamento
     suspend fun excluirAgendamento(id: Int) {
-        contaSaldoDao.excluirAgendamento(id)
+        contaSaldoDao?.excluirAgendamento(id)
     }
 
     // Salva um novo agendamento
-    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada) {
-        contaSaldoDao.inserirAgendamento(agendamento)
+    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada): Long {
+        return contaSaldoDao?.inserirAgendamento(agendamento) ?: -1L
     }
 
     // Busca a lista de transferências para o Worker processar
@@ -776,4 +780,9 @@ class MainRepository(private val context: Context) {
     suspend fun marcarAgendamentoComoExecutado(id: Int) {
         contaSaldoDao.marcarAgendamentoComoExecutado(id)
     }
+
+    suspend fun limparBancoDeDadosCompleto() {
+        contaSaldoDao?.limparTodasAsTabelas()
+    }
+    fun obterAgendamentosAtivos() = dao?.obterAgendamentosAtivos() ?: flowOf(emptyList())
 }

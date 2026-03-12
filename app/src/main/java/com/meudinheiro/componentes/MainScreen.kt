@@ -3,51 +3,17 @@ package com.meudinheiro.componentes
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FabPosition
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,26 +35,13 @@ import com.meudinheiro.funcoes.EmptyStateSection
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.funcoes.gerarCorParaCategoria
 import com.meudinheiro.repository.MainRepository
-import com.meudinheiro.viewModel.ContaSaldoViewModel
-import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
-import com.meudinheiro.viewModel.DespesasViewModel
-import com.meudinheiro.viewModel.DespesasViewModelFactory
-import com.meudinheiro.viewModel.HomeViewModel
-import com.meudinheiro.viewModel.HomeViewModelFactory
-import com.meudinheiro.viewModel.InvestimentoViewModel
-import com.meudinheiro.viewModel.InvestimentoViewModelFactory
-import com.meudinheiro.viewModel.MetaViewModel
-import com.meudinheiro.viewModel.MetaViewModelFactory
-import com.meudinheiro.viewModel.OrcamentoViewModel
-import com.meudinheiro.viewModel.OrcamentoViewModelFactory
-import com.meudinheiro.viewModel.TransacaoViewModel
-import com.meudinheiro.viewModel.TransacaoViewModelFactory
+import com.meudinheiro.viewModel.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 
-// Cores Globais Premium
+// --- Cores Globais Premium ---
 val PremiumDarkBlue = Color(0xFF0D1B2A)
 val PremiumLightBlue = Color(0xFF1B263B)
 val TextWhite = Color(0xFFE0E1DD)
@@ -101,85 +54,79 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val parentScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // --- ViewModels ---
+    // ==========================================
+    // 1. INJEÇÃO DE DEPENDÊNCIAS E VIEWMODELS
+    // ==========================================
     val application = context.applicationContext as Application
-    val repository = remember { MainRepository(context) }
+    val repository = remember {
+        val db = AppDatabase.getDatabase(context)
+        MainRepository(context, db.contaSaldoDao())
+    }
+    val db = AppDatabase.getDatabase(context)
+
     val despVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(repository))
-    val contaVM: ContaSaldoViewModel =
-        viewModel(factory = ContaSaldoViewModelFactory(application, repository))
+    val contaVM: ContaSaldoViewModel = viewModel(factory = ContaSaldoViewModelFactory(application, repository))
     val homeVM: HomeViewModel = viewModel(factory = HomeViewModelFactory(userPrefs))
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
-    val db = AppDatabase.getDatabase(context)
-    val factory = InvestimentoViewModelFactory(db.investimentoDao())
-    val investimentoVM: InvestimentoViewModel = viewModel(factory = factory)
+    val investimentoVM: InvestimentoViewModel = viewModel(factory = InvestimentoViewModelFactory(db.investimentoDao()))
+    val transacaoVM: TransacaoViewModel = viewModel(factory = TransacaoViewModelFactory(db.transacaoDao()))
 
-    val transacaoVM: TransacaoViewModel = viewModel(
-        factory = TransacaoViewModelFactory(db.transacaoDao())
-    )
-
-    val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
-
-    var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
-    var showAddDespesaDialog by remember { mutableStateOf(false) }
-
-    val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
-
-    // CORREÇÃO 1: Usando 'by' para extrair o valor real do MutableState
-    val filtroAtivo = contaVM.filtroAtual
-
-    // --- Controle das Novas Abas ---
-    var mainTabSelecionada by remember { mutableIntStateOf(0) }
-    val mainTabs = listOf("Saldo", "Contas", "Cofrinhos", "Investimentos")
-
-    // --- Estados (Preferences & User) ---
+    // ==========================================
+    // 2. ESTADOS DE PREFERÊNCIAS E USUÁRIO
+    // ==========================================
     val daysAhead by userPrefs.notifDaysAheadFlow.collectAsState(initial = 3)
     val isPrivate by userPrefs.privateModeFlow.collectAsState(initial = false)
-
     val nomeState by homeVM.userName.collectAsState(initial = null)
     val fotoSalva by homeVM.userPhoto.collectAsState(initial = "")
     var emCadastro by remember { mutableStateOf(false) }
+
+    // ==========================================
+    // 3. ESTADOS DE CONTROLE DE TELA (UI)
+    // ==========================================
+    var mainTabSelecionada by remember { mutableIntStateOf(0) }
+    val mainTabs = remember { listOf("Saldo", "Contas", "Cofrinhos", "Investimentos") }
+    var selectedIndex by remember { mutableIntStateOf(-1) } // Controle das telas cheias sobrepostas
+
+    // Controles de Dialogs
+    var showAddDespesaDialog by remember { mutableStateOf(false) }
     var showAddOrcamentoDialog by remember { mutableStateOf(false) }
     var showRecorrenciaDialog by remember { mutableStateOf(false) }
+    var showInvestDialog by remember { mutableStateOf(false) }
+    var showTransferenciaDialog by remember { mutableStateOf(false) }
+    var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
 
-    // --- Estados de Dados Globais ---
+    // ==========================================
+    // 4. ESTADOS DE DADOS (FLUXOS DO BANCO)
+    // ==========================================
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
     val contaSelecionadaId by contaVM.contaSelecionadaId.observeAsState(null)
     val dashboardState by contaVM.dashboardState.collectAsState()
+    val resumo by contaVM.resumoFinanceiro.collectAsState()
+    val totalMetas by contaVM.totalPoupado.collectAsState()
+    val agendados by contaVM.agendamentosFiltrados.collectAsState()
 
     val mesAtual by despVM.mesSelecionado.collectAsState()
     val anoAtual by despVM.anoSelecionado.collectAsState()
-
-    // CORREÇÃO 2: Descomentado e renomeado para bater exatamente com a UI lá embaixo
-    // Forçamos o tipo <List<Despesa>> para evitar o erro de inferência "T"
     val despesasFiltradas by despVM.despesasFiltradas.collectAsState()
+    val saidasMesAnterior by despVM.getDespesaMesAnterior(mesAtual, anoAtual).collectAsState(initial = 0.0)
+
     val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
+    val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
+    val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
 
-    val totalMetas by contaVM.totalPoupado.collectAsState()
-    val resumo by contaVM.resumoFinanceiro.collectAsState()
+    val filtroAtivo = contaVM.filtroAtual
 
-    val saidasMesAnterior by despVM.getDespesaMesAnterior(mesAtual, anoAtual)
-        .collectAsState(initial = 0.0)
-
-    val parentScope = rememberCoroutineScope()
-
-    var showInvestDialog by remember { mutableStateOf(false) }
-    var showTransferenciaDialog by remember { mutableStateOf(false) }
-
-    var selectedIndex by remember { mutableStateOf(-1) }
-    fun onItemSelected(index: Int) {
-        selectedIndex = index
-    }
-
-    // --- Verificações de Inicialização ---
+    // ==========================================
+    // 5. VERIFICAÇÕES DE INICIALIZAÇÃO E SPLASH
+    // ==========================================
     if (nomeState == null) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White),
+            modifier = Modifier.fillMaxSize().background(Color.White),
             contentAlignment = Alignment.Center
         ) { CircularProgressIndicator(color = PremiumDarkBlue) }
         return
@@ -195,15 +142,14 @@ fun MainScreen(
         return
     }
 
-    // --- Lógica de Notificações ---
-    var notifCount by remember { mutableStateOf(0) }
+    // ==========================================
+    // 6. EFEITOS COLATERAIS (LAUNCHED EFFECTS)
+    // ==========================================
+    var notifCount by remember { mutableIntStateOf(0) }
     LaunchedEffect(daysAhead) {
-        notifCount = withContext(Dispatchers.IO) {
-            repository.contarPendencias(daysAhead, onlyCredit = false)
-        }
+        notifCount = withContext(Dispatchers.IO) { repository.contarPendencias(daysAhead, onlyCredit = false) }
     }
 
-    // --- LÓGICA DE SELEÇÃO DE CONTA ---
     LaunchedEffect(contas, filtroAtivo) {
         if (contas.isNotEmpty()) {
             val current = contaSelecionadaId
@@ -216,9 +162,7 @@ fun MainScreen(
     LaunchedEffect(contaSelecionadaId, filtroAtivo) {
         val idParaFiltro = contaSelecionadaId?.trim().orEmpty()
 
-        // O '.ordinal' transforma ESTE_MES em 0, MES_PASSADO em 1 e TOTAL em 2
         despVM.setFiltro(filtroAtivo.ordinal)
-
         despVM.setContaSelecionada(idParaFiltro)
 
         if (filtroAtivo == FiltroPeriodo.ESTE_MES) {
@@ -228,7 +172,9 @@ fun MainScreen(
         contaVM.carregarSaldosGlobais()
     }
 
-    // --- UI Principal ---
+    // ==========================================
+    // 7. CONSTRUÇÃO DA INTERFACE PRINCIPAL
+    // ==========================================
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -237,11 +183,10 @@ fun MainScreen(
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                NavigationSection(selectedIndex = selectedIndex, onItemSelected = ::onItemSelected)
+                NavigationSection(selectedIndex = selectedIndex, onItemSelected = { selectedIndex = it })
             },
             snackbarHost = {
                 SnackbarHost(hostState = snackbarHostState) { data ->
-                    // O componente visual Snackbar SÓ PODE ser chamado aqui!
                     Snackbar(
                         modifier = Modifier
                             .padding(12.dp)
@@ -251,17 +196,14 @@ fun MainScreen(
                         actionContentColor = Color(0xFF69F0AE),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text(data.visuals.message) // Esse Text está seguro aqui dentro
+                        Text(data.visuals.message)
                     }
                 }
             },
-
             floatingActionButton = {
-                // Agora o FAB aparece nas abas: Home (0), Despesas (1) e Investimentos (3)
                 if (mainTabSelecionada in listOf(0, 1, 3)) {
                     SpeedDialFAB(
                         onNovoGasto = {
-                            // Feedback tátil premium do S25
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             showAddDespesaDialog = true
                         },
@@ -283,8 +225,7 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-
-                // 1. HEADER (Fixo no topo da tela)
+                // --- HEADER ---
                 HeaderSection(
                     nome = nome,
                     fotoUri = fotoSalva.takeIf { it.isNotBlank() },
@@ -303,23 +244,24 @@ fun MainScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                /*                BluMacawInfiniteCard(
-                                    nomeUsuario = nome ?: "Viajante",
-                                    saldoTotal = dashboardState.receitaGlobal - dashboardState.despesaGlobal, // O cálculo do seu saldo
-                                    isPrivate = isPrivate
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))*/
+                // --- CARDS DE RESUMO FIXOS ---
+                ResumoAgendamentosCard(
+                    agendamentos = agendados,
+                    onCancelar = { id -> contaVM.cancelarAgendamento(id, context) },
+                    isPrivate = isPrivate
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 NotificacaoRendimentoCard(
                     rendimentoNoMes = rendimentoTotal,
                     isPrivate = isPrivate
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
-                // 2. FILTRO GLOBAL (Fixo fora das abas)
+
+                // --- FILTRO GLOBAL ---
                 Box(modifier = Modifier.padding(horizontal = 8.dp)) {
-                    // Cuidado aqui: contaVM.filtroAtual é o State completo.
-                    // Se o SeletorPeriodo esperar o valor numérico/enum, passe 'filtroAtivo'
-                    // Mas se ele esperar o State em si, mantenha como está.
                     SeletorPeriodo(
                         filtroSelecionado = contaVM.filtroAtual,
                         onFiltroSelected = { contaVM.alterarFiltro(it) }
@@ -328,7 +270,7 @@ fun MainScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 3. SELETOR DE ABAS (Estilo Folder)
+                // --- TABS (ABAS) ---
                 ScrollableTabRow(
                     selectedTabIndex = mainTabSelecionada,
                     containerColor = Color.Transparent,
@@ -360,14 +302,9 @@ fun MainScreen(
                     }
                 }
 
-                // 4. O CORPO DA PASTA
+                // --- CORPO DA ABA SELECIONADA ---
                 val folderShape = if (mainTabSelecionada == 0) {
-                    RoundedCornerShape(
-                        topStart = 0.dp,
-                        topEnd = 24.dp,
-                        bottomStart = 24.dp,
-                        bottomEnd = 24.dp
-                    )
+                    RoundedCornerShape(topStart = 0.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
                 } else {
                     RoundedCornerShape(24.dp)
                 }
@@ -379,22 +316,19 @@ fun MainScreen(
                         .clip(folderShape)
                         .background(PremiumLightBlue)
                 ) {
-
                     val dadosGrafico = remember(despesasFiltradas) {
-                        despesasFiltradas.groupBy { it.categoria }
-                            .map { (categoria, despesasDaCategoria) ->
-                                PieChartData(
-                                    categoria = categoria,
-                                    valor = despesasDaCategoria.sumOf { it.valor },
-                                    cor = gerarCorParaCategoria(categoria)
-                                )
-                            }
+                        despesasFiltradas.groupBy { it.categoria }.map { (categoria, despesasDaCategoria) ->
+                            PieChartData(
+                                categoria = categoria,
+                                valor = despesasDaCategoria.sumOf { it.valor },
+                                cor = gerarCorParaCategoria(categoria)
+                            )
+                        }
                     }
 
-                    // --- CONTEÚDO DINÂMICO DAS ABAS ---
                     when (mainTabSelecionada) {
                         0 -> {
-                            // --- ABA 0: SALDO (Apenas Gráfico e Resumo) ---
+                            // --- ABA 0: SALDO ---
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
@@ -409,19 +343,13 @@ fun MainScreen(
                                         dadosGrafico = dadosGrafico
                                     )
                                 }
-
                                 item {
                                     if (dadosGrafico.isNotEmpty()) {
-                                        CompactCategoryGrid(
-                                            dados = dadosGrafico,
-                                            isPrivate = isPrivate
-                                        )
+                                        CompactCategoryGrid(dados = dadosGrafico, isPrivate = isPrivate)
                                     } else {
                                         Text(
-                                            "Nenhum gasto neste período",
-                                            modifier = Modifier
-                                                .padding(16.dp)
-                                                .fillMaxWidth(),
+                                            text = "Nenhum gasto neste período",
+                                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
                                             color = Color.White.copy(0.3f),
                                             textAlign = TextAlign.Center
                                         )
@@ -431,11 +359,12 @@ fun MainScreen(
                         }
 
                         1 -> {
-                            // --- ABA 1: CONTAS (Operacional) ---
+                            // --- ABA 1: CONTAS E DESPESAS ---
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
                             ) {
+                                // 1. Carrossel de Contas
                                 item {
                                     if (contas.isNotEmpty()) {
                                         key(contaSelecionadaId, filtroAtivo) {
@@ -447,34 +376,16 @@ fun MainScreen(
                                                     contaVM.removerContaSaldo(conta.id)
                                                     contaVM.carregarSaldosGlobais()
                                                 },
-                                                onContaSelecionada = { novaContaId ->
-                                                    contaVM.selecionarConta(
-                                                        novaContaId
-                                                    )
-                                                },
+                                                onContaSelecionada = { novaContaId -> contaVM.selecionarConta(novaContaId) },
                                                 onAtualizar = {},
-                                                getReceitaConta = { id ->
-                                                    contaVM.obterReceitaPorConta(
-                                                        id
-                                                    )
-                                                },
-                                                getDespesaConta = { id ->
-                                                    contaVM.obterDespesaPorConta(
-                                                        id
-                                                    )
-                                                }
+                                                getReceitaConta = { id -> contaVM.obterReceitaPorConta(id) },
+                                                getDespesaConta = { id -> contaVM.obterDespesaPorConta(id) }
                                             )
-                                            TransacoesRecentesSection(
-                                                transacoes = listaTransacoes,
-                                                isPrivate = isPrivate
-                                            )
-
+                                            TransacoesRecentesSection(transacoes = listaTransacoes, isPrivate = isPrivate)
                                         }
                                     } else {
                                         Text(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(32.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(32.dp),
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = TextWhite.copy(alpha = 0.5f),
@@ -484,16 +395,12 @@ fun MainScreen(
                                     }
                                 }
 
-
+                                // 2. Botões de Ação Rápida
                                 item {
                                     Box(modifier = Modifier.padding(top = 8.dp)) {
                                         ActionButtonRow(
                                             categorias = repository.categorias.map { it.title },
-                                            getPicCategoria = { nomeCategoria ->
-                                                repository.getPicCategoria(
-                                                    nomeCategoria
-                                                )
-                                            },
+                                            getPicCategoria = { nomeCategoria -> repository.getPicCategoria(nomeCategoria) },
                                             contaSelecionada = contaSelecionadaId.orEmpty(),
                                             viewModel = contaVM,
                                             onConfigClick = onOpenAvisos
@@ -501,16 +408,12 @@ fun MainScreen(
                                     }
                                 }
 
+                                // 3. Cabeçalho Orçamentos
                                 item {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(
-                                                start = 16.dp,
-                                                end = 8.dp,
-                                                top = 16.dp,
-                                                bottom = 8.dp
-                                            ),
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -522,28 +425,16 @@ fun MainScreen(
                                         )
                                         TextButton(
                                             onClick = { showAddOrcamentoDialog = true },
-                                            contentPadding = PaddingValues(
-                                                horizontal = 12.dp,
-                                                vertical = 4.dp
-                                            )
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                         ) {
-                                            Icon(
-                                                Icons.Default.Add,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp),
-                                                tint = Color(0xFF69F0AE)
-                                            )
+                                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp), tint = Color(0xFF69F0AE))
                                             Spacer(Modifier.width(4.dp))
-                                            Text(
-                                                "Configurar",
-                                                color = Color(0xFF69F0AE),
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
+                                            Text("Configurar", color = Color(0xFF69F0AE), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
 
+                                // 4. Grid de Orçamentos
                                 item {
                                     val gruposDeQuatro = orcamentosComProgresso.chunked(4)
                                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -554,19 +445,11 @@ fun MainScreen(
                                             ) {
                                                 linhaDeOrcamentos.forEach { orcamento ->
                                                     Box(modifier = Modifier.weight(1f)) {
-                                                        OrcamentoCard(
-                                                            item = orcamento,
-                                                            onClick = {
-                                                                orcamentoSelecionado = orcamento
-                                                            })
+                                                        OrcamentoCard(item = orcamento, onClick = { orcamentoSelecionado = orcamento })
                                                     }
                                                 }
                                                 repeat(4 - linhaDeOrcamentos.size) {
-                                                    Spacer(
-                                                        modifier = Modifier.weight(
-                                                            1f
-                                                        )
-                                                    )
+                                                    Spacer(modifier = Modifier.weight(1f))
                                                 }
                                             }
                                             Spacer(modifier = Modifier.height(8.dp))
@@ -574,22 +457,10 @@ fun MainScreen(
                                     }
                                 }
 
+                                // 5. Seletor de Meses
                                 item {
                                     val meses = remember {
-                                        listOf(
-                                            "Janeiro",
-                                            "Fevereiro",
-                                            "Março",
-                                            "Abril",
-                                            "Maio",
-                                            "Junho",
-                                            "Julho",
-                                            "Agosto",
-                                            "Setembro",
-                                            "Outubro",
-                                            "Novembro",
-                                            "Dezembro"
-                                        )
+                                        listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
                                     }
                                     Row(
                                         modifier = Modifier
@@ -599,36 +470,23 @@ fun MainScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         IconButton(onClick = { despVM.mesAnterior() }) {
-                                            Icon(
-                                                Icons.Rounded.ChevronLeft,
-                                                "Anterior",
-                                                tint = TextWhite
-                                            )
+                                            Icon(Icons.Rounded.ChevronLeft, "Anterior", tint = TextWhite)
                                         }
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
                                                 text = meses.getOrElse(mesAtual) { "" },
-                                                style = MaterialTheme.typography.titleMedium.copy(
-                                                    fontWeight = FontWeight.Bold
-                                                ),
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                 color = TextWhite
                                             )
-                                            Text(
-                                                text = "$anoAtual",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = TextWhite.copy(alpha = 0.6f)
-                                            )
+                                            Text(text = "$anoAtual", style = MaterialTheme.typography.labelSmall, color = TextWhite.copy(alpha = 0.6f))
                                         }
                                         IconButton(onClick = { despVM.proximoMes() }) {
-                                            Icon(
-                                                Icons.Rounded.ChevronRight,
-                                                "Próximo",
-                                                tint = TextWhite
-                                            )
+                                            Icon(Icons.Rounded.ChevronRight, "Próximo", tint = TextWhite)
                                         }
                                     }
                                 }
 
+                                // 6. Lista de Despesas
                                 if (despesasFiltradas.isEmpty()) {
                                     item {
                                         EmptyStateSection(
@@ -644,11 +502,7 @@ fun MainScreen(
                                             item = item,
                                             isPrivate = isPrivate,
                                             onRemover = { despesa -> contaVM.removerDespesa(despesa) },
-                                            onTogglePago = { itemClicado ->
-                                                contaVM.alternarStatusDespesa(
-                                                    itemClicado
-                                                )
-                                            }
+                                            onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) }
                                         )
                                     }
                                 }
@@ -673,17 +527,19 @@ fun MainScreen(
                 }
             }
         }
+
+        // ==========================================
+        // 8. RENDERIZAÇÃO DE DIALOGS
+        // ==========================================
         if (showTransferenciaDialog) {
             TransferenciaDialog(
                 contas = contas,
-                contaOrigemInicial = contaSelecionadaId.orEmpty(), // Sugere a conta que está focada no carrossel
+                contaOrigemInicial = contaSelecionadaId.orEmpty(),
                 onDismiss = { showTransferenciaDialog = false },
                 onConfirmar = { origem, destino, valor, dataAgendada ->
                     if (dataAgendada == null) {
-                        // TRANSFERÊNCIA IMEDIATA
                         contaVM.transferirValor(origem, destino, valor, context)
                     } else {
-                        // TRANSFERÊNCIA AGENDADA (WorkManager)
                         contaVM.agendarTransferencia(origem, destino, valor, dataAgendada, context)
                     }
                     showTransferenciaDialog = false
@@ -711,27 +567,11 @@ fun MainScreen(
                 onDismiss = { showAddDespesaDialog = false }
             )
         }
-        /*if (showGastoDialog) {
-            AddGastoDialog(
-                contas = contas, // Suas contas do banco
-                onDismiss = { showGastoDialog = false },
-                onSalvar = { desc, valor, banco, cat, corHex ->
-                    // Chama o ViewModel que criamos
-                    transacaoVM.adicionarGasto(desc, valor, banco, cat, corHex)
 
-                    // DICA: Atualizar o saldo da conta também!
-                    // contaVM.debitarValor(banco, valor)
-
-                    showGastoDialog = false
-                }
-            )
-        }*/
         if (showRecorrenciaDialog) {
-            GerenciarRecorrenciaDialog(
-                viewModel = contaVM,
-                onDismiss = { showRecorrenciaDialog = false }
-            )
+            GerenciarRecorrenciaDialog(viewModel = contaVM, onDismiss = { showRecorrenciaDialog = false })
         }
+
         orcamentoSelecionado?.let { orcamento ->
             DetalheOrcamentoBottomSheet(
                 item = orcamento,
@@ -740,38 +580,33 @@ fun MainScreen(
                     orcamentoVM.excluirOrcamento(orcamento.categoria)
                     orcamentoSelecionado = null
                 },
-                onEditar = { novoValor ->
-                    orcamentoVM.atualizarOrcamento(orcamento.categoria, novoValor)
-                }
+                onEditar = { novoValor -> orcamentoVM.atualizarOrcamento(orcamento.categoria, novoValor) }
             )
         }
 
         if (showAddOrcamentoDialog) {
             AddOrcamentoDialog(
                 categoriasDisponiveis = repository.categorias.map { it.title },
-                onSalvar = { categoria, valor ->
-                    orcamentoVM.salvarOrcamento(categoria, valor)
-                },
+                onSalvar = { categoria, valor -> orcamentoVM.salvarOrcamento(categoria, valor) },
                 onDismiss = { showAddOrcamentoDialog = false }
             )
         }
 
-        if (selectedIndex == 0) {
-            ContaBancaria(
+        // ==========================================
+        // 9. NAVEGAÇÃO DE TELAS SOBREPOSTAS (Z-Index)
+        // ==========================================
+        when (selectedIndex) {
+            0 -> ContaBancaria(
                 viewModelFactory = ContaSaldoViewModelFactory(application, repository),
                 onClose = { selectedIndex = -1 }
             )
-        }
-        if (selectedIndex == 1) {
-            ExtratoScreen(
+            1 -> ExtratoScreen(
                 despesasVM = despVM,
                 categorias = repository.categorias.map { it.title },
                 isPrivate = isPrivate,
                 onBack = { selectedIndex = -1 }
             )
-        }
-        if (selectedIndex == 2) {
-            MetasScreen(
+            2 -> MetasScreen(
                 viewModel = metaVM,
                 isPrivate = isPrivate,
                 onBack = { selectedIndex = -1 }

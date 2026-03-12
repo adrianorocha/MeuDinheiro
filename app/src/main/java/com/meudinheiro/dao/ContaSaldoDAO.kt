@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import kotlinx.coroutines.flow.Flow
@@ -45,12 +46,18 @@ interface ContaSaldoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(contas: List<ContaSaldo>)
 
-    @Query("UPDATE contasaldo SET saldo = saldo - :valor WHERE conta = :contaId")
-    suspend fun debitar(contaId: String, valor: Double)
+    @Transaction // ESSENCIAL: Ou faz tudo, ou não faz nada!
+    suspend fun transferir(origem: String, destino: String, valor: Double): Boolean {
+        val linhasDebito = debitar(origem, valor)
+        val linhasCredito = creditar(destino, valor)
 
-    @Query("UPDATE contasaldo SET saldo = saldo + :valor WHERE conta = :contaId")
-    suspend fun creditar(contaId: String, valor: Double)
-
+        // A última linha DEVE ser a lógica que resulta em true/false
+        return (linhasDebito > 0 && linhasCredito > 0)
+    }
+    @Query("UPDATE contasaldo SET saldo = COALESCE(saldo, 0.0) - :valor WHERE TRIM(conta) = TRIM(:contaId)")
+    suspend fun debitar(contaId: String, valor: Double): Int
+    @Query("UPDATE contasaldo SET saldo = COALESCE(saldo, 0.0) + :valor WHERE TRIM(conta) = TRIM(:contaId)")
+    suspend fun creditar(contaId: String, valor: Double): Int
     // Retorna a lista reativa de agendamentos futuros
     @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 ORDER BY dataAgendada ASC")
     fun obterAgendamentosPendentesFlow(): Flow<List<TransferenciaAgendada>>
@@ -61,7 +68,7 @@ interface ContaSaldoDao {
 
     // Insere o agendamento no banco
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada)
+    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada): Long
 
     @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 AND dataAgendada <= :hoje")
     suspend fun obterAgendamentosPendentesSync(hoje: Long): List<TransferenciaAgendada>
@@ -69,4 +76,30 @@ interface ContaSaldoDao {
     // Aproveite e garanta que você tem esta aqui também para o Worker marcar como feito:
     @Query("UPDATE transferencias_agendadas SET executada = 1 WHERE id = :id")
     suspend fun marcarAgendamentoComoExecutado(id: Int)
+
+    @Transaction
+    suspend fun limparTodasAsTabelas() {
+        apagarAgendamentos()
+        apagarContas()
+        apagarCategorias()
+        apagarDespesas()
+        // Adicione outras tabelas se houver
+    }
+
+    @Query("DELETE FROM transferencias_agendadas")
+    suspend fun apagarAgendamentos()
+
+    @Query("DELETE FROM contasaldo") // Use o nome exato da sua tabela de contas
+    suspend fun apagarContas()
+
+    @Query("DELETE FROM categorias")
+    suspend fun apagarCategorias()
+
+    @Query("DELETE FROM despesas")
+    suspend fun apagarDespesas()
+
+    @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 ORDER BY dataAgendada ASC")
+    fun obterAgendamentosAtivos(): Flow<List<TransferenciaAgendada>>
+
+
 }

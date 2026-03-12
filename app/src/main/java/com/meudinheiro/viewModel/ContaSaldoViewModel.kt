@@ -12,6 +12,7 @@ import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.asFlow
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.work.Constraints
@@ -28,20 +29,23 @@ import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.data.TransferenciaAgendada
 import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.worker.TransferenciaWorker
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
 import java.util.concurrent.TimeUnit
-import kotlin.collections.emptyList
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -52,56 +56,104 @@ data class DashboardFinanceiroState(
     val dadosPorConta: Map<String, Pair<Double, Double>> = emptyMap()
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ContaSaldoViewModel(
     application: Application,
     private val repository: MainRepository
 ) : AndroidViewModel(application) {
 
-    // Lista de bancos para Spinners/Dialogs
+    // ==========================================
+    // 1. ESTADOS GLOBAIS DA UI
+    // ==========================================
     val bancos = mutableStateOf<List<BancoDomain>>(emptyList())
 
-    // Estado principal reativo (Flow)
     private val _dashboardState = MutableStateFlow(DashboardFinanceiroState())
     val dashboardState = _dashboardState.asStateFlow()
 
-    // Propriedade computada para o Card de Resumo Geral (Patrimônio Líquido)
+    // Propriedade computada para o Card de Resumo Geral
     val saldoPatrimonial: Double
         get() {
             val estado = _dashboardState.value
             return estado.dadosPorConta.values.sumOf { (receita, despesa) -> receita - despesa }
         }
 
-    // Seleção de conta (para navegação ou detalhes)
+    // Seleção de conta (LiveData para manter compatibilidade com sua MainScreen)
     private val _contaSelecionadaId = MutableLiveData<String?>(null)
     val contaSelecionadaId: LiveData<String?> = _contaSelecionadaId
 
-    // LiveData direto do Room para a lista de Contas
     val contaSaldo: LiveData<List<ContaSaldoDomain>> = repository.obterContaSaldo().asLiveData(
         viewModelScope.coroutineContext
     )
 
+    var filtroAtual by mutableStateOf(FiltroPeriodo.ESTE_MES)
+        private set
+
+    // ==========================================
+    // 2. INICIALIZAÇÃO
+    // ==========================================
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.processarRecorrencias() // Checa assinaturas ao abrir
+            repository.processarRecorrencias()
             carregarSaldosGlobais()
         }
-
         bancos.value = repository.bancos
-
         carregarDadosIniciaisESincronizarWidget()
     }
 
-    // --- CARREGAMENTO DE DADOS (GLOBAL / ACUMULADO) ---
-    val agendamentosAtivos = repository.obterAgendamentosPendentesFlow()
+    // ==========================================
+    // 3. FLUXOS REATIVOS (FLOWS) DE DADOS
+    // ==========================================
+    val agendamentosAtivos = repository.obterAgendamentosAtivos()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    // CORREÇÃO: Transformamos o LiveData em Flow para usar no combine com segurança
+    val agendamentosFiltrados = combine(
+        _contaSelecionadaId.asFlow(),
+        repository.obterAgendamentosAtivos()
+    ) { contaId: String?, agendamentos: List<TransferenciaAgendada> ->
+        if (contaId.isNullOrEmpty()) {
+            emptyList()
+        } else {
+            // Usamos trim() para evitar que um espaço invisível quebre a comparação
+            agendamentos.filter { it.contaOrigem.trim() == contaId.trim() }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val totalPoupado = repository.getTotalPoupado()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val resumoFinanceiro = snapshotFlow { filtroAtual }
+        .mapLatest { filtro ->
+            val (inicio, fim) = obterIntervalo(filtro)
+            if (inicio != null && fim != null) {
+                repository.obterResumoPorPeriodo(Date(inicio), Date(fim))
+            } else {
+                repository.obterResumoGlobal()
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = ResumoDto()
+        )
+
+    private val _recorrencias = MutableStateFlow<List<DespesaFixa>>(emptyList())
+    val recorrencias = _recorrencias.asStateFlow()
+
+    // ==========================================
+    // 4. CARREGAMENTO E CÁLCULOS
+    // ==========================================
     fun carregarSaldosGlobais() {
         viewModelScope.launch(Dispatchers.IO) {
             val listaResumoGlobal = repository.obterResumoGlobalPorConta()
-
             var recAcumulada = 0.0
             var despAcumulada = 0.0
             val mapaContas = mutableMapOf<String, Pair<Double, Double>>()
@@ -109,14 +161,9 @@ class ContaSaldoViewModel(
             listaResumoGlobal.forEach { dto ->
                 val valor = dto.valorTotal
 
-                // 1. Soma para o Header (Total Geral Acumulado)
-                if (dto.tipo == TipoDespesa.CREDITO) {
-                    recAcumulada += valor
-                } else {
-                    despAcumulada += valor
-                }
+                if (dto.tipo == TipoDespesa.CREDITO) recAcumulada += valor
+                else despAcumulada += valor
 
-                // 2. Soma para os Cards (Total por Conta Acumulado)
                 val (recConta, despConta) = mapaContas.getOrDefault(dto.conta, 0.0 to 0.0)
                 if (dto.tipo == TipoDespesa.CREDITO) {
                     mapaContas[dto.conta] = (recConta + valor) to despConta
@@ -135,12 +182,9 @@ class ContaSaldoViewModel(
         }
     }
 
-    fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
-        carregarSaldosGlobais()
-    }
-
-    // --- AÇÕES DE DESPESAS ---
-
+    // ==========================================
+    // 5. TRANSAÇÕES E DESPESAS (CRUD)
+    // ==========================================
     fun adicionarDespesa(despesa: Despesa) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.inserirDespesa(despesa)
@@ -152,8 +196,7 @@ class ContaSaldoViewModel(
     fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val valorTotal = despesa.valor
-            val formatador =
-                java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
+            val formatador = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
             val textoTotal = formatador.format(valorTotal)
 
             val valorParcelaBase = floor((valorTotal / numeroParcelas) * 100) / 100.0
@@ -165,8 +208,7 @@ class ContaSaldoViewModel(
             calendar.timeInMillis = dataSelecionada
 
             for (i in 1..numeroParcelas) {
-                val valorFinal =
-                    if (i == numeroParcelas) valorParcelaBase + diferenca else valorParcelaBase
+                val valorFinal = if (i == numeroParcelas) valorParcelaBase + diferenca else valorParcelaBase
                 val novaDescricao = "${despesa.descricao} ($i/$numeroParcelas) • Total: $textoTotal"
 
                 val novaDespesa = despesa.copy(
@@ -175,11 +217,9 @@ class ContaSaldoViewModel(
                     valor = valorFinal,
                     data = calendar.time
                 )
-
                 repository.inserirDespesa(novaDespesa)
                 calendar.add(Calendar.MONTH, 1)
             }
-
             repository.recalcularSaldoTotal(despesa.conta)
             carregarSaldosGlobais()
         }
@@ -201,32 +241,6 @@ class ContaSaldoViewModel(
         }
     }
 
-    // --- GETTERS E AUXILIARES DE CONTA ---
-
-    fun selecionarConta(contaId: String) {
-        _contaSelecionadaId.postValue(contaId) // postValue é mais seguro se chamado de threads IO por acidente
-    }
-
-    fun adicionarContaSaldo(contaSaldo: ContaSaldo) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.inserirContaSaldo(contaSaldo)
-        }
-    }
-
-    fun removerContaSaldo(id: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.excluirConta(id)
-        }
-    }
-
-    fun obterReceitaPorConta(conta: String): Double {
-        return _dashboardState.value.dadosPorConta[conta]?.first ?: 0.0
-    }
-
-    fun obterDespesaPorConta(conta: String): Double {
-        return _dashboardState.value.dadosPorConta[conta]?.second ?: 0.0
-    }
-
     fun salvarDespesaRecorrente(despesaBase: Despesa, diaVencimento: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             val novaFixa = DespesaFixa(
@@ -244,13 +258,9 @@ class ContaSaldoViewModel(
         }
     }
 
-    private val _recorrencias = MutableStateFlow<List<DespesaFixa>>(emptyList())
-    val recorrencias = _recorrencias.asStateFlow()
-
     fun carregarRecorrencias() {
         viewModelScope.launch(Dispatchers.IO) {
-            val lista = repository.obterTodasRecorrencias()
-            _recorrencias.value = lista
+            _recorrencias.value = repository.obterTodasRecorrencias()
         }
     }
 
@@ -261,38 +271,100 @@ class ContaSaldoViewModel(
         }
     }
 
-    val totalPoupado = repository.getTotalPoupado()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
-    var filtroAtual by mutableStateOf(FiltroPeriodo.ESTE_MES)
-        private set
-
-    // REVISADO: Substituído o let aninhado por um if/else seguro e limpo
-    val resumoFinanceiro = snapshotFlow { filtroAtual }
-        .mapLatest { filtro ->
-            val (inicio, fim) = obterIntervalo(filtro)
-            if (inicio != null && fim != null) {
-                repository.obterResumoPorPeriodo(Date(inicio), Date(fim))
-            } else {
-                repository.obterResumoGlobal()
-            }
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = ResumoDto()
-        )
-
-    fun alterarFiltro(novoFiltro: FiltroPeriodo) {
-        filtroAtual = novoFiltro
+    // ==========================================
+    // 6. GESTÃO DE CONTAS E TRANSFERÊNCIAS
+    // ==========================================
+    fun selecionarConta(contaId: String) {
+        _contaSelecionadaId.postValue(contaId)
     }
 
-    fun atualizarInformacoesWidget(
-        context: Context,
-        saldo: Double,
-        metaNome: String,
-        metaId: String
-    ) {
+    fun adicionarContaSaldo(contaSaldo: ContaSaldo) {
+        viewModelScope.launch(Dispatchers.IO) { repository.inserirContaSaldo(contaSaldo) }
+    }
+
+    fun removerContaSaldo(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) { repository.excluirConta(id) }
+    }
+
+    fun obterReceitaPorConta(conta: String): Double = _dashboardState.value.dadosPorConta[conta]?.first ?: 0.0
+    fun obterDespesaPorConta(conta: String): Double = _dashboardState.value.dadosPorConta[conta]?.second ?: 0.0
+    fun alterarFiltro(novoFiltro: FiltroPeriodo) { filtroAtual = novoFiltro }
+
+    fun transferirValor(contaOrigem: String, contaDestino: String, valor: Double, context: Context) {
+        if (contaOrigem == contaDestino) {
+            Toast.makeText(context, "Contas iguais!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.transferirEntreContas(contaOrigem, contaDestino, valor)
+                carregarSaldosGlobais()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Transferência realizada com sucesso!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Erro na transferência: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+                Log.e("Transferencia", "Erro: ${e.message}")
+            }
+        }
+    }
+
+    fun agendarTransferencia(origem: String, destino: String, valor: Double, data: Long, context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val agendamento = TransferenciaAgendada(
+                    contaOrigem = origem,
+                    contaDestino = destino,
+                    valor = valor,
+                    dataAgendada = data,
+                    executada = false
+                )
+
+                val idGerado = repository.inserirAgendamento(agendamento)
+                val delay = (data - System.currentTimeMillis()).coerceAtLeast(0)
+
+                val constraints = Constraints.Builder().setRequiresBatteryNotLow(true).build()
+
+                val tarefa = OneTimeWorkRequestBuilder<TransferenciaWorker>()
+                    .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+                    .addTag("transferencia_$idGerado")
+                    .setConstraints(constraints)
+                    .build()
+
+                WorkManager.getInstance(context).enqueue(tarefa)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Transferência agendada com sucesso!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("AgendamentoWorker", "Erro ao agendar: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Erro ao tentar agendar.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun cancelarAgendamento(id: Int, context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.excluirAgendamento(id)
+                WorkManager.getInstance(context).cancelAllWorkByTag("transferencia_$id")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Agendamento cancelado com sucesso", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("ErroCancelamento", "Falha ao remover agendamento: ${e.message}")
+            }
+        }
+    }
+
+    // ==========================================
+    // 7. WIDGETS
+    // ==========================================
+    private fun atualizarInformacoesWidget(context: Context, saldo: Double, metaNome: String, metaId: String) {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         prefs.edit().apply {
             putFloat("saldo_atual", saldo.toFloat())
@@ -300,19 +372,14 @@ class ContaSaldoViewModel(
             putString("id_meta", metaId)
             apply()
         }
-
-        viewModelScope.launch {
-            SaldoWidget().updateAll(context)
-        }
+        viewModelScope.launch { SaldoWidget().updateAll(context) }
     }
 
     private fun carregarDadosIniciaisESincronizarWidget() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val resumo = repository.obterResumoGlobal()
-                // REVISADO: Removido o elvis operator redundante (assumindo primitivos no DTO)
                 val saldoTotal = resumo.entradas - resumo.saidas
-
                 val metaDestaque = repository.obterTodasAsMetasSync().firstOrNull()
 
                 atualizarInformacoesWidget(
@@ -326,54 +393,9 @@ class ContaSaldoViewModel(
             }
         }
     }
-    fun transferirValor(
-        contaOrigem: String,
-        contaDestino: String,
-        valor: Double,
-        context: Context
-    ) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // Chamamos o repositório em vez do dao inexistente
-                repository.transferirEntreContas(contaOrigem, contaDestino, valor)
 
-                // Atualiza o estado global para refletir nos cards e no dashboard
-                carregarSaldosGlobais()
-
-                // Feedback visual (volta para a Main Thread para mostrar o Toast)
-                launch(Dispatchers.Main) {
-                    Toast.makeText(context, "Transferência realizada com sucesso!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                launch(Dispatchers.Main) {
-                    Toast.makeText(context, "Erro na transferência: ${e.message}", Toast.LENGTH_LONG).show()
-                    Log.e("Transferencia", "Erro: ${e.message}")
-                }
-            }
-        }
+    fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
+        carregarSaldosGlobais()
     }
 
-    fun agendarTransferencia(origem: String, destino: String, valor: Double, data: Long, context: Context) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // 1. Primeiro você salva no banco (como já fizemos)
-            val idGerado = repository.inserirAgendamento(...)
-
-            // 2. Agora você "chama" o Worker através do WorkManager
-            val delay = data - System.currentTimeMillis()
-
-            // Criamos uma tarefa única (OneTimeWorkRequest)
-            val tarefa = OneTimeWorkRequestBuilder<TransferenciaWorker>()
-                .setInitialDelay(delay, TimeUnit.MILLISECONDS) // Espera até a data escolhida
-                .addTag("transferencia_$idGerado") // Tag para podermos cancelar depois
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiresBatteryNotLow(true) // Só roda se tiver bateria (opcional)
-                        .build()
-                )
-                .build()
-
-            // Entrega para o sistema gerenciar
-            WorkManager.getInstance(context).enqueue(tarefa)
-        }
-    }
 }
