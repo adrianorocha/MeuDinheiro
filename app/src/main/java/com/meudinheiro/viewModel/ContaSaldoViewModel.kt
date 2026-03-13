@@ -27,6 +27,7 @@ import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.PatrimonioHistorico
 import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.TransferenciaAgendada
@@ -36,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
@@ -43,8 +45,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -98,6 +102,7 @@ class ContaSaldoViewModel(
         }
         bancos.value = repository.bancos
         carregarDadosIniciaisESincronizarWidget()
+        realizarSnapshotPatrimonialAutomatico()
     }
 
     // ==========================================
@@ -397,5 +402,36 @@ class ContaSaldoViewModel(
     fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
         carregarSaldosGlobais()
     }
+    // Dentro do seu ContaSaldoViewModel
+    val historicoPatrimonial: StateFlow<List<PatrimonioHistorico>> = repository
+        .obterHistoricoPatrimonial() // Isso precisa retornar Flow<List<...>>
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+    fun realizarSnapshotPatrimonialAutomatico() {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Somar o saldo de todas as contas atuais
+            val contasAtuais = repository.obterTodasStatic() // Aquela função que já temos no DAO
+            val totalPatrimonio = contasAtuais.sumOf { it.saldo }
 
-}
+            // 2. Obter o nome do mês atual (ex: "MAR")
+            val sdf = SimpleDateFormat("MMM", Locale("pt", "BR"))
+            val mesAtual = sdf.format(Date()).uppercase().replace(".", "")
+
+            // 3. Verificar se já existe um registo para este mês para não duplicar
+            val historicoAtual = historicoPatrimonial.value
+            val jaRegistadoEsteMes = historicoAtual.any { it.mesReferencia == mesAtual }
+
+            if (!jaRegistadoEsteMes && totalPatrimonio > 0) {
+                val novoSnapshot = PatrimonioHistorico(
+                    dataMillis = System.currentTimeMillis(),
+                    valorTotal = totalPatrimonio,
+                    mesReferencia = mesAtual
+                )
+                repository.salvarSnapshotPatrimonial(novoSnapshot)
+                Log.d("PATRIMONIO", "Snapshot de $mesAtual guardado: R$ $totalPatrimonio")
+            }
+        }
+    }}

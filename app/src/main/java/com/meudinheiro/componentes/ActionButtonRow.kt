@@ -118,6 +118,9 @@ fun ActionButtonRow(
     var exibirDeposito by remember { mutableStateOf(false) }
     var exibirAssinaturas by remember { mutableStateOf(false) }
 
+    var valorEscaneado by remember { mutableStateOf<Double?>(null) }
+    var codigoEscaneado by remember { mutableStateOf("") }
+
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
@@ -181,7 +184,16 @@ fun ActionButtonRow(
             getPicCategoria = getPicCategoria,
             viewModel = viewModel,
             parentScope = parentScope,
-            onDismiss = { exibirFormulario = false }
+            // --- NOVOS PARÂMETROS ---
+            valorInicial = valorEscaneado ?: 0.0,
+            codigoBarras = codigoEscaneado,
+            // -------------------------
+            onDismiss = {
+                exibirFormulario = false
+                // Limpa os dados do scanner após fechar para não lixar o próximo lançamento manual
+                valorEscaneado = null
+                codigoEscaneado = ""
+            }
         )
     }
 
@@ -386,6 +398,8 @@ private fun DepositDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddDespesaDialog(
+    valorInicial: Double = 0.0, // Adicionado
+    codigoBarras: String = "",   // Adicionado
     categorias: List<String>,
     contaSelecionada: String,
     getPicCategoria: (String) -> String,
@@ -409,6 +423,14 @@ fun AddDespesaDialog(
     val mostrarCalendario = remember { mutableStateOf(false) }
     val dataMillis = remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
     var erros by remember { mutableStateOf(mapOf<String, String>()) }
+
+    var valorText by remember {
+        mutableStateOf(if (valorInicial > 0) valorInicial.toString() else "")
+    }
+
+    var observacao by remember {
+        mutableStateOf(if (codigoBarras.isNotEmpty()) "Boleto: $codigoBarras" else "")
+    }
 
     fun validar(): Boolean {
         val novosErros = mutableMapOf<String, String>()

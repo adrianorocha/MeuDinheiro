@@ -15,6 +15,7 @@ import com.meudinheiro.dao.InvestimentoDao
 import com.meudinheiro.dao.MetaDao
 import com.meudinheiro.dao.OrcamentoDao
 import com.meudinheiro.dao.TransacaoDao
+import com.meudinheiro.dao.PatrimonioDao
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -24,8 +25,9 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 
 @Database(
     entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class,
-        Categoria::class, Orcamento::class, Meta::class, Investimento::class, Transacao::class, TransferenciaAgendada::class],
-    version = 1
+        Categoria::class, Orcamento::class, Meta::class, Investimento::class,
+        Transacao::class, TransferenciaAgendada::class, PatrimonioHistorico::class],
+    version = 2
 )
 @TypeConverters(Converters::class)
 
@@ -38,6 +40,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun metaDao(): MetaDao
     abstract fun investimentoDao(): InvestimentoDao
     abstract fun transacaoDao(): TransacaoDao
+
+    abstract fun PatrimonioDao(): PatrimonioDao
+
 
     companion object {
         @Volatile

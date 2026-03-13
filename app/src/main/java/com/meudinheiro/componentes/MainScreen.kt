@@ -1,9 +1,23 @@
 package com.meudinheiro.componentes
 
 import android.app.Application
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -12,11 +26,33 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,12 +74,25 @@ import com.meudinheiro.funcoes.EmptyStateSection
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.funcoes.gerarCorParaCategoria
 import com.meudinheiro.repository.MainRepository
-import com.meudinheiro.viewModel.*
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.viewModel.ContaSaldoViewModel
+import com.meudinheiro.viewModel.ContaSaldoViewModelFactory
+import com.meudinheiro.viewModel.DespesasViewModel
+import com.meudinheiro.viewModel.DespesasViewModelFactory
+import com.meudinheiro.viewModel.HomeViewModel
+import com.meudinheiro.viewModel.HomeViewModelFactory
+import com.meudinheiro.viewModel.InvestimentoViewModel
+import com.meudinheiro.viewModel.InvestimentoViewModelFactory
+import com.meudinheiro.viewModel.MetaViewModel
+import com.meudinheiro.viewModel.MetaViewModelFactory
+import com.meudinheiro.viewModel.OrcamentoViewModel
+import com.meudinheiro.viewModel.OrcamentoViewModelFactory
+import com.meudinheiro.viewModel.TransacaoViewModel
+import com.meudinheiro.viewModel.TransacaoViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
-import com.meudinheiro.ui.theme.NeonCyan
 
 // --- Cores Globais Premium ---
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -105,6 +154,11 @@ fun MainScreen(
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
     var showAgendamentosDialog by remember { mutableStateOf(false) }
     var showRelatorioDialog by remember { mutableStateOf(false) }
+    var showPatrimonioDialog by remember { mutableStateOf(false) }
+    val historicoPatrimonio by contaVM.historicoPatrimonial.collectAsState(initial = emptyList())
+    var showScanner by remember { mutableStateOf(false) }
+    var valorEscaneado by remember { mutableStateOf<Double?>(null) }
+    var codigoEscaneado by remember { mutableStateOf("") }
 
     // ==========================================
     // 4. ESTADOS DE DADOS (FLUXOS DO BANCO)
@@ -127,6 +181,15 @@ fun MainScreen(
 
     val filtroAtivo = contaVM.filtroAtual
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            showScanner = true
+        } else {
+            Toast.makeText(context, "Permissão de câmera negada", Toast.LENGTH_SHORT).show()
+        }
+    }
     // ==========================================
     // 5. VERIFICAÇÕES DE INICIALIZAÇÃO E SPLASH
     // ==========================================
@@ -208,8 +271,21 @@ fun MainScreen(
             },
             floatingActionButton = {
                 Column(horizontalAlignment = Alignment.End) {
-                    // --- NOVO BOTÃO FLUTUANTE DE AGENDAMENTOS ---
-                    // Ele só aparece se a conta atual tiver agendamentos!
+
+
+                    FloatingActionButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showPatrimonioDialog = true
+                        },
+                        containerColor = Color(0xFF1B263B),
+                        contentColor = NeonCyan,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(Icons.Default.ShowChart, "Evolução", modifier = Modifier.size(22.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
                     FloatingActionButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -271,6 +347,10 @@ fun MainScreen(
                             onTransferencia = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 showTransferenciaDialog = true
+                            },
+                            onScanBoleto = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                permissionLauncher.launch(android.Manifest.permission.CAMERA)
                             }
                         )
                     }
@@ -601,6 +681,25 @@ fun MainScreen(
         // ==========================================
         // 8. RENDERIZAÇÃO DE DIALOGS
         // ==========================================
+        if (showScanner) {
+            ScannerBoletoScreen(
+                onResult = { codigo, valor ->
+                    codigoEscaneado = codigo
+                    valorEscaneado = valor
+                    showScanner = false
+                    showAddDespesaDialog = true // Abre a tela de gasto logo em seguida!
+                },
+                onClose = { showScanner = false }
+            )
+        }
+        if (showPatrimonioDialog) {
+            PatrimonioHistoricoDialog(
+                historico = historicoPatrimonio,
+                isPrivate = isPrivate,
+                onDismiss = { showPatrimonioDialog = false }
+            )
+        }
+
         if (showRelatorioDialog) {
             RelatorioSaudeDialog(
                 receitaAtual = resumo.entradas,
@@ -652,12 +751,18 @@ fun MainScreen(
 
         if (showAddDespesaDialog) {
             AddDespesaDialog(
+                valorInicial = valorEscaneado ?: 0.0, // Passa o valor do scanner
+                codigoBarras = if(codigoEscaneado.isNotEmpty()) "Boleto: $codigoEscaneado" else "",
                 categorias = repository.categorias.map { it.title },
                 contaSelecionada = contaSelecionadaId.orEmpty(),
                 getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
                 viewModel = contaVM,
                 parentScope = parentScope,
-                onDismiss = { showAddDespesaDialog = false }
+                onDismiss = {
+                    valorEscaneado = null // Limpa para não lixar o próximo
+                    codigoEscaneado = ""
+                    showAddDespesaDialog = false
+                }
             )
         }
 

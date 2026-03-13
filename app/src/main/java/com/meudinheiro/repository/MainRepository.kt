@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.meudinheiro.dao.ContaSaldoDao
+import com.meudinheiro.dao.PatrimonioDao
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.BackupDto
 import com.meudinheiro.data.BancoDomain
@@ -17,6 +18,7 @@ import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.Meta
 import com.meudinheiro.data.Orcamento
+import com.meudinheiro.data.PatrimonioHistorico
 import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.ResumoFinanceiroDto
 import com.meudinheiro.data.TipoDespesa
@@ -29,7 +31,7 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
 
-class MainRepository(private val context: Context, private val dao: ContaSaldoDao? = null) {
+class MainRepository(private val context: Context, private val dao: ContaSaldoDao? = null,private val patrimonioDao: PatrimonioDao? = null) {
     private val database = AppDatabase.getDatabase(context)
     private val db = AppDatabase.getInstance(context)
 
@@ -785,4 +787,16 @@ class MainRepository(private val context: Context, private val dao: ContaSaldoDa
         contaSaldoDao?.limparTodasAsTabelas()
     }
     fun obterAgendamentosAtivos() = dao?.obterAgendamentosAtivos() ?: flowOf(emptyList())
+
+    fun obterHistoricoPatrimonial(): Flow<List<PatrimonioHistorico>> {
+        return patrimonioDao?.obterHistoricoPatrimonial() ?: flowOf(emptyList())
+    }
+
+    suspend fun salvarSnapshotPatrimonial(snapshot: PatrimonioHistorico) {
+        patrimonioDao?.salvarSnapshot(snapshot)
+    }
+
+    suspend fun obterTodasStatic(): List<ContaSaldo> {
+        return dao?.obterTodasStatic() ?: emptyList()
+    }
 }
