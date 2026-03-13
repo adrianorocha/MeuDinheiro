@@ -89,12 +89,13 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.ui.theme.NeonGreen
 // Cores Premium Blu Macaw
 private val DialogBg = Color(0xFF1B263B)
 private val TextColor = Color(0xFFE0E1DD)
-private val NeonGreen = Color(0xFF69F0AE)
-private val NeonCyan = Color(0xFF00E5FF)
+//private val NeonGreen = Color(0xFF69F0AE)
+//private val NeonCyan = Color(0xFF00E5FF)
 
 enum class Frequencia {
     UNICA,

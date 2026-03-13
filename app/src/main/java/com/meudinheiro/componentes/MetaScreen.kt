@@ -72,10 +72,11 @@ import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Meta
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.lembrarEstadoPerformance
+import com.meudinheiro.ui.theme.NeonGreen
 import com.meudinheiro.viewModel.MetaViewModel
 
 // --- CORES GLOBAIS (Caso não estejam importadas) ---
-private val NeonGreen = Color(0xFF69F0AE)
+//private val NeonGreen = Color(0xFF69F0AE)
 private val RedAlert = Color(0xFFEF5350)
 
 @OptIn(ExperimentalMaterial3Api::class)

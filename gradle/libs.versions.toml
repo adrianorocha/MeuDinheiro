@@ -40,6 +40,7 @@ navigationComposeVersion = "2.9.7"
 uiTextVersion = "1.10.2"
 animation = "1.10.2"
 uiVersion = "1.10.4"
+androidxRuntime = "1.10.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -85,6 +86,7 @@ navigation-compose = { group = "androidx.navigation", name = "navigation-compose
 androidx-ui-text = { group = "androidx.compose.ui", name = "ui-text", version.ref = "uiTextVersion" }
 androidx-compose-animation = { group = "androidx.compose.animation", name = "animation", version.ref = "animation" }
 ui = { group = "androidx.compose.ui", name = "ui", version.ref = "uiVersion" }
+runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "androidxRuntime" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

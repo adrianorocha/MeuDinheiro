@@ -98,6 +98,7 @@ dependencies {
     implementation("com.airbnb.android:lottie-compose:6.4.0")
     implementation(libs.androidx.compose.animation)
     implementation(libs.ui)
+    implementation(libs.runtime)
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)

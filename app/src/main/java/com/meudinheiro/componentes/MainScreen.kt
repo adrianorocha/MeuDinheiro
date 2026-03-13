@@ -6,9 +6,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.*
@@ -40,6 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import com.meudinheiro.ui.theme.NeonCyan
 
 // --- Cores Globais Premium ---
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -99,6 +102,7 @@ fun MainScreen(
     var showInvestDialog by remember { mutableStateOf(false) }
     var showTransferenciaDialog by remember { mutableStateOf(false) }
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
+    var showAgendamentosDialog by remember { mutableStateOf(false) }
 
     // ==========================================
     // 4. ESTADOS DE DADOS (FLUXOS DO BANCO)
@@ -201,21 +205,60 @@ fun MainScreen(
                 }
             },
             floatingActionButton = {
-                if (mainTabSelecionada in listOf(0, 1, 3)) {
-                    SpeedDialFAB(
-                        onNovoGasto = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            showAddDespesaDialog = true
-                        },
-                        onNovoInvestimento = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            showInvestDialog = true
-                        },
-                        onTransferencia = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            showTransferenciaDialog = true
+                Column(horizontalAlignment = Alignment.End) {
+                    // --- NOVO BOTÃO FLUTUANTE DE AGENDAMENTOS ---
+                    // Ele só aparece se a conta atual tiver agendamentos!
+                    if (agendados.isNotEmpty() && mainTabSelecionada in listOf(0, 1)) {
+                        FloatingActionButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showAgendamentosDialog = true
+                            },
+                            containerColor = PremiumLightBlue,
+                            contentColor = NeonCyan,
+                            modifier = Modifier.size(48.dp) // Botão secundário um pouco menor
+                        ) {
+                            Box(contentAlignment = Alignment.TopEnd) {
+                                Icon(
+                                    Icons.Default.CalendarToday,
+                                    contentDescription = "Agendamentos",
+                                    modifier = Modifier.padding(4.dp).size(22.dp)
+                                )
+                                // Bolinha Neon indicando a quantidade
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.Red),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${agendados.size}",
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
-                    )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    if (mainTabSelecionada in listOf(0, 1, 3)) {
+                        SpeedDialFAB(
+                            onNovoGasto = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showAddDespesaDialog = true
+                            },
+                            onNovoInvestimento = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showInvestDialog = true
+                            },
+                            onTransferencia = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showTransferenciaDialog = true
+                            }
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -244,6 +287,7 @@ fun MainScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+/*
                 // --- CARDS DE RESUMO FIXOS ---
                 ResumoAgendamentosCard(
                     agendamentos = agendados,
@@ -252,6 +296,7 @@ fun MainScreen(
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
+*/
 
                 NotificacaoRendimentoCard(
                     rendimentoNoMes = rendimentoTotal,
@@ -341,6 +386,14 @@ fun MainScreen(
                                         metasTotal = totalMetas,
                                         isPrivate = isPrivate,
                                         dadosGrafico = dadosGrafico
+                                    )
+                                }
+                                item {
+                                    RelatorioSaudeFinanceiraCard(
+                                        receitaAtual = resumo.entradas,
+                                        despesaAtual = resumo.saidas,
+                                        despesaAnterior = saidasMesAnterior,
+                                        isPrivate = isPrivate
                                     )
                                 }
                                 item {
@@ -531,6 +584,19 @@ fun MainScreen(
         // ==========================================
         // 8. RENDERIZAÇÃO DE DIALOGS
         // ==========================================
+        if (showAgendamentosDialog) {
+            AgendamentosDialog(
+                agendamentos = agendados,
+                isPrivate = isPrivate,
+                onDismiss = { showAgendamentosDialog = false },
+                onCancelar = { id ->
+                    contaVM.cancelarAgendamento(id, context)
+                    // Se excluir o último, fecha o dialog automaticamente
+                    if (agendados.size <= 1) showAgendamentosDialog = false
+                }
+            )
+        }
+
         if (showTransferenciaDialog) {
             TransferenciaDialog(
                 contas = contas,

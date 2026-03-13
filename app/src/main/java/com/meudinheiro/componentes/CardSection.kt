@@ -64,14 +64,16 @@ import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.ui.theme.NeonGreen
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 
 // Cores Premium
 private val Gold = Color(0xFFFFD54F) // Dourado um pouco mais suave
-private val NeonGreen = Color(0xFF69F0AE)
-private val NeonCyan = Color(0xFF00E5FF)
+//private val NeonGreen = Color(0xFF69F0AE)
+//private val NeonCyan = Color(0xFF00E5FF)
 private val CardBgDark = Color(0xFF0D1B2A)
 private val CardBgLight = Color(0xFF1B263B)
 

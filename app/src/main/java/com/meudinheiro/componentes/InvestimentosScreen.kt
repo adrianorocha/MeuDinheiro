@@ -61,13 +61,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.ui.theme.NeonGreen
 import com.meudinheiro.viewModel.InvestimentoViewModel
 
 // --- CORES PREMIUM ---
 private val BgDark = Color(0xFF1B263B)
 private val CardBg = Color(0xFF263248)
-private val NeonCyan = Color(0xFF00E5FF)
-private val NeonGreen = Color(0xFF69F0AE)
+//private val NeonCyan = Color(0xFF00E5FF)
+//private val NeonGreen = Color(0xFF69F0AE)
 
 // Modelo temporário para a interface
 data class AtivoInvestimento(
