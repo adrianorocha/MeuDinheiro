@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -103,6 +104,7 @@ fun MainScreen(
     var showTransferenciaDialog by remember { mutableStateOf(false) }
     var orcamentoSelecionado by remember { mutableStateOf<OrcamentoProgresso?>(null) }
     var showAgendamentosDialog by remember { mutableStateOf(false) }
+    var showRelatorioDialog by remember { mutableStateOf(false) }
 
     // ==========================================
     // 4. ESTADOS DE DADOS (FLUXOS DO BANCO)
@@ -208,6 +210,19 @@ fun MainScreen(
                 Column(horizontalAlignment = Alignment.End) {
                     // --- NOVO BOTÃO FLUTUANTE DE AGENDAMENTOS ---
                     // Ele só aparece se a conta atual tiver agendamentos!
+                    FloatingActionButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showRelatorioDialog = true
+                        },
+                        containerColor = Color(0xFF1B263B),
+                        contentColor = NeonCyan,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(Icons.Default.AutoGraph, "Análise", modifier = Modifier.size(22.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
                     if (agendados.isNotEmpty() && mainTabSelecionada in listOf(0, 1)) {
                         FloatingActionButton(
                             onClick = {
@@ -388,6 +403,7 @@ fun MainScreen(
                                         dadosGrafico = dadosGrafico
                                     )
                                 }
+/*
                                 item {
                                     RelatorioSaudeFinanceiraCard(
                                         receitaAtual = resumo.entradas,
@@ -396,6 +412,7 @@ fun MainScreen(
                                         isPrivate = isPrivate
                                     )
                                 }
+*/
                                 item {
                                     if (dadosGrafico.isNotEmpty()) {
                                         CompactCategoryGrid(dados = dadosGrafico, isPrivate = isPrivate)
@@ -584,6 +601,16 @@ fun MainScreen(
         // ==========================================
         // 8. RENDERIZAÇÃO DE DIALOGS
         // ==========================================
+        if (showRelatorioDialog) {
+            RelatorioSaudeDialog(
+                receitaAtual = resumo.entradas,
+                despesaAtual = resumo.saidas,
+                despesaAnterior = saidasMesAnterior,
+                isPrivate = isPrivate,
+                onDismiss = { showRelatorioDialog = false }
+            )
+        }
+
         if (showAgendamentosDialog) {
             AgendamentosDialog(
                 agendamentos = agendados,
