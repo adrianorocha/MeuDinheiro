@@ -48,7 +48,7 @@ fun SpeedDialFAB(
                             expanded = false
                             onNovoInvestimento()
                         },
-                        containerColor = Color(0xFF00E5FF), // Ciano
+                        containerColor = Color(0xFF12E7FF), // Ciano
                         contentColor = Color(0xFF1B263B),
                         shape = CircleShape
                     ) {
@@ -80,7 +80,7 @@ fun SpeedDialFAB(
                             expanded = false
                             onTransferencia()
                         },
-                        containerColor = Color(0xFF69F0AE), // Verde
+                        containerColor = Color(0xFFEF7354), // Vermelho
                         contentColor = Color(0xFF1B263B),
                         shape = CircleShape
                     ) {

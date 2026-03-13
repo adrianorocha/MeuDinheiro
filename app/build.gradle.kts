@@ -99,6 +99,7 @@ dependencies {
     implementation(libs.androidx.compose.animation)
     implementation(libs.ui)
     implementation(libs.runtime)
+    implementation(libs.ui.graphics)
 
     ksp("androidx.room:room-compiler:2.8.4")
     testImplementation(libs.junit)

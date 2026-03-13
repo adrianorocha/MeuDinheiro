@@ -251,7 +251,7 @@ fun RelatorioSaudeDialog(
                                 color = Color.White.copy(alpha = 0.4f),
                                 fontSize = 10.sp
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = formatarMoedaBR(sobra, isPrivate),
                                 color = if (isPrivate) Color.Gray else corAtual,
