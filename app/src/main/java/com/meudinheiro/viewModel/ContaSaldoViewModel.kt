@@ -103,6 +103,7 @@ class ContaSaldoViewModel(
         bancos.value = repository.bancos
         carregarDadosIniciaisESincronizarWidget()
         realizarSnapshotPatrimonialAutomatico()
+        calcularPrevisaoDoMes()
     }
 
     // ==========================================
@@ -434,4 +435,16 @@ class ContaSaldoViewModel(
                 Log.d("PATRIMONIO", "Snapshot de $mesAtual guardado: R$ $totalPatrimonio")
             }
         }
-    }}
+    }
+
+    private val _contasAVencer = MutableStateFlow(0.0)
+    val contasAVencer: StateFlow<Double> = _contasAVencer.asStateFlow()
+
+    // 2. A Função que calcula a previsão
+    fun calcularPrevisaoDoMes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pendentes = repository.obterTotalPendentes()
+            _contasAVencer.value = pendentes
+        }
+    }
+}

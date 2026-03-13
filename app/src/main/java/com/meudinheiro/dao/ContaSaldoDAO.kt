@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
+import com.meudinheiro.data.DespesasDomain
 import kotlinx.coroutines.flow.Flow
 import com.meudinheiro.data.TransferenciaAgendada
 
@@ -101,5 +102,7 @@ interface ContaSaldoDao {
     @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 ORDER BY dataAgendada ASC")
     fun obterAgendamentosAtivos(): Flow<List<TransferenciaAgendada>>
 
+    @Query("SELECT SUM(valor) FROM transferencias_agendadas WHERE executada = 0") // Adapte o nome da tabela/coluna se necessário
+    suspend fun somarContasPendentes(): Double?
 
 }

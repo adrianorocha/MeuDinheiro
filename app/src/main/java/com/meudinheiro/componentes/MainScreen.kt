@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -36,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -155,11 +158,12 @@ fun MainScreen(
     var showAgendamentosDialog by remember { mutableStateOf(false) }
     var showRelatorioDialog by remember { mutableStateOf(false) }
     var showPatrimonioDialog by remember { mutableStateOf(false) }
+    var showPrevisaoDialog by remember { mutableStateOf(false) }
+
     val historicoPatrimonio by contaVM.historicoPatrimonial.collectAsState(initial = emptyList())
     var showScanner by remember { mutableStateOf(false) }
     var valorEscaneado by remember { mutableStateOf<Double?>(null) }
     var codigoEscaneado by remember { mutableStateOf("") }
-
     // ==========================================
     // 4. ESTADOS DE DADOS (FLUXOS DO BANCO)
     // ==========================================
@@ -178,6 +182,10 @@ fun MainScreen(
     val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
     val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
     val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
+
+    val contasAVencer by contaVM.contasAVencer.collectAsState()
+    //val saldoTotal by contaVM.saldoPatrimonial.collectAsState(initial = 0.0)
+
 
     val filtroAtivo = contaVM.filtroAtual
 
@@ -676,11 +684,39 @@ fun MainScreen(
                     }
                 }
             }
+            SmallFloatingActionButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    showPrevisaoDialog = true
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd) // Prende no canto superior direito
+                    // ⚠️ O PULO DO GATO: Use o offset para mover pixel por pixel até o seu círculo vermelho
+                    .offset(x = (-16).dp, y = 255.dp),
+                containerColor = Color(0xFF1B263B),
+                contentColor = Color(0xFF00E5FF), // NeonCyan
+                shape = CircleShape
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Insights,
+                    contentDescription = "Previsão",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         // ==========================================
         // 8. RENDERIZAÇÃO DE DIALOGS
         // ==========================================
+        if (showPrevisaoDialog) {
+            PrevisaoFechamentoDialog(
+                saldoAtual = 0.0, // As variáveis do seu ViewModel
+                contasAVencer = contasAVencer, // Que configuramos antes
+                isPrivate = isPrivate,
+                onDismiss = { showPrevisaoDialog = false }
+            )
+        }
+
         if (showScanner) {
             ScannerBoletoScreen(
                 onResult = { codigo, valor ->
@@ -692,6 +728,7 @@ fun MainScreen(
                 onClose = { showScanner = false }
             )
         }
+
         if (showPatrimonioDialog) {
             PatrimonioHistoricoDialog(
                 historico = historicoPatrimonio,

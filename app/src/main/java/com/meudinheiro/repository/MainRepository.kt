@@ -799,4 +799,8 @@ class MainRepository(private val context: Context, private val dao: ContaSaldoDa
     suspend fun obterTodasStatic(): List<ContaSaldo> {
         return dao?.obterTodasStatic() ?: emptyList()
     }
+
+    suspend fun obterTotalPendentes(): Double {
+        return dao?.somarContasPendentes() ?: 0.0
+    }
 }
