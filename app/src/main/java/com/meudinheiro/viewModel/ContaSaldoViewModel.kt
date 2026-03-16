@@ -107,6 +107,13 @@ class ContaSaldoViewModel(
         carregarDadosIniciaisESincronizarWidget()
         realizarSnapshotPatrimonialAutomatico()
         calcularPrevisaoDoMes()
+            viewModelScope.launch  {
+                repository.atualizacaoSinal.collect {
+                    // Quando o sinal chegar, ele roda a sua função de carregar dados de novo
+                    carregarSaldosGlobais()
+                }
+            }
+
     }
 
     // ==========================================
@@ -416,30 +423,48 @@ class ContaSaldoViewModel(
         )
     fun realizarSnapshotPatrimonialAutomatico() {
         viewModelScope.launch(Dispatchers.IO) {
-            // 1. Somar o saldo de todas as contas atuais
-            val contasAtuais = repository.obterTodasStatic() // Aquela função que já temos no DAO
-            val totalPatrimonio = contasAtuais.sumOf { it.saldo }
+            try {
+                // 1. SEGURANÇA MÁXIMA: Verificar se o repositório está pronto
+                // Se as contas ainda não carregaram, não fazemos nada
+                val contasAtuais = repository.obterTodasStatic() ?: emptyList()
+                if (contasAtuais.isEmpty()) {
+                    Log.d("PATRIMONIO", "Cofre vazio ou ainda carregando. Snapshot cancelado.")
+                    return@launch
+                }
 
-            // 2. Obter o nome do mês atual (ex: "MAR")
-            val sdf = SimpleDateFormat("MMM", Locale("pt", "BR"))
-            val mesAtual = sdf.format(Date()).uppercase().replace(".", "")
+                val totalPatrimonio = contasAtuais.sumOf { it.saldo }
 
-            // 3. Verificar se já existe um registo para este mês para não duplicar
-            val historicoAtual = historicoPatrimonial.value
-            val jaRegistadoEsteMes = historicoAtual.any { it.mesReferencia == mesAtual }
+                // 2. DATA SEGURA: Formatação robusta do mês
+                val sdf = SimpleDateFormat("MMM", Locale("pt", "BR"))
+                val mesAtual = sdf.format(Date()).uppercase().replace(".", "").trim()
 
-            if (!jaRegistadoEsteMes && totalPatrimonio > 0) {
-                val novoSnapshot = PatrimonioHistorico(
-                    dataMillis = System.currentTimeMillis(),
-                    valorTotal = totalPatrimonio,
-                    mesReferencia = mesAtual
-                )
-                repository.salvarSnapshotPatrimonial(novoSnapshot)
-                Log.d("PATRIMONIO", "Snapshot de $mesAtual guardado: R$ $totalPatrimonio")
+                // 3. CONSULTA DIRETA AO BANCO (Evita o NullPointerException do StateFlow)
+                // Em vez de usar historicoPatrimonial.value (que pode ser null ou estar vazio no init),
+                // perguntamos ao banco se JÁ EXISTE um registro para este mês.
+                val jaExisteNoBanco = repository.verificarSnapshotMes(mesAtual)
+
+                // 4. LÓGICA DE DECISÃO: "E se não tiver valor?"
+                // Agora salvamos mesmo que o valor seja 0, desde que não exista o registro.
+                // Só não salvamos se o patrimônio for negativo (opcional) ou se já existir.
+                if (!jaExisteNoBanco) {
+                    val novoSnapshot = PatrimonioHistorico(
+                        dataMillis = System.currentTimeMillis(),
+                        valorTotal = totalPatrimonio,
+                        mesReferencia = mesAtual
+                    )
+
+                    repository.salvarSnapshotPatrimonial(novoSnapshot)
+                    Log.d("PATRIMONIO", "✅ Snapshot VIP de $mesAtual registrado: R$ $totalPatrimonio")
+                } else {
+                    Log.d("PATRIMONIO", "Ronda concluída: Snapshot de $mesAtual já está no cofre.")
+                }
+
+            } catch (e: Exception) {
+                // Protege o app de fechar se o banco de dados estiver ocupado
+                Log.e("PATRIMONIO", "Erro no motor de snapshot: ${e.message}")
             }
         }
     }
-
     // 2. A Função que calcula a previsão
     fun calcularPrevisaoDoMes() {
         viewModelScope.launch(Dispatchers.IO) {

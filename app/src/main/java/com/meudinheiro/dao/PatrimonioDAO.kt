@@ -21,4 +21,7 @@ interface PatrimonioDao {
     // Limpa o histórico se necessário
     @Query("DELETE FROM patrimonio_historico")
     suspend fun limparHistorico()
+
+    @Query("SELECT * FROM patrimonio_historico WHERE mesReferencia = :mes LIMIT 1")
+    suspend fun buscarSnapshotPorMes(mes: String): PatrimonioHistorico?
 }

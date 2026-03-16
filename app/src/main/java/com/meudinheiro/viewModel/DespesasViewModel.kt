@@ -34,6 +34,7 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
     // 1. O estado do filtro dentro do VM
     private val _filtroAtivo = MutableStateFlow(0) // 0: Este Mês, 1: Mês Passado, 2: Total
 
+
     // 3. A MÁGICA: A lista de despesas agora "observa" o filtro e os meses
 // 3. A MÁGICA: A lista de despesas agora "observa" o filtro e os meses
 // 3. A MÁGICA: Filtro absoluto em memória (À prova de falhas do Room)

@@ -25,6 +25,8 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.TransferenciaAgendada
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -43,6 +45,8 @@ class MainRepository(private val context: Context, private val dao: ContaSaldoDa
     private val orcamentoDao = db.orcamentoDao()
     private val metaDao = db.metaDao()
 
+    private val _atualizacaoSinal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val atualizacaoSinal = _atualizacaoSinal.asSharedFlow()
 
     /* ======================= DESPESAS ======================= */
 
@@ -802,5 +806,13 @@ class MainRepository(private val context: Context, private val dao: ContaSaldoDa
 
     suspend fun obterTotalPendentes(): Double {
         return dao?.somarContasPendentes() ?: 0.0
+    }
+
+    suspend fun avisarQueHouveMudanca() {
+        _atualizacaoSinal.emit(Unit)
+    }
+
+    suspend fun verificarSnapshotMes(mes: String): Boolean {
+        return patrimonioDao?.buscarSnapshotPorMes(mes) != null
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AreaChart
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Insights
@@ -702,7 +703,7 @@ fun MainScreen(
                 shape = CircleShape
             ) {
                 Icon(
-                    imageVector = Icons.Default.CalendarToday,
+                    imageVector = Icons.Default.AreaChart,
                     contentDescription = "Previsão",
                     modifier = Modifier.size(20.dp)
                 )
