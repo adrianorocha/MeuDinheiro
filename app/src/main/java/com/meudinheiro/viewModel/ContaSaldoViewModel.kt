@@ -80,6 +80,9 @@ class ContaSaldoViewModel(
             val estado = _dashboardState.value
             return estado.dadosPorConta.values.sumOf { (receita, despesa) -> receita - despesa }
         }
+    private val _contasAVencer = MutableStateFlow(0.0)
+    val contasAVencer: StateFlow<Double> = _contasAVencer.asStateFlow()
+
 
     // Seleção de conta (LiveData para manter compatibilidade com sua MainScreen)
     private val _contaSelecionadaId = MutableLiveData<String?>(null)
@@ -436,9 +439,6 @@ class ContaSaldoViewModel(
             }
         }
     }
-
-    private val _contasAVencer = MutableStateFlow(0.0)
-    val contasAVencer: StateFlow<Double> = _contasAVencer.asStateFlow()
 
     // 2. A Função que calcula a previsão
     fun calcularPrevisaoDoMes() {

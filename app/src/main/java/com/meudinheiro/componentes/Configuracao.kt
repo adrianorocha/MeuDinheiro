@@ -10,66 +10,20 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -94,8 +48,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// Cores locais mantendo o padrão Premium
-private val CardBg = Color(0xFF1E2B3E)
+// --- CORES BLU MACAW ---
+private val NeonCyan = Color(0xFF00E5FF)
+private val DeepSpaceBlue = Color(0xFF131E29)
+private val CardGlass = Color(0xFF1B263B).copy(alpha = 0.8f)
+private val NeonRed = Color(0xFFFF5252)
+private val SuccessGreen = Color(0xFF69F0AE)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,10 +70,8 @@ fun Configuracao(
 
     // --- VIEWMODELS & REPOSITORY ---
     val mainRepository = remember { MainRepository(context) }
-    val categoriaVm: CategoriaViewModel =
-        viewModel(factory = CategoriaViewModelFactory(mainRepository))
-    val despesasVM: DespesasViewModel =
-        viewModel(factory = DespesasViewModelFactory(mainRepository))
+    val categoriaVm: CategoriaViewModel = viewModel(factory = CategoriaViewModelFactory(mainRepository))
+    val despesasVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(mainRepository))
 
     // --- DADOS (Flows) ---
     val enabled by userPrefs.notifEnabledFlow.collectAsState(initial = false)
@@ -123,8 +79,6 @@ fun Configuracao(
     val hour by userPrefs.notifHourFlow.collectAsState(initial = 9)
     val minute by userPrefs.notifMinuteFlow.collectAsState(initial = 0)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
-
-    // Novo: Estado da Biometria
     val biometriaEnabled by userPrefs.biometriaEnabledFlow.collectAsState(initial = true)
 
     val listaDespesas by despesasVM.despesasFiltradas.collectAsState()
@@ -134,52 +88,28 @@ fun Configuracao(
     var exibirAlertaExclusao by remember { mutableStateOf(false) }
 
     val nomesMeses = remember {
-        listOf(
-            "Janeiro",
-            "Fevereiro",
-            "Março",
-            "Abril",
-            "Maio",
-            "Junho",
-            "Julho",
-            "Agosto",
-            "Setembro",
-            "Outubro",
-            "Novembro",
-            "Dezembro"
-        )
+        listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
     }
 
-// --- LAUNCHERS (Backup e Restore) ---
-
-// 1. LAUNCHER DE CRIAÇÃO (BACKUP)
+    // --- LAUNCHERS (Backup e Restore) ---
     val createBackupLauncher = rememberLauncherForActivityResult<String, Uri?>(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
         uri?.let { safeUri ->
-            scope.launch { // Inicia no scopo da UI, mas muda para IO internamente
-                processingMessage = "Gerando arquivo de backup..."
-
+            scope.launch {
+                processingMessage = "Gerando Cofre de Backup..."
                 try {
-                    // Executa tudo em Background para não travar a tela
                     withContext(Dispatchers.IO) {
                         val jsonBackup = mainRepository.gerarBackup()
-
-                        if (jsonBackup.isBlank()) throw Exception("O arquivo de backup gerado está vazio.")
-
+                        if (jsonBackup.isBlank()) throw Exception("O cofre gerado está vazio.")
                         context.contentResolver.openOutputStream(safeUri)?.use { outputStream ->
                             outputStream.write(jsonBackup.toByteArray(Charsets.UTF_8))
-                        } ?: throw Exception("Não foi possível abrir o arquivo para escrita.")
+                        } ?: throw Exception("Não foi possível fechar o cofre.")
                     }
-
-                    // Sucesso (Volta para Main Thread automaticamente fora do withContext)
-                    Toast.makeText(context, "✅ Backup salvo com sucesso!", Toast.LENGTH_SHORT)
-                        .show()
-
+                    Toast.makeText(context, "✅ Backup salvo com sucesso no padrão Blu Macaw!", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Log.e("BackupError", "Erro ao salvar", e)
-                    Toast.makeText(context, "Erro ao salvar: ${e.message}", Toast.LENGTH_LONG)
-                        .show()
+                    Toast.makeText(context, "Erro ao salvar: ${e.message}", Toast.LENGTH_LONG).show()
                 } finally {
                     processingMessage = null
                 }
@@ -187,59 +117,25 @@ fun Configuracao(
         }
     }
 
-// 2. LAUNCHER DE RESTAURAÇÃO (RESTORE)
     val restoreBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { safeUri ->
             scope.launch {
-                processingMessage = "Lendo e validando arquivo..."
-
+                processingMessage = "Descriptografando Cofre..."
                 try {
-                    // Passo 1: Leitura do Arquivo (IO)
                     val jsonLimpo = withContext(Dispatchers.IO) {
-                        val inputStream = context.contentResolver.openInputStream(safeUri)
-                            ?: throw Exception("Não foi possível abrir o arquivo.")
-
-                        val conteudoCru =
-                            inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-
-                        if (conteudoCru.isBlank()) throw Exception("O arquivo selecionado está vazio.")
-
-                        // REMOVE O BOM (Byte Order Mark) - Essencial para evitar erros de sintaxe
-                        if (conteudoCru.startsWith("\uFEFF")) {
-                            conteudoCru.substring(1)
-                        } else {
-                            conteudoCru
-                        }.trim()
+                        val inputStream = context.contentResolver.openInputStream(safeUri) ?: throw Exception("Arquivo inacessível.")
+                        val conteudoCru = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        if (conteudoCru.isBlank()) throw Exception("O cofre selecionado está vazio.")
+                        if (conteudoCru.startsWith("\uFEFF")) conteudoCru.substring(1).trim() else conteudoCru.trim()
                     }
-
-                    // Passo 2: Processamento no Banco (IO)
-                    processingMessage = "Restaurando dados..."
-                    // O Repository já deve ter o 'withTransaction' interno
+                    processingMessage = "Restaurando base de dados..."
                     mainRepository.restaurarBackupCompleto(jsonLimpo)
-
-                    // Sucesso
-                    Toast.makeText(context, "✅ Dados restaurados com sucesso!", Toast.LENGTH_SHORT)
-                        .show()
-
-                    // Opcional: Recarregar dados da tela se necessário
-                    // despesasVM.atualizarLista()
-
-                } catch (e: com.google.gson.JsonSyntaxException) {
-                    Log.e("RestoreError", "JSON Inválido", e)
-                    Toast.makeText(
-                        context,
-                        "Arquivo inválido: O formato não é compatível.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(context, "✅ Dados restaurados com sucesso!", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
-                    Log.e("RestoreError", "Erro genérico", e)
-                    val msg = when {
-                        e.message?.contains("NullPointerException") == true -> "Arquivo incompatível (campos faltando)."
-                        else -> "Erro: ${e.localizedMessage ?: "Falha desconhecida"}"
-                    }
-                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    Log.e("RestoreError", "Erro na restauração", e)
+                    Toast.makeText(context, "Falha na leitura: Arquivo incompatível.", Toast.LENGTH_LONG).show()
                 } finally {
                     processingMessage = null
                 }
@@ -251,19 +147,16 @@ fun Configuracao(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            Toast.makeText(context, "Permissão concedida!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Permissão VIP concedida!", Toast.LENGTH_SHORT).show()
             if (enabled) AgendadorNotifDespesas.scheduleDaily(context, hour, minute)
         } else {
-            Toast.makeText(context, "Permissão necessária para alertas.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "O motor financeiro precisa de permissão para alertar.", Toast.LENGTH_LONG).show()
         }
     }
 
     fun hasNotificationPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         } else true
     }
 
@@ -271,27 +164,15 @@ fun Configuracao(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(colors = listOf(PremiumDarkBlue, PremiumLightBlue)))
+            .background(DeepSpaceBlue) // Fundo Sólido Blu Macaw
     ) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = {
-                        Text(
-                            "Configurações",
-                            color = TextWhite,
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
+                    title = { Text("Configurações", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                Icons.Default.ArrowBack,
-                                "Voltar",
-                                tint = TextWhite
-                            )
-                        }
+                        IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Voltar", tint = TextWhite) }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
@@ -300,9 +181,13 @@ fun Configuracao(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(PremiumDarkBlue.copy(alpha = 0.95f))
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, DeepSpaceBlue, DeepSpaceBlue)
+                            )
+                        )
                         .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(16.dp),
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Button(
@@ -312,625 +197,306 @@ fun Configuracao(
                                 else DespesasDevidas.verificarEExibir(context)
                             }
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = TextWhite,
-                            contentColor = PremiumDarkBlue
-                        ),
-                        shape = RoundedCornerShape(14.dp)
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = DeepSpaceBlue),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Icon(Icons.Default.NotificationsActive, null, Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Testar Notificação Agora", fontWeight = FontWeight.Bold)
+                        Text("TESTAR ALERTA VIP AGORA", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                     }
-
-                    OutlinedButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
-                        border = BorderStroke(1.dp, TextWhite.copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(14.dp)
-                    ) { Text("Voltar") }
                 }
             }
         ) { padding ->
-
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 20.dp)
+                contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp) // Espaço extra para o BottomBar
             ) {
-
-                // --- NOVO CARD: SEGURANÇA E ACESSO ---
+                // SEÇÃO: ACESSO
+                item { SectionTitle("SEGURANÇA E ACESSO") }
                 item {
                     PremiumConfigCard {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Acesso por Biometria",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = TextWhite,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    if (biometriaEnabled) "Desbloqueio com digital/rosto" else "Apenas com senha",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (biometriaEnabled) Color(0xFF69F0AE) else TextWhite.copy(
-                                        0.6f
-                                    )
-                                )
-                            }
-                            Switch(
-                                checked = biometriaEnabled,
-                                onCheckedChange = { isChecked ->
-                                    scope.launch { userPrefs.saveBiometriaEnabled(isChecked) }
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = PremiumDarkBlue,
-                                    checkedTrackColor = TextWhite,
-                                    uncheckedThumbColor = TextWhite.copy(0.8f),
-                                    uncheckedTrackColor = Color.Transparent,
-                                    uncheckedBorderColor = TextWhite.copy(0.4f)
-                                )
-                            )
-                        }
+                        ConfiguracaoSwitchItem(
+                            icone = Icons.Default.Fingerprint,
+                            titulo = "Desbloqueio Biométrico",
+                            descricao = if (biometriaEnabled) "Ativo" else "Apenas senha mestra",
+                            checked = biometriaEnabled,
+                            onCheckedChange = { isChecked -> scope.launch { userPrefs.saveBiometriaEnabled(isChecked) } }
+                        )
                     }
                 }
 
-                // CARD: Ativação das Notificações
+                // SEÇÃO: MOTOR DE ALERTAS
+                item { SectionTitle("MOTOR DE ALERTAS VIP") }
                 item {
                     PremiumConfigCard {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Notificações Diárias",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = TextWhite,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    if (enabled) "Ativado" else "Desativado",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (enabled) Color(0xFF69F0AE) else TextWhite.copy(0.6f)
-                                )
+                        ConfiguracaoSwitchItem(
+                            icone = Icons.Default.Notifications,
+                            titulo = "Ronda Financeira Diária",
+                            descricao = if (enabled) "Motor Ligado" else "Motor Desligado",
+                            checked = enabled,
+                            onCheckedChange = { isChecked ->
+                                scope.launch {
+                                    userPrefs.saveNotifEnabled(isChecked)
+                                    if (isChecked) {
+                                        if (!hasNotificationPermission()) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        else AgendadorNotifDespesas.scheduleDaily(context, hour, minute)
+                                    } else AgendadorNotifDespesas.cancel(context)
+                                }
                             }
-                            Switch(
-                                checked = enabled,
-                                onCheckedChange = { isChecked ->
-                                    scope.launch {
-                                        userPrefs.saveNotifEnabled(isChecked)
-                                        if (isChecked) {
-                                            if (!hasNotificationPermission()) permissionLauncher.launch(
-                                                Manifest.permission.POST_NOTIFICATIONS
-                                            )
-                                            else AgendadorNotifDespesas.scheduleDaily(
-                                                context,
-                                                hour,
-                                                minute
-                                            )
-                                        } else AgendadorNotifDespesas.cancel(context)
-                                    }
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = PremiumDarkBlue,
-                                    checkedTrackColor = TextWhite,
-                                    uncheckedThumbColor = TextWhite.copy(0.8f),
-                                    uncheckedTrackColor = Color.Transparent,
-                                    uncheckedBorderColor = TextWhite.copy(0.4f)
-                                )
-                            )
-                        }
-                    }
-                }
+                        )
 
-                // CARD: Personalização (Visível apenas se notificação ativado)
-                if (enabled) {
-                    item {
-                        PremiumConfigCard {
-                            Text(
-                                "Personalização do Alerta",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextWhite,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.height(16.dp))
+                        if (enabled) {
+                            HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 12.dp))
 
                             PremiumStepperRow(
-                                title = "Avisar antes (dias)",
+                                title = "Antecedência (Dias)",
                                 value = daysAhead,
                                 min = 1, max = 30,
                                 onMinus = { scope.launch { userPrefs.saveNotifDaysAhead(daysAhead - 1) } },
                                 onPlus = { scope.launch { userPrefs.saveNotifDaysAhead(daysAhead + 1) } }
                             )
 
-                            Spacer(Modifier.height(12.dp))
-                            HorizontalDivider(color = TextWhite.copy(0.1f))
-                            Spacer(Modifier.height(12.dp))
+                            HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 12.dp))
 
                             PremiumTimeRowCompact(
-                                hour = hour,
-                                minute = minute,
-                                onHourChange = { h ->
-                                    scope.launch {
-                                        userPrefs.saveNotifHour(h)
-                                        AgendadorNotifDespesas.scheduleDaily(context, h, minute)
-                                    }
-                                },
-                                onMinuteChange = { m ->
-                                    scope.launch {
-                                        userPrefs.saveNotifMinute(m)
-                                        AgendadorNotifDespesas.scheduleDaily(context, hour, m)
-                                    }
-                                }
+                                hour = hour, minute = minute,
+                                onHourChange = { h -> scope.launch { userPrefs.saveNotifHour(h); AgendadorNotifDespesas.scheduleDaily(context, h, minute) } },
+                                onMinuteChange = { m -> scope.launch { userPrefs.saveNotifMinute(m); AgendadorNotifDespesas.scheduleDaily(context, hour, m) } }
                             )
 
-                            Spacer(Modifier.height(12.dp))
-                            HorizontalDivider(color = TextWhite.copy(0.1f))
-                            Spacer(Modifier.height(12.dp))
+                            HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 12.dp))
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Filtro Inteligente",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = TextWhite
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        "Avisar apenas Cartão de Crédito.",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextWhite.copy(0.6f)
-                                    )
-                                }
-                                Switch(
-                                    checked = onlyCredit,
-                                    onCheckedChange = { v ->
-                                        scope.launch {
-                                            userPrefs.saveNotifOnlyCredit(
-                                                v
-                                            )
-                                        }
-                                    },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = PremiumDarkBlue,
-                                        checkedTrackColor = TextWhite
-                                    )
-                                )
-                            }
+                            ConfiguracaoSwitchItem(
+                                icone = Icons.Default.FilterAlt,
+                                titulo = "Filtro Rígido",
+                                descricao = "Avisar apenas Faturas de Cartão",
+                                checked = onlyCredit,
+                                onCheckedChange = { v -> scope.launch { userPrefs.saveNotifOnlyCredit(v) } },
+                                padding = PaddingValues(0.dp) // Sem padding extra para ficar alinhado no card expandido
+                            )
                         }
                     }
                 }
 
-                // CARD: Ferramentas de Dados
+                // SEÇÃO: DADOS E CATEGORIAS
+                item { SectionTitle("GESTÃO DE DADOS") }
                 item {
                     PremiumConfigCard {
-                        Text(
-                            "Ferramentas de Dados",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextWhite
+                        ConfiguracaoAcaoItem(
+                            icone = Icons.Default.Category,
+                            titulo = "Minhas Categorias",
+                            onClick = { exibirGerenciadorCategorias = true }
                         )
-                        Spacer(Modifier.height(16.dp))
 
-                        OutlinedButton(
-                            onClick = { exibirGerenciadorCategorias = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
-                            border = BorderStroke(1.dp, TextWhite.copy(0.2f))
-                        ) {
-                            Icon(Icons.Default.Category, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Personalizar Categorias")
-                        }
+                        HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 8.dp))
 
-                        Spacer(Modifier.height(12.dp))
-
-                        Button(
+                        ConfiguracaoAcaoItem(
+                            icone = Icons.Default.PictureAsPdf,
+                            titulo = "Exportar Relatório (${nomesMeses.getOrElse(mesIndex) { "" }})",
+                            iconTint = SuccessGreen,
                             onClick = {
                                 if (listaDespesas.isNotEmpty()) {
                                     scope.launch {
                                         try {
-                                            processingMessage = "Gerando PDF..."
+                                            processingMessage = "Compilando Relatório VIP..."
                                             delay(500)
                                             withContext(Dispatchers.IO) {
-                                                val nomeMes =
-                                                    nomesMeses.getOrElse(mesIndex) { "Mes" }
-                                                mainRepository.exportarExtratoPDF(
-                                                    context,
-                                                    nomeMes,
-                                                    anoAtual,
-                                                    listaDespesas
-                                                )
+                                                mainRepository.exportarExtratoPDF(context, nomesMeses.getOrElse(mesIndex) { "Mes" }, anoAtual, listaDespesas)
                                             }
-                                            delay(500)
                                         } catch (e: Exception) {
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Erro: ${e.message}",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            }
+                                            Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_LONG).show()
                                         } finally {
                                             processingMessage = null
                                         }
                                     }
                                 } else {
-                                    Toast.makeText(
-                                        context,
-                                        "Sem dados para exportar.",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.PictureAsPdf, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Exportar PDF de ${nomesMeses.getOrElse(mesIndex) { "" }}")
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-                        HorizontalDivider(color = TextWhite.copy(0.1f))
-                        Spacer(Modifier.height(16.dp))
-
-                        Text(
-                            "Segurança",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextWhite.copy(0.6f)
-                        )
-                        Spacer(Modifier.height(8.dp))
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = {
-                                    val nomeArquivo =
-                                        "MeuDinheiro_Backup_${System.currentTimeMillis()}.json"
-                                    createBackupLauncher.launch(nomeArquivo)
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = Color(
-                                        0xFF69F0AE
-                                    )
-                                ),
-                                border = BorderStroke(1.dp, Color(0xFF69F0AE).copy(0.4f))
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.CloudUpload, null, Modifier.size(20.dp))
-                                    Text("Backup", fontSize = 12.sp)
+                                    Toast.makeText(context, "O cofre não tem lançamentos neste mês.", Toast.LENGTH_SHORT).show()
                                 }
                             }
+                        )
 
+                        HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 8.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(
+                                onClick = { createBackupLauncher.launch("Cofre_BluMacaw_${System.currentTimeMillis()}.json") },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                                border = BorderStroke(1.dp, TextWhite.copy(0.2f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.CloudUpload, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Salvar", fontSize = 12.sp)
+                            }
                             OutlinedButton(
                                 onClick = { restoreBackupLauncher.launch(arrayOf("application/json")) },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = Color(
-                                        0xFFFFB300
-                                    )
-                                ),
-                                border = BorderStroke(1.dp, Color(0xFFFFB300).copy(0.4f))
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
+                                border = BorderStroke(1.dp, TextWhite.copy(0.2f)),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.CloudDownload, null, Modifier.size(20.dp))
-                                    Text("Restaurar", fontSize = 12.sp)
-                                }
+                                Icon(Icons.Default.CloudDownload, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Restaurar", fontSize = 12.sp)
                             }
                         }
                     }
                 }
-// --- CARD: ZONA DE PERIGO ---
+
+                // SEÇÃO: DESTRUIÇÃO
+                item { SectionTitle("ZONA DE RISCO", NeonRed) }
                 item {
                     PremiumConfigCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = Color(0xFFFF5252)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Zona de Perigo",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color(0xFFFF5252),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Text(
-                            "Atenção: Apagar o banco de dados é uma ação irreversível. Todos os seus lançamentos, categorias e saldos serão perdidos. Certifique-se de ter um backup recente.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextWhite.copy(0.7f)
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-
-                        OutlinedButton(
-                            onClick = {
-                                exibirAlertaExclusao = false
-                                scope.launch {
-                                    processingMessage = "Limpando banco de dados..."
-                                    try {
-                                        // Executa a limpeza pesada em IO
-                                        withContext(Dispatchers.IO) {
-                                            mainRepository.limparBancoDeDadosCompleto()
-                                        }
-
-                                        // Pequeno delay para o usuário respirar e ver que deu certo
-                                        delay(800)
-
-                                        Toast.makeText(
-                                            context,
-                                            "✅ Banco de dados resetado com sucesso!",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-
-                                        // DICA: Você pode forçar o fechamento da tela ou o app a reiniciar
-                                        // para garantir que os ViewModels não fiquem com dados antigos na memória.
-                                        onBack()
-
-                                    } catch (e: Exception) {
-                                        Log.e("LimpezaErro", "Falha ao resetar banco", e)
-                                        Toast.makeText(
-                                            context,
-                                            "Erro: ${e.localizedMessage}",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                    } finally {
-                                        processingMessage = null
-                                    }
-                                }
-                            }, modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(
-                                    0xFFFF5252
-                                )
-                            ),
-                            border = BorderStroke(1.dp, Color(0xFFFF5252).copy(0.5f)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Delete, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Apagar Todos os Dados", fontWeight = FontWeight.Bold)
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.WarningAmber, null, tint = NeonRed)
+                                Spacer(Modifier.width(12.dp))
+                                Text("Protocolo de Destruição", style = MaterialTheme.typography.titleMedium, color = NeonRed, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text("Apaga irreversivelmente todas as finanças, agendamentos e categorias deste dispositivo.", style = MaterialTheme.typography.bodySmall, color = TextWhite.copy(0.5f))
+                            Spacer(Modifier.height(16.dp))
+                            OutlinedButton(
+                                onClick = { exibirAlertaExclusao = true },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonRed),
+                                border = BorderStroke(1.dp, NeonRed.copy(0.5f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.DeleteForever, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("FORMATAR COFRE", fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            }
                         }
                     }
-                }
-                item {
-                    Text(
-                        text = "O sistema verificará contas a vencer entre hoje e os próximos $daysAhead dias.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextWhite.copy(0.4f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                    )
                 }
             }
         }
 
-        // --- DIALOGS E CAMADAS FLUTUANTES ---
+        // --- DIALOGS ---
         if (exibirGerenciadorCategorias) {
-            GerenciarCategoriasDialog(
-                viewModel = categoriaVm,
-                onDismiss = { exibirGerenciadorCategorias = false }
-            )
+            GerenciarCategoriasDialog(viewModel = categoriaVm, onDismiss = { exibirGerenciadorCategorias = false })
         }
         if (exibirAlertaExclusao) {
-            Dialog(onDismissRequest = { exibirAlertaExclusao = false }) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = CardBg),
-                    border = BorderStroke(1.dp, Color(0xFFFF5252).copy(0.3f)) // Borda avermelhada
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // Ícone de Alerta Gigante
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .background(Color(0xFFFF5252).copy(alpha = 0.1f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = "Atenção",
-                                tint = Color(0xFFFF5252),
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        Text(
-                            "Excluir tudo?",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Text(
-                            "Esta ação não pode ser desfeita. Todo o seu histórico financeiro será permanentemente apagado deste dispositivo.",
-                            color = Color.White.copy(0.7f),
-                            textAlign = TextAlign.Center,
-                            fontSize = 14.sp
-                        )
-
-                        Spacer(Modifier.height(24.dp))
-
-                        // Botões (Atenção à psicologia das cores: Cancelar é o botão de destaque, Apagar é o Outlined para evitar clique acidental)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = { exibirAlertaExclusao = false },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = CardBg
-                                ),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Cancelar", fontWeight = FontWeight.Bold)
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    exibirAlertaExclusao = false
-                                    scope.launch {
-                                        processingMessage = "Limpando banco de dados..."
-                                        try {
-                                            withContext(Dispatchers.IO) {
-                                                // AQUI VOCÊ CHAMA A FUNÇÃO DO SEU REPOSITÓRIO
-                                                // mainRepository.limparBancoDeDadosCompleto()
-                                            }
-                                            Toast.makeText(
-                                                context,
-                                                "Dados apagados com sucesso.",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        } catch (e: Exception) {
-                                            Toast.makeText(
-                                                context,
-                                                "Erro ao apagar: ${e.message}",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        } finally {
-                                            processingMessage = null
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = Color(
-                                        0xFFFF5252
-                                    )
-                                ),
-                                border = BorderStroke(1.dp, Color(0xFFFF5252).copy(0.5f)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Sim, apagar")
-                            }
+            DialogDestruicaoTotal(
+                onCancel = { exibirAlertaExclusao = false },
+                onConfirm = {
+                    exibirAlertaExclusao = false
+                    scope.launch {
+                        processingMessage = "Incineração iniciada..."
+                        try {
+                            withContext(Dispatchers.IO) { mainRepository.limparBancoDeDadosCompleto() }
+                            delay(1000)
+                            Toast.makeText(context, "O cofre foi resetado. Voltando ao início...", Toast.LENGTH_LONG).show()
+                            onBack()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Falha na destruição: ${e.message}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            processingMessage = null
                         }
                     }
                 }
-            }
+            )
         }
         if (processingMessage != null) {
-            Dialog(
-                onDismissRequest = { },
-                properties = DialogProperties(
-                    dismissOnBackPress = false,
-                    dismissOnClickOutside = false
-                )
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = CardBg),
-                    border = BorderStroke(1.dp, TextWhite.copy(0.1f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = Color(0xFF4CAF50))
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = processingMessage ?: "Processando...",
-                            color = TextWhite,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Não feche o aplicativo.",
-                            color = TextWhite.copy(0.6f),
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
+            DialogProcessamentoPremium(processingMessage!!)
         }
     }
 }
 
-// --- COMPONENTES AUXILIARES ---
+// --- SUB-COMPONENTES VISUAIS BLU MACAW ---
+
+@Composable
+private fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
+    Text(text, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = color, letterSpacing = 1.5.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+}
 
 @Composable
 private fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(CardGlass)
+            .border(1.dp, TextWhite.copy(0.05f), RoundedCornerShape(20.dp))
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            content = content
+        Column(modifier = Modifier.fillMaxWidth(), content = content)
+    }
+}
+
+@Composable
+private fun ConfiguracaoSwitchItem(
+    icone: androidx.compose.ui.graphics.vector.ImageVector,
+    titulo: String,
+    descricao: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    padding: PaddingValues = PaddingValues(16.dp)
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(padding),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(40.dp).background(DeepSpaceBlue.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(icone, contentDescription = null, tint = if (checked) NeonCyan else TextWhite.copy(0.5f), modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(titulo, color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(descricao, color = TextWhite.copy(0.5f), fontSize = 12.sp)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = DeepSpaceBlue,
+                checkedTrackColor = NeonCyan,
+                uncheckedThumbColor = TextWhite.copy(0.5f),
+                uncheckedTrackColor = Color.Transparent,
+                uncheckedBorderColor = TextWhite.copy(0.3f)
+            )
         )
     }
 }
 
 @Composable
-private fun PremiumStepperRow(
-    title: String,
-    value: Int,
-    min: Int,
-    max: Int,
-    onMinus: () -> Unit,
-    onPlus: () -> Unit
+private fun ConfiguracaoAcaoItem(
+    icone: androidx.compose.ui.graphics.vector.ImageVector,
+    titulo: String,
+    iconTint: Color = NeonCyan,
+    onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(40.dp).background(DeepSpaceBlue.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(icone, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(titulo, color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextWhite.copy(0.3f))
+    }
+}
+
+@Composable
+private fun PremiumStepperRow(title: String, value: Int, min: Int, max: Int, onMinus: () -> Unit, onPlus: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, color = TextWhite)
+        Text(title, color = TextWhite, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically) {
             StepperButton(text = "-", onClick = onMinus, enabled = value > min)
-            Box(modifier = Modifier.width(40.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "$value",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextWhite,
-                    fontWeight = FontWeight.Bold
-                )
+            Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
+                Text("$value", color = TextWhite, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
             }
             StepperButton(text = "+", onClick = onPlus, enabled = value < max)
         }
@@ -938,90 +504,83 @@ private fun PremiumStepperRow(
 }
 
 @Composable
-private fun PremiumTimeRowCompact(
-    hour: Int,
-    minute: Int,
-    onHourChange: (Int) -> Unit,
-    onMinuteChange: (Int) -> Unit
-) {
+private fun PremiumTimeRowCompact(hour: Int, minute: Int, onHourChange: (Int) -> Unit, onMinuteChange: (Int) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text("Horário do Alerta", style = MaterialTheme.typography.bodyMedium, color = TextWhite)
+        Text("Horário de Disparo", color = TextWhite, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically) {
             TimePickerControlHorizontal(value = hour, range = 24, onChange = onHourChange)
-            Text(
-                " : ",
-                style = MaterialTheme.typography.headlineSmall,
-                color = TextWhite.copy(alpha = 0.5f),
-                modifier = Modifier
-                    .padding(horizontal = 4.dp)
-                    .offset(y = (-2).dp)
-            )
-            TimePickerControlHorizontal(
-                value = minute,
-                range = 60,
-                step = 5,
-                onChange = onMinuteChange
-            )
+            Text(":", color = TextWhite.copy(0.5f), fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
+            TimePickerControlHorizontal(value = minute, range = 60, step = 5, onChange = onMinuteChange)
         }
     }
 }
 
 @Composable
-private fun TimePickerControlHorizontal(
-    value: Int,
-    range: Int,
-    step: Int = 1,
-    onChange: (Int) -> Unit
-) {
+private fun TimePickerControlHorizontal(value: Int, range: Int, step: Int = 1, onChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        StepperButton(text = "-", onClick = { onChange((value - step + range) % range) })
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.3f)),
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.padding(horizontal = 4.dp)
+        StepperButton(text = "▼", onClick = { onChange((value - step + range) % range) })
+        Box(
+            modifier = Modifier.padding(horizontal = 8.dp).clip(RoundedCornerShape(8.dp)).background(DeepSpaceBlue.copy(0.5f)).size(width = 44.dp, height = 36.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier.size(width = 40.dp, height = 32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = String.format("%02d", value),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = TextWhite,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Text(text = String.format("%02d", value), color = NeonCyan, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
         }
-        StepperButton(text = "+", onClick = { onChange((value + step) % range) })
+        StepperButton(text = "▲", onClick = { onChange((value + step) % range) })
     }
 }
 
 @Composable
 private fun StepperButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(32.dp),
-        shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(0.dp),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = TextWhite,
-            disabledContentColor = TextWhite.copy(alpha = 0.2f),
-            containerColor = if (enabled) Color.White.copy(alpha = 0.05f) else Color.Transparent
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (enabled) TextWhite.copy(alpha = 0.3f) else TextWhite.copy(alpha = 0.1f)
-        )
-    ) {
-        Text(text, fontSize = 18.sp, fontWeight = FontWeight.Light, textAlign = TextAlign.Center)
+    Box(
+        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(if (enabled) TextWhite.copy(0.1f) else Color.Transparent).clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(text, color = if (enabled) TextWhite else TextWhite.copy(0.2f), fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+}
+
+@Composable
+private fun DialogDestruicaoTotal(onCancel: () -> Unit, onConfirm: () -> Unit) {
+    Dialog(onDismissRequest = onCancel) {
+        Box(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(CardGlass).border(1.dp, NeonRed.copy(0.3f), RoundedCornerShape(24.dp)).padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(modifier = Modifier.size(72.dp).background(NeonRed.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = NeonRed, modifier = Modifier.size(36.dp))
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("Autorizar Destruição?", fontSize = 22.sp, color = TextWhite, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(8.dp))
+                Text("Esta ação é irreversível. O banco de dados do Blu Macaw será aniquilado.", color = TextWhite.copy(0.6f), textAlign = TextAlign.Center, fontSize = 14.sp)
+                Spacer(Modifier.height(32.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onCancel, modifier = Modifier.weight(1f).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = TextWhite, contentColor = DeepSpaceBlue), shape = RoundedCornerShape(12.dp)) { Text("CANCELAR", fontWeight = FontWeight.Bold) }
+                    OutlinedButton(onClick = onConfirm, modifier = Modifier.weight(1f).height(50.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonRed), border = BorderStroke(1.dp, NeonRed.copy(0.5f)), shape = RoundedCornerShape(12.dp)) { Text("ANIMAQUILAR", fontWeight = FontWeight.Bold) }
+                }
+            }
+        }
     }
 }
 
+@Composable
+private fun DialogProcessamentoPremium(mensagem: String) {
+    Dialog(onDismissRequest = { }, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(CardGlass).border(1.dp, NeonCyan.copy(0.3f), RoundedCornerShape(20.dp)).padding(32.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = NeonCyan)
+                Spacer(Modifier.height(24.dp))
+                Text(mensagem, color = TextWhite, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, fontSize = 16.sp)
+            }
+        }
+    }
+}
+
+// (O GerenciarCategoriasDialog pode ficar exatamente o mesmo, ou aplique o mesmo estilo 'CardGlass' ao seu 'Card' interno)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GerenciarCategoriasDialog(
     viewModel: CategoriaViewModel,
@@ -1030,118 +589,54 @@ fun GerenciarCategoriasDialog(
     var novoNome by remember { mutableStateOf("") }
     val categorias by viewModel.categorias.collectAsState()
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 200.dp, max = 500.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = CardBg),
-                border = BorderStroke(1.dp, Color.White.copy(0.1f))
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(CardGlass).border(1.dp, TextWhite.copy(0.1f), RoundedCornerShape(24.dp))
             ) {
-                Column(
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .fillMaxWidth()
-                ) {
-                    Text(
-                        "Minhas Categorias",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = TextWhite,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Adicione ou remova categorias personalizadas.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextWhite.copy(0.6f)
-                    )
+                Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+                    Text("Minhas Categorias", fontSize = 20.sp, color = TextWhite, fontWeight = FontWeight.Bold)
+                    Text("Personalize seu cofre", fontSize = 14.sp, color = TextWhite.copy(0.5f))
 
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(24.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
-                            value = novoNome,
-                            onValueChange = { novoNome = it },
-                            label = { Text("Nova Categoria") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
+                            value = novoNome, onValueChange = { novoNome = it },
+                            label = { Text("Nome da Categoria", color = TextWhite.copy(0.5f)) },
+                            singleLine = true, modifier = Modifier.weight(1f),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = TextWhite,
-                                unfocusedBorderColor = TextWhite.copy(0.3f),
-                                focusedLabelColor = TextWhite,
-                                unfocusedLabelColor = TextWhite.copy(0.6f),
-                                focusedTextColor = TextWhite,
-                                unfocusedTextColor = TextWhite,
-                                cursorColor = TextWhite
+                                focusedBorderColor = NeonCyan, unfocusedBorderColor = TextWhite.copy(0.2f),
+                                focusedTextColor = TextWhite, unfocusedTextColor = TextWhite, cursorColor = NeonCyan
                             )
                         )
-                        Spacer(Modifier.width(8.dp))
-
-                        IconButton(
-                            onClick = {
-                                if (novoNome.isNotBlank()) {
-                                    viewModel.adicionarCategoria(novoNome.trim(), "ic_default")
-                                    novoNome = ""
-                                }
+                        Spacer(Modifier.width(12.dp))
+                        Box(
+                            modifier = Modifier.size(50.dp).clip(RoundedCornerShape(12.dp)).background(NeonCyan).clickable {
+                                if (novoNome.isNotBlank()) { viewModel.adicionarCategoria(novoNome.trim(), "ic_default"); novoNome = "" }
                             },
-                            modifier = Modifier.background(Color(0xFF4CAF50), CircleShape)
-                        ) {
-                            Icon(Icons.Default.Add, null, tint = TextWhite)
-                        }
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.Add, null, tint = DeepSpaceBlue, modifier = Modifier.size(28.dp)) }
                     }
 
                     Spacer(Modifier.height(20.dp))
 
-                    LazyColumn(
-                        modifier = Modifier.weight(1f, fill = false),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    LazyColumn(modifier = Modifier.weight(1f, fill = false).heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(categorias) { cat ->
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color.White.copy(0.05f), RoundedCornerShape(8.dp))
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(TextWhite.copy(0.05f)).padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(cat.title, color = TextWhite, fontWeight = FontWeight.Medium)
-                                IconButton(
-                                    onClick = { viewModel.excluirCategoria(cat) },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        null,
-                                        tint = Color(0xFFEF5350),
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                IconButton(onClick = { viewModel.excluirCategoria(cat) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, null, tint = NeonRed.copy(0.8f), modifier = Modifier.size(20.dp))
                                 }
                             }
                         }
                     }
 
-                    Spacer(Modifier.height(20.dp))
-
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = TextWhite,
-                            contentColor = PremiumDarkBlue
-                        )
-                    ) {
-                        Text("Concluído", fontWeight = FontWeight.Bold)
-                    }
+                    Spacer(Modifier.height(24.dp))
+                    Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = TextWhite, contentColor = DeepSpaceBlue), shape = RoundedCornerShape(14.dp)) { Text("CONCLUÍDO", fontWeight = FontWeight.Bold) }
                 }
             }
         }

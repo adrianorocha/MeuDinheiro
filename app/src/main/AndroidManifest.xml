@@ -43,6 +43,10 @@
                 android:resource="@xml/saldo_widget_info" />
         </receiver>
         <receiver
+            android:name=".funcoes.PagarBoletoReceiver"
+            android:exported="false">
+        </receiver>
+        <receiver
             android:name=".notif.ReceptorAvisosDiarios"
             android:exported="false" />
         <activity

@@ -66,6 +66,8 @@ fun TransferenciaDialog(
     onDismiss: () -> Unit,
     onConfirmar: (origem: String, destino: String, valor: Double, dataAgendada: Long?) -> Unit
 ) {
+    val context = LocalContext.current // Se estiver num Composable
+
     // ESTADOS
     var contaOrigem by remember { mutableStateOf(contaOrigemInicial) }
     var contaDestino by remember { mutableStateOf("") }
@@ -290,6 +292,19 @@ fun TransferenciaDialog(
                                     v,
                                     if (agendar) dataSelecionada else null
                                 )
+
+                                val inputData = androidx.work.workDataOf(
+                                    "TIPO_WORK" to  if(agendar) "DIARIO" else "IMEDIATO",
+                                    "VALOR" to v,
+                                    "DESTINO" to contaDestino.trim()
+                                )
+
+                                val request = androidx.work.OneTimeWorkRequestBuilder<com.meudinheiro.worker.TransferenciaWorker>()
+                                    .setInputData(inputData)
+                                    .build()
+
+                                androidx.work.WorkManager.getInstance(context).enqueue(request)
+                                android.util.Log.d("MeuDinheiro_Teste", "Comando de disparo enviado!")
                             }
                         },
                         modifier = Modifier.weight(1f).height(50.dp),

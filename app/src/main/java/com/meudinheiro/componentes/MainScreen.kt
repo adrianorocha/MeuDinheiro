@@ -145,7 +145,7 @@ fun MainScreen(
     // 3. ESTADOS DE CONTROLE DE TELA (UI)
     // ==========================================
     var mainTabSelecionada by remember { mutableIntStateOf(0) }
-    val mainTabs = remember { listOf("Saldo", "Contas", "Cofrinhos", "Investimentos") }
+    val mainTabs = remember { listOf("Saldo", "Contas", "Cofrinhos", "Investimentos", "Resumos") }
     var selectedIndex by remember { mutableIntStateOf(-1) } // Controle das telas cheias sobrepostas
 
     // Controles de Dialogs
@@ -390,16 +390,16 @@ fun MainScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-/*
-                // --- CARDS DE RESUMO FIXOS ---
-                ResumoAgendamentosCard(
-                    agendamentos = agendados,
-                    onCancelar = { id -> contaVM.cancelarAgendamento(id, context) },
-                    isPrivate = isPrivate
-                )
+                /*
+                                // --- CARDS DE RESUMO FIXOS ---
+                                ResumoAgendamentosCard(
+                                    agendamentos = agendados,
+                                    onCancelar = { id -> contaVM.cancelarAgendamento(id, context) },
+                                    isPrivate = isPrivate
+                                )
 
-                Spacer(modifier = Modifier.height(8.dp))
-*/
+                                Spacer(modifier = Modifier.height(8.dp))
+                */
 
                 NotificacaoRendimentoCard(
                     rendimentoNoMes = rendimentoTotal,
@@ -491,16 +491,16 @@ fun MainScreen(
                                         dadosGrafico = dadosGrafico
                                     )
                                 }
-/*
-                                item {
-                                    RelatorioSaudeFinanceiraCard(
-                                        receitaAtual = resumo.entradas,
-                                        despesaAtual = resumo.saidas,
-                                        despesaAnterior = saidasMesAnterior,
-                                        isPrivate = isPrivate
-                                    )
-                                }
-*/
+                                /*
+                                                                item {
+                                                                    RelatorioSaudeFinanceiraCard(
+                                                                        receitaAtual = resumo.entradas,
+                                                                        despesaAtual = resumo.saidas,
+                                                                        despesaAnterior = saidasMesAnterior,
+                                                                        isPrivate = isPrivate
+                                                                    )
+                                                                }
+                                */
                                 item {
                                     if (dadosGrafico.isNotEmpty()) {
                                         CompactCategoryGrid(dados = dadosGrafico, isPrivate = isPrivate)
@@ -681,6 +681,10 @@ fun MainScreen(
                             // --- ABA 3: INVESTIMENTOS ---
                             InvestimentosTab(viewModel = investimentoVM, isPrivate = isPrivate)
                         }
+
+                        4->{
+                            SecaoAgendamentosAtivos(viewModel = contaVM)
+                        }
                     }
                 }
             }
@@ -698,7 +702,7 @@ fun MainScreen(
                 shape = CircleShape
             ) {
                 Icon(
-                    imageVector = Icons.Default.Insights,
+                    imageVector = Icons.Default.CalendarToday,
                     contentDescription = "Previsão",
                     modifier = Modifier.size(20.dp)
                 )

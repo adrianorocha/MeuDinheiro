@@ -6,8 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,7 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.TransferenciaAgendada
+import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.viewModel.ContaSaldoViewModel
+import java.lang.reflect.Modifier.isPrivate
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -123,7 +123,7 @@ private fun ItemAgendamento(
             // Valor e Botão de Cancelar
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = String.format("R$ %.2f", agendamento.valor),
+                    text = formatarMoedaBR(agendamento.valor, false ),
                     color = Color(0xFF69F0AE),
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 16.sp

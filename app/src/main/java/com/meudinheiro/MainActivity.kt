@@ -33,6 +33,7 @@ import com.meudinheiro.componentes.LoginScreen
 import com.meudinheiro.componentes.MainScreen
 import com.meudinheiro.componentes.PendenciasScreen
 import com.meudinheiro.componentes.SplashScreen
+import com.meudinheiro.funcoes.NotificacaoVIPHelper
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
 import com.meudinheiro.notif.BackupReminderWorker
@@ -47,6 +48,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        NotificacaoVIPHelper.criarCanalDeNotificacao(this)
+
         enableEdgeToEdge()
         val tarefaPeriodica = PeriodicWorkRequestBuilder<TransferenciaWorker>(12, TimeUnit.HOURS)
             .addTag("check_agendamentos_diario")

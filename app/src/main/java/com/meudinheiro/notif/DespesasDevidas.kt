@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.meudinheiro.funcoes.NotificacaoVIPHelper // Importando nosso Helper VIP
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
@@ -13,79 +14,84 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 object DespesasDevidas {
 
-    // Função direta que roda na Thread de IO (Banco de Dados)
     suspend fun verificarEExibir(context: Context) = withContext(Dispatchers.IO) {
-        val TAG = "DespesasWorker"
-        Log.d(TAG, "Iniciando verificação DIRETA de despesas...")
+        val TAG = "BluMacaw_Despesas"
+        Log.d(TAG, "Iniciando ronda financeira...")
 
         val prefs = UserPreferences(context)
 
+        // 1. Verifica se as notificações estão ligadas nas configs
         val enabled = prefs.notifEnabledFlow.firstOrNull() ?: true
-        if (!enabled) {
-            Log.d(TAG, "Notificações desativadas.")
-            return@withContext
-        }
+        if (!enabled) return@withContext
 
+        // 2. Checa permissão do Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val hasPermission = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
-
-            if (!hasPermission) {
-                Log.d(TAG, "Sem permissão do Android.")
-                return@withContext
-            }
+            if (!hasPermission) return@withContext
         }
 
         val daysAhead = prefs.notifDaysAheadFlow.firstOrNull() ?: 3
         val (inicio, fim) = buildWindowDates(daysAhead)
 
+        // 3. Busca no banco de dados
         val pendentes = try {
             val repo = MainRepository(context)
             repo.getPendentesAVencer(inicio, fim, onlyCredit = false)
         } catch (e: Exception) {
-            Log.e(TAG, "Erro no banco", e)
+            Log.e(TAG, "Erro ao acessar o cofre", e)
             return@withContext
         }
 
         if (pendentes.isEmpty()) {
-            Log.d(TAG, "Nenhuma despesa para os próximos $daysAhead dias.")
+            Log.d(TAG, "Cofre em dia. Nenhuma despesa para os próximos $daysAhead dias.")
             return@withContext
         }
 
-        val nf = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
-        val df = SimpleDateFormat("dd/MM/yy", Locale("pt", "BR"))
+// 4. Formatação Limpa (Sem o NumberFormat que buga a Samsung)
+        val df = SimpleDateFormat("dd/MM", Locale("pt", "BR"))
         val total = pendentes.sumOf { it.valor }
 
-        val title = "Despesas a vencer"
-        val text =
-            "${pendentes.size} pendente(s) nos próximos $daysAhead dia(s) — Total: ${nf.format(total)}"
+        // Criamos uma função local para formatar a moeda com espaço normal
+        fun formatarSeguro(valor: Double): String {
+            return "R$ " + String.format(Locale("pt", "BR"), "%.2f", valor)
+        }
 
-        val lines = pendentes
-            .sortedBy { it.data.time }
-            .take(6)
-            .joinToString("\n") { d ->
-                "• ${d.descricao} — ${df.format(d.data)} — ${nf.format(d.valor)}"
-            }
+        // 5. Montagem da Notificação VIP
+        val tituloVIP = "Ronda Financeira: ${pendentes.size} Pendências"
+        val mensagemCurta = "Total de ${formatarSeguro(total)} vencendo em breve."
 
-        val bigText = if (pendentes.size > 6) {
-            "$lines\n\n+${pendentes.size - 6} item(ns) ocultos."
-        } else lines
+        // Criamos a lista detalhada para o "BigText" (estilo expansível)
+        val detalhesBuilder = StringBuilder()
+        detalhesBuilder.append("Resumo dos próximos $daysAhead dias:\n\n")
 
+        pendentes.sortedBy { it.data.time }.take(5).forEach { d ->
+            detalhesBuilder.append("• ${df.format(d.data)} | ${d.descricao}: ${formatarSeguro(d.valor)}\n")
+        }
+
+        if (pendentes.size > 5) {
+            detalhesBuilder.append("\n+ ${pendentes.size - 5} outras contas no app.")
+        }
+
+        // 6. DISPARO USANDO O NOSSO HELPER
         try {
-            ExpenseNotif.show(context, title, text, bigText)
-            Log.d(TAG, "Notificação disparada com SUCESSO!")
+            NotificacaoVIPHelper.enviarAlertaVencimento(
+                context = context,
+                titulo = tituloVIP,
+                mensagemCurta = mensagemCurta,
+                detalhes = detalhesBuilder.toString(),
+                notificacaoId = 999
+            )
+            Log.d(TAG, "Notificação VIP enviada com sucesso!")
         } catch (e: Exception) {
-            Log.e(TAG, "Erro fatal ao exibir notificação", e)
+            Log.e(TAG, "Erro ao disparar notificação", e)
         }
     }
-
     private fun buildWindowDates(daysAhead: Int): Pair<Date, Date> {
         val calIni = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
