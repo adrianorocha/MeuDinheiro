@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.meudinheiro.data.Orcamento
 import com.meudinheiro.data.PatrimonioHistorico
 import kotlinx.coroutines.flow.Flow
 
@@ -24,4 +25,10 @@ interface PatrimonioDao {
 
     @Query("SELECT * FROM patrimonio_historico WHERE mesReferencia = :mes LIMIT 1")
     suspend fun buscarSnapshotPorMes(mes: String): PatrimonioHistorico?
+
+    @Query("DELETE FROM patrimonio_historico")
+    suspend fun limparTudo()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirTodas(patrimoniohistorico: List<PatrimonioHistorico>)
 }

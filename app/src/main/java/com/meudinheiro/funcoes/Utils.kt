@@ -51,15 +51,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -920,3 +925,60 @@ fun EmptyStateSection(
     }
 }
 
+@Composable
+fun PremiumSnackbar(data: SnackbarData) {
+    // Detecta se é erro ou sucesso pela mensagem (opcional, mas inteligente)
+    val isError = data.visuals.message.contains("erro", ignoreCase = true) ||
+            data.visuals.message.contains("falha", ignoreCase = true)
+
+    val accentColor = if (isError) Color(0xFFFF5252) else Color(0xFF00E5FF) // Vermelho ou Neon Cyan
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 90.dp), // Um pouco mais alto para flutuar sobre a BottomBar
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Card(
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .graphicsLayer { shadowElevation = 12f }, // Sombra suave
+            shape = RoundedCornerShape(24.dp), // Bordas modernas mais suaves
+            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)), // Borda Neon sutil
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xEB1B263B) // Azul marinho com 92% de opacidade
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Ícone com brilho Neon
+                Icon(
+                    imageVector = if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = accentColor
+                )
+
+                Spacer(Modifier.width(12.dp))
+
+                Text(
+                    text = data.visuals.message,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp
+                )
+
+                // Se houver uma ação (ex: "DESFAZER"), mostramos um botão aqui
+                data.visuals.actionLabel?.let { label ->
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { data.performAction() }) {
+                        Text(label, color = accentColor, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}

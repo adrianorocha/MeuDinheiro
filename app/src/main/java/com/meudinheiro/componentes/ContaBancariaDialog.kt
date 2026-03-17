@@ -170,7 +170,7 @@ fun ContaBancariaDialog(
                     )
                     PremiumTextField(
                         value = contaCorrente,
-                        onValueChange = { if (it.length <= 8) contaCorrente = it },
+                        onValueChange = { if (it.length <= 12) contaCorrente = it },
                         label = "Conta",
                         modifier = Modifier.weight(1.2f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

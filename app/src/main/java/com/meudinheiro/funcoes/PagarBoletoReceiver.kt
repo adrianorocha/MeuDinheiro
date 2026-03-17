@@ -1,5 +1,6 @@
 package com.meudinheiro.funcoes
 
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -18,24 +19,28 @@ class PagarBoletoReceiver : BroadcastReceiver() {
         if (idBoleto != -1) {
             val appContext = context.applicationContext
 
+            // 1. A MÁGICA PARA FECHAR A NOTIFICAÇÃO
+            // Como usamos o ID do boleto para criar a notificação, usamos ele para cancelar
+            val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(idBoleto)
+
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val repository = MainRepository(appContext)
 
-                    // 1. Faz a baixa no banco
-                    repository.marcarDespesaComoPaga(idBoleto, true)
+                    // 2. Faz a baixa no banco (ID convertido para Long se necessário)
+                    repository.marcarDespesaComoPaga(idBoleto.toInt(), true)
 
-                    // 2. DISPARA O SINAL (A mágica da atualização automática)
+                    // 3. Avisa a tela para atualizar
                     repository.avisarQueHouveMudanca()
 
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(appContext, "✅ Pagamento confirmado!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(appContext, "✅ Conta paga e removida do aviso!", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
-                    Log.e("BluMacaw_Receiver", "Erro: ${e.message}")
+                    Log.e("BluMacaw_Receiver", "Erro ao processar baixa: ${e.message}")
                 }
             }
         }
-        // Nota: O fechamento da notificação agora é automático pelo 'setAutoCancel(true)' no Helper.
     }
 }

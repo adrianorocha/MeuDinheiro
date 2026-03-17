@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.meudinheiro.dao.CartaoDao
 import com.meudinheiro.dao.CategoriaDao
 import com.meudinheiro.dao.ContaSaldoDao
 import com.meudinheiro.dao.DespesaDao
@@ -26,8 +27,8 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 @Database(
     entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class,
         Categoria::class, Orcamento::class, Meta::class, Investimento::class,
-        Transacao::class, TransferenciaAgendada::class, PatrimonioHistorico::class],
-    version = 2
+        Transacao::class, TransferenciaAgendada::class, PatrimonioHistorico::class,Cartao::class],
+    version = 1
 )
 @TypeConverters(Converters::class)
 
@@ -40,9 +41,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun metaDao(): MetaDao
     abstract fun investimentoDao(): InvestimentoDao
     abstract fun transacaoDao(): TransacaoDao
-
     abstract fun PatrimonioDao(): PatrimonioDao
 
+    abstract fun cartaoDao(): CartaoDao
 
     companion object {
         @Volatile
@@ -70,6 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "meu_dinheiro_db" // Nome do arquivo do banco
                 )
+                    .addMigrations(MIGRATION_1_2) // Adiciona a migração
                     .fallbackToDestructiveMigration() // Opcional: Recria o banco se mudar versão
                     .build()
 

@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.meudinheiro.data.Cartao
 import com.meudinheiro.data.Investimento
 import kotlinx.coroutines.flow.Flow
 
@@ -27,4 +28,10 @@ interface InvestimentoDao {
     // O SQLite já faz a soma do seu patrimônio direto no motor do banco!
     @Query("SELECT SUM(valorAtual) FROM investimentos")
     fun getPatrimonioTotal(): Flow<Double?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirTodas(investimentos: List<Investimento>)
+
+    @Query("DELETE FROM investimentos")
+    suspend fun limparTudo()
 }

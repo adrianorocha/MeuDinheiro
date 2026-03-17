@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -31,9 +32,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meudinheiro.funcoes.PremiumSnackbar
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.viewModel.AuthViewModel
 import com.meudinheiro.viewModel.AuthViewModelFactory
+import kotlinx.coroutines.launch
 
 // Cores Padrão Blu Macaw
 private val NeonCyan = Color(0xFF00E5FF)
@@ -48,231 +51,175 @@ fun LoginScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
-
     var showRecoveryDialog by remember { mutableStateOf(false) }
     var recoveryStep by remember { mutableIntStateOf(0) }
     var recoveredPassword by remember { mutableStateOf("") }
 
+    // 1. MOTORES DA SNACKBAR PREMIUM
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
     val context = LocalContext.current
     val activity = remember {
-        (context as? FragmentActivity)
-            ?: throw IllegalStateException("LoginScreen precisa estar hospedado em uma FragmentActivity.")
+        (context as? FragmentActivity) ?: throw IllegalStateException("FragmentActivity requerida.")
+    }
+
+    // Função auxiliar para exibir mensagens sem repetir código
+    fun mostrarMensagem(texto: String) {
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss() // Limpa a anterior se houver
+            snackbarHostState.showSnackbar(texto)
+        }
     }
 
     val authVm: AuthViewModel = viewModel(factory = AuthViewModelFactory(userPrefs))
-
     val savedUser by userPrefs.userLoginFlow.collectAsState(initial = "")
     val savedPass by userPrefs.userPassFlow.collectAsState(initial = "")
     val biometricEnabled by userPrefs.biometricEnabledFlow.collectAsState(initial = false)
 
     val hasUser = savedUser.isNotBlank() && savedPass.isNotBlank()
-
     val canBiometric = remember(biometricEnabled, hasUser) {
         biometricEnabled && hasUser && authVm.canUseBiometric(context)
     }
 
-    // Animação de Pulsação para o botão de biometria
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val scaleAnim by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.05f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "pulse_anim"
+        initialValue = 1f, targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(tween(1000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse_anim"
     )
 
     fun authenticateForRecovery() {
         if (!canBiometric) {
-            Toast.makeText(context, "Biometria não disponível para recuperação.", Toast.LENGTH_SHORT).show()
+            mostrarMensagem("Erro: Biometria indisponível.")
             return
         }
 
         val executor = ContextCompat.getMainExecutor(context)
-        val biometricPrompt = BiometricPrompt(
-            activity, executor,
+        val biometricPrompt = BiometricPrompt(activity, executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    super.onAuthenticationSucceeded(result)
                     recoveredPassword = savedPass
                     recoveryStep = 1
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    super.onAuthenticationError(errorCode, errString)
-                    Toast.makeText(context, "Erro: $errString", Toast.LENGTH_SHORT).show()
+                    mostrarMensagem("Falha: $errString")
                 }
             })
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Recuperar Senha")
-            .setSubtitle("Use sua biometria para ver sua senha")
             .setNegativeButtonText("Cancelar")
             .build()
 
         biometricPrompt.authenticate(promptInfo)
     }
 
-    // --- DIALOG DE RECUPERAÇÃO BLU MACAW ---
-    if (showRecoveryDialog) {
-        DialogRecuperacao(
-            step = recoveryStep,
-            password = recoveredPassword,
-            onAuthenticate = { authenticateForRecovery() },
-            onClose = {
-                showRecoveryDialog = false
-                recoveryStep = 0
-                if(recoveredPassword.isNotEmpty()) password = recoveredPassword
-                recoveredPassword = ""
+    // --- TELA PRINCIPAL COM SCAFFOLD PARA A SNACKBAR ---
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                PremiumSnackbar(data) // Chamando o componente VIP
             }
-        )
-    }
-
-    // --- TELA PRINCIPAL ---
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DeepSpaceBlue) // Fundo Escuro Absoluto
-    ) {
-        Column(
+        },
+        containerColor = DeepSpaceBlue
+    ) { paddingValues ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(paddingValues)
         ) {
-            // --- LOGO NEON ---
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(0.02f))
-                    .border(1.dp, NeonCyan.copy(alpha = 0.5f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.AttachMoney,
-                    contentDescription = "Logo",
-                    tint = NeonCyan,
-                    modifier = Modifier.size(40.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = "Bem-vindo",
-                color = Color.White,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = "Controle suas finanças com segurança",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 14.sp
-            )
-
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // --- INPUTS GLASSMORPHISM ---
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(CardGlass)
-                    .border(1.dp, Color.White.copy(0.05f), RoundedCornerShape(24.dp))
-                    .padding(24.dp)
+                    .fillMaxSize()
+                    .padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                NeonTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = "Usuário",
-                    icon = Icons.Default.AccountCircle
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                NeonTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = "Senha",
-                    icon = Icons.Default.Lock,
-                    isPassword = true,
-                    isVisible = isPasswordVisible,
-                    onVisibilityChange = { isPasswordVisible = !isPasswordVisible }
-                )
-
-                if (canBiometric) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Esqueci minha senha",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .clickable { showRecoveryDialog = true }
-                            .padding(4.dp)
-                    )
+                // LOGO NEON
+                Box(
+                    modifier = Modifier.size(80.dp).clip(CircleShape)
+                        .background(Color.White.copy(0.02f))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.5f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.AttachMoney, null, tint = NeonCyan, modifier = Modifier.size(40.dp))
                 }
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(Modifier.height(24.dp))
+                Text("Bem-vindo", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text("Controle suas finanças com segurança", color = Color.White.copy(0.7f), fontSize = 14.sp)
+                Spacer(Modifier.height(40.dp))
 
-            // --- BOTÃO ENTRAR ---
-            Button(
-                onClick = {
-                    when {
-                        !hasUser -> Toast.makeText(context, "Nenhum usuário cadastrado.", Toast.LENGTH_SHORT).show()
-                        username.isBlank() || password.isBlank() -> Toast.makeText(context, "Preencha todos os campos!", Toast.LENGTH_SHORT).show()
-                        username.trim() != savedUser.trim() || password != savedPass -> Toast.makeText(context, "Usuário ou senha inválidos.", Toast.LENGTH_SHORT).show()
-                        else -> onLoginSuccess()
+                // INPUTS
+                Column(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                        .background(CardGlass)
+                        .border(1.dp, Color.White.copy(0.05f), RoundedCornerShape(24.dp))
+                        .padding(24.dp)
+                ) {
+                    NeonTextField(username, { username = it }, "Usuário", Icons.Default.AccountCircle)
+                    Spacer(Modifier.height(16.dp))
+                    NeonTextField(password, { password = it }, "Senha", Icons.Default.Lock, true, isPasswordVisible, { isPasswordVisible = !isPasswordVisible })
+
+                    if (canBiometric) {
+                        Text(
+                            "Esqueci minha senha", color = Color.White.copy(0.6f), fontSize = 12.sp,
+                            modifier = Modifier.align(Alignment.End).clickable { showRecoveryDialog = true }.padding(4.dp)
+                        )
                     }
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
-            ) {
-                Text(text = "ENTRAR", color = DeepSpaceBlue, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
+                }
 
-            // --- BOTÃO BIOMETRIA ---
-            if (canBiometric) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(24.dp))
+
+                // BOTÃO ENTRAR (Com as mensagens Premium)
+                Button(
+                    onClick = {
+                        when {
+                            !hasUser -> mostrarMensagem("Atenção: Nenhum usuário cadastrado.")
+                            username.isBlank() || password.isBlank() -> mostrarMensagem("Preencha todos os campos!")
+                            username.trim() != savedUser.trim() || password != savedPass -> mostrarMensagem("Erro: Usuário ou senha inválidos.")
+                            else -> onLoginSuccess()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+                ) {
+                    Text("ENTRAR", color = DeepSpaceBlue, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // BIOMETRIA
+                if (canBiometric) {
+                    Spacer(Modifier.height(24.dp))
                     IconButton(
                         onClick = {
-                            authVm.promptBiometric(
-                                activity = activity,
-                                onAuthenticated = { onLoginSuccess() },
-                                onError = { msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
-                            )
+                            authVm.promptBiometric(activity, { onLoginSuccess() }, { mostrarMensagem(it) })
                         },
-                        modifier = Modifier
-                            .size(64.dp)
-                            .scale(scaleAnim) // Animação de Pulsação
+                        modifier = Modifier.size(64.dp).scale(scaleAnim)
                             .background(Color.White.copy(0.05f), CircleShape)
                             .border(1.dp, NeonCyan.copy(0.3f), CircleShape)
                     ) {
                         Icon(Icons.Default.Fingerprint, null, tint = NeonCyan, modifier = Modifier.size(32.dp))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Entrar com biometria", color = Color.White, fontSize = 16.sp)
                 }
             }
-        }
 
-        // --- RODAPÉ ---
-        Text(
-            text = "Meu Dinheiro App v1.1",
-            color = Color.White.copy(alpha = 0.3f),
-            fontSize = 12.sp,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp)
-        )
+            Text(
+                "Meu Dinheiro App v1.1", color = Color.White.copy(0.3f), fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+            )
+        }
+    }
+
+    if (showRecoveryDialog) {
+        DialogRecuperacao(recoveryStep, recoveredPassword, { authenticateForRecovery() }, {
+            showRecoveryDialog = false; recoveryStep = 0
+            if(recoveredPassword.isNotEmpty()) password = recoveredPassword
+            recoveredPassword = ""
+        })
     }
 }
-
 // --- COMPONENTES AUXILIARES BLU MACAW ---
 
 @Composable
@@ -280,10 +227,13 @@ fun NeonTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    icon: ImageVector,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     isPassword: Boolean = false,
     isVisible: Boolean = false,
-    onVisibilityChange: () -> Unit = {}
+    onVisibilityChange: () -> Unit = {},
+    // 📍 1. ADICIONAMOS ESTES DOIS PARÂMETROS NOVOS AQUI:
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
     OutlinedTextField(
         value = value,
@@ -302,22 +252,25 @@ fun NeonTextField(
             }
         } else null,
         visualTransformation = if (isPassword && !isVisible) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = if (isPassword) KeyboardOptions(keyboardType = KeyboardType.Password) else KeyboardOptions.Default,
+
+        // 📍 2. AGORA ELE USA O TECLADO QUE VOCÊ PEDIR (Ou o de senha, se for o caso)
+        keyboardOptions = if (isPassword) KeyboardOptions(keyboardType = KeyboardType.Password) else keyboardOptions,
+        keyboardActions = keyboardActions,
+
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = NeonCyan,
+            focusedBorderColor = Color(0xFF00E5FF), // Neon Cyan
             unfocusedBorderColor = Color.Transparent,
             focusedTextColor = Color.White,
             unfocusedTextColor = Color.White,
-            cursorColor = NeonCyan,
+            cursorColor = Color(0xFF00E5FF),
             focusedContainerColor = Color.White.copy(0.05f),
             unfocusedContainerColor = Color.White.copy(0.02f)
         )
     )
 }
-
 @Composable
 fun DialogRecuperacao(
     step: Int,

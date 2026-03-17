@@ -7,6 +7,10 @@ data class BackupDto(
     val metas: List<Meta>? = emptyList(),
     val despesasFixas: List<DespesaFixa>? = emptyList(),
     val orcamentos: List<Orcamento>? = emptyList(),
+    val investimentos: List<Investimento>? = emptyList(),
+    val transacao: List<Transacao>? = emptyList(),
+    val transferenciasAgendadas: List<TransferenciaAgendada>? = emptyList(),
+    val cartoes: List<Cartao>? = emptyList(),
     val bancos: List<BancoDomain>? = emptyList(), // Opcional: se quiser salvar os bancos tbm
     val versaoBackup: Int = 1 // Útil para migrações futuras
 )
