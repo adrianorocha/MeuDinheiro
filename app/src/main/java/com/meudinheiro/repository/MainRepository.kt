@@ -1,6 +1,9 @@
 package com.meudinheiro.repository
 
 import android.content.Context
+import android.util.Log
+import androidx.compose.runtime.snapshots.toInt
+import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.meudinheiro.dao.ContaSaldoDao
@@ -33,6 +36,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
@@ -650,259 +654,289 @@ class MainRepository(
 
         }
     }
-        // --- LÓGICA DE ORÇAMENTOS (BUDGETS) ---
+    // --- LÓGICA DE ORÇAMENTOS (BUDGETS) ---
 
-        fun obterOrcamentosFlow(): Flow<List<Orcamento>> {
-            return orcamentoDao.obterTodosFlow()
+    fun obterOrcamentosFlow(): Flow<List<Orcamento>> {
+        return orcamentoDao.obterTodosFlow()
+    }
+
+    suspend fun salvarOrcamento(categoria: String, valor: Double) {
+        val orcamento = Orcamento(
+            categoria = categoria,
+            valorLimite = valor
+        )
+        orcamentoDao.salvarOrcamento(orcamento)
+    }
+
+    suspend fun excluirOrcamento(categoria: String) {
+        orcamentoDao.excluirPorCategoria(categoria)
+    }
+
+    suspend fun atualizarOrcamento(categoria: String, novoValor: Double) {
+        orcamentoDao.atualizarPorCategoria(categoria, novoValor)
+    }
+
+    val todasDespesasFlow: Flow<List<Despesa>> = despesaDao.obterTodasFlow()
+
+    // --- OPERAÇÕES DE METAS ---
+
+    // Busca todas as metas em tempo real (Flow)
+    fun getTodasMetas(): Flow<List<Meta>> {
+        return metaDao.getTodasMetas()
+    }
+
+    // Salva uma nova meta ou atualiza uma existente
+    suspend fun salvarMeta(meta: Meta) {
+        metaDao.salvarMeta(meta)
+    }
+
+    // Remove uma meta do planejamento
+    suspend fun excluirMeta(meta: Meta) {
+        metaDao.excluirMeta(meta)
+    }
+
+    fun getTodasContas(): Flow<List<ContaSaldo>> {
+        return contaSaldoDao.getTodasContas()
+    }
+
+    // Adiciona um valor específico ao que já foi guardado
+    suspend fun adicionarAporte(id: Int, valor: Double) {
+        metaDao.adicionarAporte(id, valor)
+    }
+
+    suspend fun realizarAporte(meta: Meta, contaId: String, valor: Double) =
+        withContext(Dispatchers.IO) {
+            if (valor <= 0) return@withContext
+
+            db.withTransaction {
+                // 1. Atualiza o saldo da conta (Subtração)
+                contaSaldoDao.subtrairSaldo(contaId, valor)
+
+                // 2. Atualiza o valor guardado na Meta (Adição)
+                metaDao.adicionarAporte(meta.id, valor)
+
+                // 3. Cria a Entity Despesa para o extrato
+                val transacaoAporte = Despesa(
+                    id = 0, // O Room gera o ID automaticamente se for autoGenerate
+                    descricao = "Aporte: ${meta.nome}",
+                    valor = valor,
+                    data = Date(),
+                    conta = contaId,
+                    categoria = "Reserva",
+                    pic = "reserva",
+                    tipo = TipoDespesa.DEBITO,
+                    pago = true,
+                    mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                    ano = Calendar.getInstance().get(Calendar.YEAR)
+                )
+
+                // 4. Usa a função que você especificou
+                despesaDao.inserirDespesa(transacaoAporte)
+            }
         }
 
-        suspend fun salvarOrcamento(categoria: String, valor: Double) {
-            val orcamento = Orcamento(
-                categoria = categoria,
-                valorLimite = valor
-            )
-            orcamentoDao.salvarOrcamento(orcamento)
-        }
+    suspend fun excluirMetaComRestituicao(meta: Meta, contaId: String?) =
+        withContext(Dispatchers.IO) {
+            db.withTransaction {
+                // 1. Se houver valor guardado e uma conta destino, devolvemos o dinheiro
+                if (meta.valorGuardado > 0 && contaId != null) {
+                    contaSaldoDao.subtrairSaldo(
+                        contaId,
+                        -meta.valorGuardado
+                    ) // Soma o valor de volta
 
-        suspend fun excluirOrcamento(categoria: String) {
-            orcamentoDao.excluirPorCategoria(categoria)
-        }
-
-        suspend fun atualizarOrcamento(categoria: String, novoValor: Double) {
-            orcamentoDao.atualizarPorCategoria(categoria, novoValor)
-        }
-
-        val todasDespesasFlow: Flow<List<Despesa>> = despesaDao.obterTodasFlow()
-
-        // --- OPERAÇÕES DE METAS ---
-
-        // Busca todas as metas em tempo real (Flow)
-        fun getTodasMetas(): Flow<List<Meta>> {
-            return metaDao.getTodasMetas()
-        }
-
-        // Salva uma nova meta ou atualiza uma existente
-        suspend fun salvarMeta(meta: Meta) {
-            metaDao.salvarMeta(meta)
-        }
-
-        // Remove uma meta do planejamento
-        suspend fun excluirMeta(meta: Meta) {
-            metaDao.excluirMeta(meta)
-        }
-
-        fun getTodasContas(): Flow<List<ContaSaldo>> {
-            return contaSaldoDao.getTodasContas()
-        }
-
-        // Adiciona um valor específico ao que já foi guardado
-        suspend fun adicionarAporte(id: Int, valor: Double) {
-            metaDao.adicionarAporte(id, valor)
-        }
-
-        suspend fun realizarAporte(meta: Meta, contaId: String, valor: Double) =
-            withContext(Dispatchers.IO) {
-                if (valor <= 0) return@withContext
-
-                db.withTransaction {
-                    // 1. Atualiza o saldo da conta (Subtração)
-                    contaSaldoDao.subtrairSaldo(contaId, valor)
-
-                    // 2. Atualiza o valor guardado na Meta (Adição)
-                    metaDao.adicionarAporte(meta.id, valor)
-
-                    // 3. Cria a Entity Despesa para o extrato
-                    val transacaoAporte = Despesa(
-                        id = 0, // O Room gera o ID automaticamente se for autoGenerate
-                        descricao = "Aporte: ${meta.nome}",
-                        valor = valor,
+                    // Registra a devolução no extrato
+                    val transacaoEstorno = Despesa(
+                        id = 0,
+                        descricao = "Estorno: Meta ${meta.nome}",
+                        valor = meta.valorGuardado,
                         data = Date(),
                         conta = contaId,
                         categoria = "Reserva",
                         pic = "reserva",
-                        tipo = TipoDespesa.DEBITO,
+                        tipo = TipoDespesa.CREDITO, // Entra como crédito
                         pago = true,
                         mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                         ano = Calendar.getInstance().get(Calendar.YEAR)
                     )
-
-                    // 4. Usa a função que você especificou
-                    despesaDao.inserirDespesa(transacaoAporte)
+                    despesaDao.inserirDespesa(transacaoEstorno)
                 }
+
+                // 2. Remove a meta definitivamente
+                metaDao.excluirMeta(meta)
             }
-
-        suspend fun excluirMetaComRestituicao(meta: Meta, contaId: String?) =
-            withContext(Dispatchers.IO) {
-                db.withTransaction {
-                    // 1. Se houver valor guardado e uma conta destino, devolvemos o dinheiro
-                    if (meta.valorGuardado > 0 && contaId != null) {
-                        contaSaldoDao.subtrairSaldo(
-                            contaId,
-                            -meta.valorGuardado
-                        ) // Soma o valor de volta
-
-                        // Registra a devolução no extrato
-                        val transacaoEstorno = Despesa(
-                            id = 0,
-                            descricao = "Estorno: Meta ${meta.nome}",
-                            valor = meta.valorGuardado,
-                            data = Date(),
-                            conta = contaId,
-                            categoria = "Reserva",
-                            pic = "reserva",
-                            tipo = TipoDespesa.CREDITO, // Entra como crédito
-                            pago = true,
-                            mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
-                            ano = Calendar.getInstance().get(Calendar.YEAR)
-                        )
-                        despesaDao.inserirDespesa(transacaoEstorno)
-                    }
-
-                    // 2. Remove a meta definitivamente
-                    metaDao.excluirMeta(meta)
-                }
-            }
-
-        fun getTotalPoupado(): Flow<Double> {
-            return metaDao.getTotalPoupado().map { it ?: 0.0 }
         }
 
-        suspend fun obterResumoGlobal(): ResumoDto = withContext(Dispatchers.IO) {
-            val entradas = despesaDao.somarGlobal(TipoDespesa.CREDITO) ?: 0.0
-            val saidas = despesaDao.somarGlobal(TipoDespesa.DEBITO) ?: 0.0
+    fun getTotalPoupado(): Flow<Double> {
+        return metaDao.getTotalPoupado().map { it ?: 0.0 }
+    }
+
+    suspend fun obterResumoGlobal(): ResumoDto = withContext(Dispatchers.IO) {
+        val entradas = despesaDao.somarGlobal(TipoDespesa.CREDITO) ?: 0.0
+        val saidas = despesaDao.somarGlobal(TipoDespesa.DEBITO) ?: 0.0
+        ResumoDto(entradas, saidas)
+    }
+
+    suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): ResumoDto =
+        withContext(Dispatchers.IO) {
+            val entradas =
+                despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.CREDITO) ?: 0.0
+            val saidas =
+                despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.DEBITO) ?: 0.0
             ResumoDto(entradas, saidas)
         }
 
-        suspend fun obterResumoPorPeriodo(inicio: Date, fim: Date): ResumoDto =
-            withContext(Dispatchers.IO) {
-                val entradas =
-                    despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.CREDITO) ?: 0.0
-                val saidas =
-                    despesaDao.somarPorPeriodo(inicio.time, fim.time, TipoDespesa.DEBITO) ?: 0.0
-                ResumoDto(entradas, saidas)
-            }
+    suspend fun obterTodasAsMetasSync(): List<Meta> {
+        return metaDao.obterTodasAsMetasSync()
+    }
 
-        suspend fun obterTodasAsMetasSync(): List<Meta> {
-            return metaDao.obterTodasAsMetasSync()
-        }
+    // --- ESSA É A FUNÇÃO QUE FALTAVA ---
+    fun getTotalDespesasPorPeriodo(mes: Int, ano: Int): Flow<Double> {
+        // Formata o mês para ter sempre dois dígitos (01, 02...)
+        val mesFormatado = String.format("%02d", mes)
+        val anoFormatado = ano.toString()
 
-        // --- ESSA É A FUNÇÃO QUE FALTAVA ---
-        fun getTotalDespesasPorPeriodo(mes: Int, ano: Int): Flow<Double> {
-            // Formata o mês para ter sempre dois dígitos (01, 02...)
-            val mesFormatado = String.format("%02d", mes)
-            val anoFormatado = ano.toString()
+        return despesaDao.getTotalPorMesEAno(mesFormatado, anoFormatado)
+            .map { it ?: 0.0 } // Se for nulo, retorna 0.0
+    }
 
-            return despesaDao.getTotalPorMesEAno(mesFormatado, anoFormatado)
-                .map { it ?: 0.0 } // Se for nulo, retorna 0.0
-        }
+    // Puxa as despesas de um mês específico (e filtra a conta se tiver uma selecionada)
+    fun getDespesasPorMes(mes: Int, ano: Int, contaId: String): Flow<List<DespesasDomain>> {
+        return despesaDao.getDespesasPorMes(mes, ano, contaId)
+    }
 
-        // Puxa as despesas de um mês específico (e filtra a conta se tiver uma selecionada)
-        fun getDespesasPorMes(mes: Int, ano: Int, contaId: String): Flow<List<DespesasDomain>> {
-            return despesaDao.getDespesasPorMes(mes, ano, contaId)
-        }
+    // Puxa as despesas do mês anterior
+    fun getDespesasMesAnterior(
+        mes: Int,
+        ano: Int,
+        contaId: String
+    ): Flow<List<DespesasDomain>> {
+        val mesAnterior = if (mes == 1) 12 else mes - 1
+        val anoAnterior = if (mes == 1) ano - 1 else ano
+        return despesaDao.getDespesasPorMes(mesAnterior, anoAnterior, contaId)
+    }
 
-        // Puxa as despesas do mês anterior
-        fun getDespesasMesAnterior(
-            mes: Int,
-            ano: Int,
-            contaId: String
-        ): Flow<List<DespesasDomain>> {
-            val mesAnterior = if (mes == 1) 12 else mes - 1
-            val anoAnterior = if (mes == 1) ano - 1 else ano
-            return despesaDao.getDespesasPorMes(mesAnterior, anoAnterior, contaId)
-        }
+    // Puxa TODAS as despesas (Filtro "Total")
+    fun getTodasDespesas(contaId: String): Flow<List<DespesasDomain>> {
+        return despesaDao.getTodasDespesas(contaId)
+    }
 
-        // Puxa TODAS as despesas (Filtro "Total")
-        fun getTodasDespesas(contaId: String): Flow<List<DespesasDomain>> {
-            return despesaDao.getTodasDespesas(contaId)
-        }
+    // Dentro do MainRepository.kt
+    suspend fun transferirEntreContas(origem: String, destino: String, valor: Double): Boolean {
+        return contaSaldoDao?.transferir(origem, destino, valor) ?: false
+    }
+    /*suspend fun transferirEntreContas(origem: String, destino: String, valor: Double) {
+        // Aqui o repositório usa o dao que ele já possui internamente
+        contaSaldoDao?.transferir(origem, destino, valor)
 
-        // Dentro do MainRepository.kt
-        suspend fun transferirEntreContas(origem: String, destino: String, valor: Double): Boolean {
-            return contaSaldoDao?.transferir(origem, destino, valor) ?: false
-        }
-        /*suspend fun transferirEntreContas(origem: String, destino: String, valor: Double) {
-            // Aqui o repositório usa o dao que ele já possui internamente
-            contaSaldoDao?.transferir(origem, destino, valor)
+        // Opcional: recalcular saldos se necessário
+        recalcularSaldoTotal(origem)
+        recalcularSaldoTotal(destino)
+    }*/
 
-            // Opcional: recalcular saldos se necessário
-            recalcularSaldoTotal(origem)
-            recalcularSaldoTotal(destino)
-        }*/
+    // Busca os agendamentos como Flow
+    fun obterAgendamentosPendentesFlow(): Flow<List<TransferenciaAgendada>> {
+        return contaSaldoDao.obterAgendamentosPendentesFlow()
+    }
 
-        // Busca os agendamentos como Flow
-        fun obterAgendamentosPendentesFlow(): Flow<List<TransferenciaAgendada>> {
-            return contaSaldoDao.obterAgendamentosPendentesFlow()
-        }
+    // Exclui o agendamento
+    suspend fun excluirAgendamento(id: Int) {
+        contaSaldoDao?.excluirAgendamento(id)
+    }
 
-        // Exclui o agendamento
-        suspend fun excluirAgendamento(id: Int) {
-            contaSaldoDao?.excluirAgendamento(id)
-        }
+    // Salva um novo agendamento
+    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada): Long {
+        return contaSaldoDao?.inserirAgendamento(agendamento) ?: -1L
+    }
 
-        // Salva um novo agendamento
-        suspend fun inserirAgendamento(agendamento: TransferenciaAgendada): Long {
-            return contaSaldoDao?.inserirAgendamento(agendamento) ?: -1L
-        }
+    // Busca a lista de transferências para o Worker processar
+    suspend fun obterAgendamentosPendentesSync(hoje: Long): List<TransferenciaAgendada> {
+        return contaSaldoDao.obterAgendamentosPendentesSync(hoje)
+    }
 
-        // Busca a lista de transferências para o Worker processar
-        suspend fun obterAgendamentosPendentesSync(hoje: Long): List<TransferenciaAgendada> {
-            return contaSaldoDao.obterAgendamentosPendentesSync(hoje)
-        }
+    // Atualiza o status no banco após o sucesso
+    suspend fun marcarAgendamentoComoExecutado(id: Int) {
+        contaSaldoDao.marcarAgendamentoComoExecutado(id)
+    }
 
-        // Atualiza o status no banco após o sucesso
-        suspend fun marcarAgendamentoComoExecutado(id: Int) {
-            contaSaldoDao.marcarAgendamentoComoExecutado(id)
-        }
+    suspend fun limparBancoDeDadosCompleto() {
+        contaSaldoDao?.limparTodasAsTabelas()
+    }
 
-        suspend fun limparBancoDeDadosCompleto() {
-            contaSaldoDao?.limparTodasAsTabelas()
-        }
+    fun obterAgendamentosAtivos() = dao?.obterAgendamentosAtivos() ?: flowOf(emptyList())
 
-        fun obterAgendamentosAtivos() = dao?.obterAgendamentosAtivos() ?: flowOf(emptyList())
+    fun obterHistoricoPatrimonial(): Flow<List<PatrimonioHistorico>> {
+        return patrimonioDao?.obterHistoricoPatrimonial() ?: flowOf(emptyList())
+    }
 
-        fun obterHistoricoPatrimonial(): Flow<List<PatrimonioHistorico>> {
-            return patrimonioDao?.obterHistoricoPatrimonial() ?: flowOf(emptyList())
-        }
+    suspend fun salvarSnapshotPatrimonial(snapshot: PatrimonioHistorico) {
+        patrimonioDao?.salvarSnapshot(snapshot)
+    }
 
-        suspend fun salvarSnapshotPatrimonial(snapshot: PatrimonioHistorico) {
-            patrimonioDao?.salvarSnapshot(snapshot)
-        }
+    suspend fun obterTodasStatic(): List<ContaSaldo> {
+        return dao?.obterTodasStatic() ?: emptyList()
+    }
 
-        suspend fun obterTodasStatic(): List<ContaSaldo> {
-            return dao?.obterTodasStatic() ?: emptyList()
-        }
+    suspend fun obterTotalPendentes(): Double {
+        return dao?.somarContasPendentes() ?: 0.0
+    }
 
-        suspend fun obterTotalPendentes(): Double {
-            return dao?.somarContasPendentes() ?: 0.0
-        }
+    suspend fun avisarQueHouveMudanca() {
+        _atualizacaoSinal.emit(Unit)
+    }
 
-        suspend fun avisarQueHouveMudanca() {
-            _atualizacaoSinal.emit(Unit)
-        }
+    suspend fun verificarSnapshotMes(mes: String): Boolean {
+        return patrimonioDao?.buscarSnapshotPorMes(mes) != null
+    }
 
-        suspend fun verificarSnapshotMes(mes: String): Boolean {
-            return patrimonioDao?.buscarSnapshotPorMes(mes) != null
-        }
+    fun getTodosOsCartoes(): Flow<List<CartaoComConta>> {
+        return cartaoDao.getCartoesComConta()
+    }
 
-        fun getTodosOsCartoes(): Flow<List<CartaoComConta>> {
-            return cartaoDao.getCartoesComConta()
-        }
+    // 3. SALVAR OU EDITAR: Função suspensa para rodar fora da thread principal
+    suspend fun salvarCartao(cartao: Cartao) {
+        cartaoDao.inserirCartao(cartao)
+    }
 
-        // 3. SALVAR OU EDITAR: Função suspensa para rodar fora da thread principal
-        suspend fun salvarCartao(cartao: Cartao) {
-            cartaoDao.inserirCartao(cartao)
-        }
+    // 4. EXCLUIR: Remove o cartão do banco
+    suspend fun excluirCartao(cartao: Cartao) {
+        cartaoDao.deletarCartao(cartao)
+    }
 
-        // 4. EXCLUIR: Remove o cartão do banco
-        suspend fun excluirCartao(cartao: Cartao) {
-            cartaoDao.deletarCartao(cartao)
-        }
+    // 5. BUSCAR POR ID: Útil para quando formos processar uma compra específica
+    suspend fun buscarCartaoPorId(id: Int): Cartao? {
+        return cartaoDao.getCartaoPorId(id)
+    }
 
-        // 5. BUSCAR POR ID: Útil para quando formos processar uma compra específica
-        suspend fun buscarCartaoPorId(id: Int): Cartao? {
-            return cartaoDao.getCartaoPorId(id)
+    suspend fun registrarCompraNoCartao(cartaoId: Int, valor: Double) {
+        cartaoDao.abaterLimite(cartaoId, valor)
+    }
+
+    suspend fun excluirDespesaEEstornar(despesa: Despesa) {
+        // 1. Deleta a despesa
+        despesaDao.excluirDespesa(despesa.id.toInt())
+
+        // 2. Se tiver cartaoId, já estorna o limite direto pelo cartaoDao
+        despesa.cartaoId?.let { id ->
+            cartaoDao.estornarLimite(id, despesa.valor)
         }
     }
+
+    suspend fun abaterLimiteCartao(id: Int, valor: Double) {
+        cartaoDao.abaterLimite(id, valor)
+    }
+
+    suspend fun estornarLimiteCartao(id: Int, valor: Double) {
+        cartaoDao.estornarLimite(id, valor)
+    }
+
+    suspend fun subtrairSaldo(contaId: Int, valor: Double) {
+        contaSaldoDao.subtrairSaldo(contaId, valor)
+    }
+
+   fun getDespesasPorCartao(cartaoId: Int): Flow<List<Despesa>> {
+        return despesaDao.getDespesasPorCartao(cartaoId)
+    }
+}
 
 

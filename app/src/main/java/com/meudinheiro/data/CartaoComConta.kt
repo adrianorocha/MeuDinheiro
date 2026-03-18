@@ -5,9 +5,11 @@ data class CartaoComConta(
     val nomeCartao: String,
     val finalCartao: String,
     val tipo: String,
+    val limiteDisponivel: Double,
     val limiteTotal: Double,
     val diaFechamento: Int,
     val diaVencimento: Int,
     val contaId: Int,
-    val nomeConta: String // 📍 O nome do banco que virá pelo JOIN
+    val nomeConta: String, // 📍 O nome do banco que virá pelo JOIN
+    val numeroConta: String
 )

@@ -91,6 +91,14 @@ import java.util.Date
 import java.util.Locale
 import com.meudinheiro.ui.theme.NeonCyan
 import com.meudinheiro.ui.theme.NeonGreen
+import com.meudinheiro.data.*
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meudinheiro.viewModel.CartoesViewModel
+import com.meudinheiro.viewModel.CartoesViewModelFactory
+
 // Cores Premium Blu Macaw
 private val DialogBg = Color(0xFF1B263B)
 private val TextColor = Color(0xFFE0E1DD)
@@ -109,6 +117,7 @@ fun ActionButtonRow(
     getPicCategoria: (String) -> String,
     contaSelecionada: String,
     viewModel: ContaSaldoViewModel,
+    cartoesViewModel: CartoesViewModel = viewModel(factory = CartoesViewModelFactory(LocalContext.current)),
     onConfigClick: () -> Unit
 ) {
     val currentContext = LocalContext.current
@@ -120,6 +129,8 @@ fun ActionButtonRow(
 
     var valorEscaneado by remember { mutableStateOf<Double?>(null) }
     var codigoEscaneado by remember { mutableStateOf("") }
+
+    val cartoes by cartoesViewModel.cartoes.collectAsState()
 
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -140,7 +151,11 @@ fun ActionButtonRow(
                 color = NeonGreen,
                 modifier = modifierItem,
                 onClick = {
-                    if (contaSelecionada.isBlank()) Toast.makeText(currentContext, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+                    if (contaSelecionada.isBlank()) Toast.makeText(
+                        currentContext,
+                        "Selecione uma conta",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     else exibirDeposito = true
                 }
             )
@@ -151,7 +166,11 @@ fun ActionButtonRow(
                 color = NeonCyan,
                 modifier = modifierItem,
                 onClick = {
-                    if (contaSelecionada.isBlank()) Toast.makeText(currentContext, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+                    if (contaSelecionada.isBlank()) Toast.makeText(
+                        currentContext,
+                        "Selecione uma conta",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     else exibirFormulario = true
                 }
             )
@@ -162,7 +181,11 @@ fun ActionButtonRow(
                 color = Color(0xFFE040FB), // Roxo
                 modifier = modifierItem,
                 onClick = {
-                    if (contaSelecionada.isBlank()) Toast.makeText(currentContext, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+                    if (contaSelecionada.isBlank()) Toast.makeText(
+                        currentContext,
+                        "Selecione uma conta",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     else exibirAssinaturas = true
                 }
             )
@@ -181,8 +204,10 @@ fun ActionButtonRow(
         AddDespesaDialog(
             categorias = categorias,
             contaSelecionada = contaSelecionada,
+            cartoesDisponiveis = cartoes,
             getPicCategoria = getPicCategoria,
             viewModel = viewModel,
+            cartoesViewModel = cartoesViewModel,
             parentScope = parentScope,
             // --- NOVOS PARÂMETROS ---
             valorInicial = valorEscaneado ?: 0.0,
@@ -341,7 +366,12 @@ private fun DepositDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         PremiumDialogCard {
-            Text("Novo Depósito", style = MaterialTheme.typography.titleLarge, color = TextColor, fontWeight = FontWeight.Bold)
+            Text(
+                "Novo Depósito",
+                style = MaterialTheme.typography.titleLarge,
+                color = TextColor,
+                fontWeight = FontWeight.Bold
+            )
             Text("Para: $contaSelecionada", color = NeonGreen)
 
             PremiumTextField(
@@ -354,7 +384,10 @@ private fun DepositDialog(
             )
 
             PremiumTextField(
-                value = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(dataMillis.value)),
+                value = SimpleDateFormat(
+                    "dd/MM/yyyy",
+                    Locale.getDefault()
+                ).format(Date(dataMillis.value)),
                 onValueChange = {},
                 label = "Data",
                 readOnly = true,
@@ -366,7 +399,10 @@ private fun DepositDialog(
                 }
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
                 OutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
@@ -378,7 +414,18 @@ private fun DepositDialog(
                     onClick = {
                         val v = valor.replace(",", ".").toDoubleOrNull()
                         if (v != null && v > 0) {
-                            val dep = Despesa(descricao = "Depósito", categoria = "Depósito", valor = v, data = Date(dataMillis.value), pic = "deposit", conta = contaSelecionada, tipo = TipoDespesa.CREDITO, pago = true, mes = Calendar.getInstance().get(Calendar.MONTH) + 1, ano = Calendar.getInstance().get(Calendar.YEAR))
+                            val dep = Despesa(
+                                descricao = "Depósito",
+                                categoria = "Depósito",
+                                valor = v,
+                                data = Date(dataMillis.value),
+                                pic = "deposit",
+                                conta = contaSelecionada,
+                                tipo = TipoDespesa.CREDITO,
+                                pago = true,
+                                mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                                ano = Calendar.getInstance().get(Calendar.YEAR)
+                            )
                             viewModel.adicionarDespesa(dep)
                             parentScope.launch {
                                 delay(200)
@@ -388,7 +435,10 @@ private fun DepositDialog(
                         }
                     },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonGreen, contentColor = DialogBg)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NeonGreen,
+                        contentColor = DialogBg
+                    )
                 ) { Text("Confirmar", fontWeight = FontWeight.Bold) }
             }
         }
@@ -398,12 +448,15 @@ private fun DepositDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddDespesaDialog(
-    valorInicial: Double = 0.0, // Adicionado
-    codigoBarras: String = "",   // Adicionado
+    valorInicial: Double = 0.0,
+    codigoBarras: String = "",
     categorias: List<String>,
     contaSelecionada: String,
+    // 👇 NOVO: Recebemos a lista de cartões para mostrar no Dropdown
+    cartoesDisponiveis: List<CartaoComConta> = emptyList(),
     getPicCategoria: (String) -> String,
     viewModel: ContaSaldoViewModel,
+    cartoesViewModel : CartoesViewModel,
     parentScope: CoroutineScope,
     onDismiss: () -> Unit
 ) {
@@ -412,10 +465,14 @@ fun AddDespesaDialog(
     val contaAtual by rememberUpdatedState(contaSelecionada.trim())
     var mostrarSucesso by remember { mutableStateOf(false) }
 
+    // --- NOVOS ESTADOS PARA O CARTÃO ---
+    var formaPagamento by remember { mutableStateOf("CONTA") } // "CONTA" ou "CARTAO"
+    var cartaoSelecionadoId by remember { mutableStateOf<Int?>(cartoesDisponiveis.firstOrNull()?.id) }
+
     var categoriaSelecionada by remember { mutableStateOf(categorias.firstOrNull()) }
     var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
     var descricao by rememberSaveable { mutableStateOf("") }
-    var valorTexto by rememberSaveable { mutableStateOf("") }
+    var valorTexto by rememberSaveable { mutableStateOf(if (valorInicial > 0) valorInicial.toString() else "") }
     var numeroParcelas by rememberSaveable { mutableStateOf("2") }
     var moedaSelecionada by remember { mutableStateOf("BRL") }
     var cotacaoTexto by remember { mutableStateOf("1.00") }
@@ -424,12 +481,14 @@ fun AddDespesaDialog(
     val dataMillis = remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
     var erros by remember { mutableStateOf(mapOf<String, String>()) }
 
-    var valorText by remember {
-        mutableStateOf(if (valorInicial > 0) valorInicial.toString() else "")
-    }
+    var observacao by remember { mutableStateOf(if (codigoBarras.isNotEmpty()) "Boleto: $codigoBarras" else "") }
 
-    var observacao by remember {
-        mutableStateOf(if (codigoBarras.isNotEmpty()) "Boleto: $codigoBarras" else "")
+
+    // 📍 Filtro Inteligente: Só mostra cartões vinculados à conta que está aberta no topo
+    val cartoesFiltrados = remember(contaAtual, cartoesDisponiveis) {
+        cartoesDisponiveis.filter { cartao ->
+            cartao.numeroConta.trim().equals(contaAtual, ignoreCase = true)
+        }
     }
 
     fun validar(): Boolean {
@@ -441,10 +500,21 @@ fun AddDespesaDialog(
         if (frequencia == Frequencia.PARCELADA && (numeroParcelas.toIntOrNull() ?: 0) < 2) {
             novosErros["parc"] = "Mínimo 2x"
         }
+        if (formaPagamento == "CARTAO" && cartaoSelecionadoId == null) {
+            novosErros["cartao"] = "Selecione um cartão"
+        }
         erros = novosErros
         return novosErros.isEmpty()
     }
 
+    // 📍 Efeito colateral: Se a lista filtrada mudar, atualiza o cartão selecionado
+    LaunchedEffect(cartoesFiltrados) {
+        if (cartaoSelecionadoId != null && cartoesFiltrados.none { it.id == cartaoSelecionadoId }) {
+            cartaoSelecionadoId = cartoesFiltrados.firstOrNull()?.id
+        } else if (cartaoSelecionadoId == null) {
+            cartaoSelecionadoId = cartoesFiltrados.firstOrNull()?.id
+        }
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -457,7 +527,11 @@ fun AddDespesaDialog(
                     .padding(vertical = 16.dp)
                     .imePadding()
             ) {
-                Crossfade(targetState = mostrarSucesso, animationSpec = tween(500), label = "SuccessAnim") { sucesso ->
+                Crossfade(
+                    targetState = mostrarSucesso,
+                    animationSpec = tween(500),
+                    label = "SuccessAnim"
+                ) { sucesso ->
                     if (sucesso) {
                         SuccessAnimation(onFinished = onDismiss)
                     } else {
@@ -468,6 +542,22 @@ fun AddDespesaDialog(
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             HeaderSection(contaAtual)
+
+                            // 👇 NOVO: O SELETOR DE CONTA VS CARTÃO
+                            FormaPagamentoSelector(
+                                atual = formaPagamento,
+                                onSelect = { formaPagamento = it }
+                            )
+
+                            // 👇 NOVO: SE ESCOLHER CARTÃO, MOSTRA O DROPDOWN
+                            if (formaPagamento == "CARTAO") {
+                                CartaoDropdownSection(
+                                    cartoes = cartoesFiltrados, // 👈 Agora passamos apenas os vinculados
+                                    selecionadoId = cartaoSelecionadoId,
+                                    onSelect = { cartaoSelecionadoId = it },
+                                    erro = erros["cartao"]
+                                )
+                            }
 
                             FrequenciaSelector(frequencia) { frequencia = it }
 
@@ -488,7 +578,13 @@ fun AddDespesaDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 onClick = { }
                             )
-                            erros["desc"]?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 10.sp) }
+                            erros["desc"]?.let {
+                                Text(
+                                    it,
+                                    color = Color(0xFFFF8A80),
+                                    fontSize = 10.sp
+                                )
+                            }
 
                             CategoryGridSection(
                                 categorias = categorias,
@@ -513,17 +609,48 @@ fun AddDespesaDialog(
                                 onCancel = onDismiss,
                                 onSave = {
                                     if (validar()) {
-                                        val vCotacao = cotacaoTexto.replace(",", ".").toDoubleOrNull() ?: 1.0
+                                        val vCotacao =
+                                            cotacaoTexto.replace(",", ".").toDoubleOrNull() ?: 1.0
                                         val vOriginal = (valorTexto.toDoubleOrNull() ?: 0.0) / 100.0
                                         val vFinalBRL = vOriginal * vCotacao
 
-                                        val desp = Despesa(id = 0, descricao = descricao.trim(), valor = vFinalBRL, data = Date(dataMillis.value!!), categoria = categoriaSelecionada!!, pic = getPicCategoria(categoriaSelecionada!!), conta = contaAtual, tipo = TipoDespesa.DEBITO, pago = false, mes = Calendar.getInstance().get(Calendar.MONTH) + 1, ano = Calendar.getInstance().get(Calendar.YEAR))
+                                        // 👇 NOVO: Passando o cartaoId se for crédito
+                                        val idDoCartao =
+                                            if (formaPagamento == "CARTAO") cartaoSelecionadoId else null
+
+                                        val desp = Despesa(
+                                            //id = 0,
+                                            descricao = descricao.trim(),
+                                            valor = vFinalBRL,
+                                            data = Date(dataMillis.value!!),
+                                            categoria = categoriaSelecionada!!,
+                                            pic = getPicCategoria(categoriaSelecionada!!),
+                                            conta = contaAtual,
+                                            tipo = TipoDespesa.DEBITO,
+                                            pago = (formaPagamento == "CONTA"), // Se for cartão, não está "pago" ainda, vai pra fatura!
+                                            mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                                            ano = Calendar.getInstance().get(Calendar.YEAR),
+                                            cartaoId = idDoCartao // Aqui a mágica acontece
+                                        )
 
                                         parentScope.launch {
                                             when (frequencia) {
                                                 Frequencia.UNICA -> viewModel.adicionarDespesa(desp)
-                                                Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(desp, numeroParcelas.toInt(), dataMillis.value!!)
-                                                Frequencia.FIXA -> viewModel.salvarDespesaRecorrente(desp, Calendar.getInstance().apply { timeInMillis = dataMillis.value!! }.get(Calendar.DAY_OF_MONTH))
+                                                Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(
+                                                    desp,
+                                                    numeroParcelas.toInt(),
+                                                    dataMillis.value!!
+                                                )
+
+                                                Frequencia.FIXA -> viewModel.salvarDespesaRecorrente(
+                                                    desp,
+                                                    Calendar.getInstance()
+                                                        .apply { timeInMillis = dataMillis.value!! }
+                                                        .get(Calendar.DAY_OF_MONTH)
+                                                )
+                                            }
+                                            if (formaPagamento == "CARTAO" && idDoCartao != null) {
+                                                cartoesViewModel.abaterLimite(idDoCartao, vFinalBRL)
                                             }
                                             mostrarSucesso = true
                                             delay(100)
@@ -542,7 +669,8 @@ fun AddDespesaDialog(
                 CustomCalendarDialog(
                     onDismiss = { mostrarCalendario.value = false },
                     onDateSelected = { y, m, d ->
-                        dataMillis.value = Calendar.getInstance().apply { set(y, m, d) }.timeInMillis
+                        dataMillis.value =
+                            Calendar.getInstance().apply { set(y, m, d) }.timeInMillis
                         mostrarCalendario.value = false
                     }
                 )
@@ -550,7 +678,6 @@ fun AddDespesaDialog(
         }
     }
 }
-
 // --- SUB-COMPOSABLES REFATORADOS ---
 
 @Composable
@@ -565,7 +692,11 @@ fun HeaderSection(conta: String) {
 @Composable
 fun FrequenciaSelector(atual: Frequencia, onSelect: (Frequencia) -> Unit) {
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        val opcoes = listOf(Frequencia.UNICA to "Única", Frequencia.PARCELADA to "Parcelada", Frequencia.FIXA to "Fixa")
+        val opcoes = listOf(
+            Frequencia.UNICA to "Única",
+            Frequencia.PARCELADA to "Parcelada",
+            Frequencia.FIXA to "Fixa"
+        )
         opcoes.forEachIndexed { index, (freq, label) ->
             SegmentedButton(
                 selected = atual == freq,
@@ -577,7 +708,13 @@ fun FrequenciaSelector(atual: Frequencia, onSelect: (Frequencia) -> Unit) {
                     inactiveContainerColor = Color.Transparent,
                     inactiveContentColor = Color.White.copy(0.6f)
                 )
-            ) { Text(label, fontSize = 12.sp, fontWeight = if (atual == freq) FontWeight.Bold else FontWeight.Normal) }
+            ) {
+                Text(
+                    label,
+                    fontSize = 12.sp,
+                    fontWeight = if (atual == freq) FontWeight.Bold else FontWeight.Normal
+                )
+            }
         }
     }
 }
@@ -617,7 +754,14 @@ fun ValueSection(
                 )
             }
         }
-        erroValor?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp)) }
+        erroValor?.let {
+            Text(
+                it,
+                color = Color(0xFFFF8A80),
+                fontSize = 10.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
 }
 
@@ -639,7 +783,12 @@ fun CategoryGridSection(
     )
 
     Column {
-        Text("Categoria", color = Color.White.copy(0.6f), fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+        Text(
+            "Categoria",
+            color = Color.White.copy(0.6f),
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
@@ -653,7 +802,8 @@ fun CategoryGridSection(
 
                 val resId = remember(cat) {
                     val picName = getPicCategoria(cat)
-                    val id = context.resources.getIdentifier(picName, "drawable", context.packageName)
+                    val id =
+                        context.resources.getIdentifier(picName, "drawable", context.packageName)
                     if (id != 0) id else R.drawable.sim_chip_2
                 }
 
@@ -671,17 +821,16 @@ fun CategoryGridSection(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            // --- ALTERAÇÃO AQUI: FUNDO REMOVIDO ---
-                            // .background(...) <- REMOVIDO
-                            // Apenas borda neon se selecionado
-                            .border(1.5.dp, if (isSelected) corCat else Color.Transparent, CircleShape),
+                            .border(
+                                1.5.dp,
+                                if (isSelected) corCat else Color.Transparent,
+                                CircleShape
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(resId),
                             contentDescription = cat,
-                            // --- ALTERAÇÃO AQUI: COR DO ÍCONE ---
-                            // Neon total se selecionado, branco suave se inativo
                             tint = Color.Unspecified,
 //                            tint = if (isSelected) corCat else Color.White.copy(alpha = 0.7f),
                             modifier = Modifier.size(24.dp)
@@ -691,8 +840,8 @@ fun CategoryGridSection(
                     Text(
                         text = cat,
                         fontSize = 11.sp, // Aumentei ligeiramente a fonte
-                        color = if(isSelected) Color.White else Color.White.copy(0.6f),
-                        fontWeight = if(isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) Color.White else Color.White.copy(0.6f),
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -710,12 +859,22 @@ fun DateAndInstallmentSection(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PremiumTextField(
-            value = dataMillis?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)) } ?: "",
+            value = dataMillis?.let {
+                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(
+                    Date(it)
+                )
+            } ?: "",
             onValueChange = {}, readOnly = true, label = "Data",
             modifier = Modifier.weight(1f),
             onClick = onOpenCalendar,
             trailingIcon = {
-                IconButton(onClick = onOpenCalendar) { Icon(Icons.Default.CalendarMonth, null, tint = Color.White.copy(0.6f)) }
+                IconButton(onClick = onOpenCalendar) {
+                    Icon(
+                        Icons.Default.CalendarMonth,
+                        null,
+                        tint = Color.White.copy(0.6f)
+                    )
+                }
             }
         )
         if (frequencia == Frequencia.PARCELADA) {
@@ -748,5 +907,98 @@ fun ActionButtons(onCancel: () -> Unit, onSave: () -> Unit) {
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
         ) { Text("Salvar", color = DialogBg, fontWeight = FontWeight.Black) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FormaPagamentoSelector(atual: String, onSelect: (String) -> Unit) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        val opcoes = listOf("CONTA" to "Débito (Conta)", "CARTAO" to "Crédito (Cartão)")
+        opcoes.forEachIndexed { index, (valor, label) ->
+            SegmentedButton(
+                selected = atual == valor,
+                onClick = { onSelect(valor) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = opcoes.size),
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = NeonCyan.copy(alpha = 0.2f),
+                    activeContentColor = NeonCyan,
+                    inactiveContainerColor = Color.Transparent,
+                    inactiveContentColor = Color.White.copy(0.6f)
+                )
+            ) {
+                Text(
+                    label,
+                    fontSize = 12.sp,
+                    fontWeight = if (atual == valor) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CartaoDropdownSection(
+    cartoes: List<CartaoComConta>,
+    selecionadoId: Int?,
+    onSelect: (Int) -> Unit,
+    erro: String?
+) {
+    var expandido by remember { mutableStateOf(false) }
+    val cartaoAtual = cartoes.find { it.id == selecionadoId }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        ExposedDropdownMenuBox(
+            expanded = expandido,
+            onExpandedChange = { expandido = it }
+        ) {
+            PremiumTextField(
+                value = cartaoAtual?.let { "${it.nomeCartao} (Final ${it.finalCartao})" }
+                    ?: "Selecione um cartão...",
+                onValueChange = {},
+                readOnly = true,
+                label = "Cartão de Crédito",
+                modifier = Modifier.menuAnchor(),
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
+                onClick = { expandido = true }
+            )
+
+            ExposedDropdownMenu(
+                expanded = expandido,
+                onDismissRequest = { expandido = false },
+                modifier = Modifier.background(DialogBg)
+            ) {
+                if (cartoes.isEmpty()) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Nenhum cartão cadastrado", color = Color.White.copy(0.5f)) },
+                        onClick = { expandido = false }
+                    )
+                } else {
+                    cartoes.forEach { cartao ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "${cartao.nomeCartao} - Final ${cartao.finalCartao}",
+                                    color = Color.White
+                                )
+                            },
+                            onClick = {
+                                onSelect(cartao.id)
+                                expandido = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        erro?.let {
+            Text(
+                it,
+                color = Color(0xFFFF8A80),
+                fontSize = 10.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
 }

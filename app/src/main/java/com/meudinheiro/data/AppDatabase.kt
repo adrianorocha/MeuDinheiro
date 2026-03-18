@@ -20,10 +20,13 @@ import com.meudinheiro.dao.PatrimonioDao
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("ALTER TABLE despesas ADD COLUMN pago INTEGER NOT NULL DEFAULT 0")
+        // Se o erro diz que 'pago' já existe, COMENTE a linha abaixo:
+        // db.execSQL("ALTER TABLE despesas ADD COLUMN pago INTEGER NOT NULL DEFAULT 0")
+
+        // Adicione apenas a coluna do Cartão (que é a que realmente precisamos para o carrossel)
+        db.execSQL("ALTER TABLE cartoes ADD COLUMN limiteDisponivel double DEFAULT 0")
     }
 }
-
 @Database(
     entities = [Despesa::class, ContaSaldo::class, DespesaFixa::class,
         Categoria::class, Orcamento::class, Meta::class, Investimento::class,

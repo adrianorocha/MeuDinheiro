@@ -7,8 +7,6 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.meudinheiro.data.Cartao
 import com.meudinheiro.data.CartaoComConta
-import com.meudinheiro.data.Categoria
-import com.meudinheiro.data.Orcamento
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -22,9 +20,9 @@ interface CartaoDao {
 
     // A MÁGICA DO VÍNCULO: Busca os cartões e já traz o nome da Conta Corrente atrelada
     @Query("""
-        SELECT c.id, c.nome as nomeCartao, c.finalCartao, c.tipo, c.limiteTotal, 
+        SELECT c.id, c.nome as nomeCartao, c.finalCartao, c.tipo, c.limiteDisponivel,c.limiteTotal, 
                c.diaFechamento, c.diaVencimento, c.contaId, 
-               b.banco as nomeConta 
+               b.banco as nomeConta, b.conta as numeroConta 
         FROM cartoes c 
         INNER JOIN contasaldo b ON c.contaId = b.id
     """)
@@ -44,5 +42,9 @@ interface CartaoDao {
     @Query("DELETE FROM cartoes")
     suspend fun limparTudo()
 
+    @Query("UPDATE cartoes SET limiteDisponivel = limiteDisponivel - :valor WHERE id = :id")
+    suspend fun abaterLimite(id: Int, valor: Double)
 
+    @Query("UPDATE cartoes SET limiteDisponivel = limiteDisponivel + :valor WHERE id = :id")
+    suspend fun estornarLimite(id: Int, valor: Double)
 }

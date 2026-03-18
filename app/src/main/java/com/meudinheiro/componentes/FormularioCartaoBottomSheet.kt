@@ -139,7 +139,9 @@ fun FormularioCartaoBottomSheet(
                     readOnly = true,
                     label = { Text("Conta Vinculada", color = Color.White.copy(0.7f)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuContasExpandido) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NeonCyan,
                         unfocusedBorderColor = Color.White.copy(0.2f),
@@ -222,6 +224,7 @@ fun FormularioCartaoBottomSheet(
                         nome = nome,
                         finalCartao = finalCartao,
                         tipo = tipoSelecionado,
+                        limiteDisponivel = limiteDouble,
                         limiteTotal = limiteDouble,
                         diaFechamento = fechamentoInt,
                         diaVencimento = vencimentoInt,
@@ -231,7 +234,9 @@ fun FormularioCartaoBottomSheet(
                     onSalvar(novoCartao)
                     onDismiss()
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = if (tipoSelecionado == "CRÉDITO") NeonCyan else NeonPurple)
             ) {

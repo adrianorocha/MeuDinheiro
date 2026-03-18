@@ -183,4 +183,10 @@ ORDER BY data ASC
 
     @Query("SELECT * FROM despesas WHERE (conta = :contaId OR :contaId = '')")
     fun getTodasDespesas(contaId: String): Flow<List<DespesasDomain>>
+
+    @Query("SELECT * FROM despesas WHERE cartaoId = :id ORDER BY data DESC")
+    fun getDespesasPorCartao(id: Int): Flow<List<Despesa>>
+
+    @Query("UPDATE despesas SET Pago = 1 WHERE cartaoId = :cartaoId AND data BETWEEN :inicio AND :fim")
+    suspend fun marcarComoPagas(cartaoId: Int, inicio: Long, fim: Long)
 }

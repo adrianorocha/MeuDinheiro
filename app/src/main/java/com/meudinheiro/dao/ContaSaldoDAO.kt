@@ -105,4 +105,6 @@ interface ContaSaldoDao {
     @Query("SELECT SUM(valor) FROM transferencias_agendadas WHERE executada = 0") // Adapte o nome da tabela/coluna se necessário
     suspend fun somarContasPendentes(): Double?
 
+    @Query("UPDATE contasaldo SET saldo = saldo - :valor WHERE id = :id")
+    suspend fun subtrairSaldo(id: Int, valor: Double)
 }

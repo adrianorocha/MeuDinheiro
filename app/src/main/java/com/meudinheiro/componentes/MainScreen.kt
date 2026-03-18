@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import android.R.attr.text
 import android.app.Application
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -138,7 +139,7 @@ fun MainScreen(
         viewModel(factory = InvestimentoViewModelFactory(db.investimentoDao()))
     val transacaoVM: TransacaoViewModel =
         viewModel(factory = TransacaoViewModelFactory(db.transacaoDao()))
-
+    val cartoesViewModel: CartoesViewModel = viewModel(factory = CartoesViewModelFactory(LocalContext.current))
     // ==========================================
     // 2. ESTADOS DE PREFERÊNCIAS E USUÁRIO
     // ==========================================
@@ -176,6 +177,7 @@ fun MainScreen(
     // ==========================================
     val contas by contaVM.contaSaldo.observeAsState(emptyList())
     val contaSelecionadaId by contaVM.contaSelecionadaId.observeAsState(null)
+    val listaCartoes by cartoesViewModel.cartoes.collectAsState()
     val dashboardState by contaVM.dashboardState.collectAsState()
     val resumo by contaVM.resumoFinanceiro.collectAsState()
     val totalMetas by contaVM.totalPoupado.collectAsState()
@@ -908,13 +910,16 @@ fun MainScreen(
         }
 
         if (showAddDespesaDialog) {
+
             AddDespesaDialog(
                 valorInicial = valorEscaneado ?: 0.0, // Passa o valor do scanner
                 codigoBarras = if (codigoEscaneado.isNotEmpty()) "Boleto: $codigoEscaneado" else "",
                 categorias = repository.categorias.map { it.title },
+                cartoesDisponiveis = listaCartoes,
                 contaSelecionada = contaSelecionadaId.orEmpty(),
                 getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
                 viewModel = contaVM,
+                cartoesViewModel = cartaoVM,
                 parentScope = parentScope,
                 onDismiss = {
                     valorEscaneado = null // Limpa para não lixar o próximo

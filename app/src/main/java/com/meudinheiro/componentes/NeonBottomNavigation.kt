@@ -29,10 +29,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.room3.util.copy
+import com.meudinheiro.R
 import com.meudinheiro.ui.theme.*
 
 
@@ -42,9 +43,9 @@ fun NeonBottomNavigation(
     onTabSelected: (Int) -> Unit
 ) {
     val itens = listOf(
-        Triple("Resumo", Icons.Rounded.Dashboard, 0),
-        Triple("Cartões", Icons.Rounded.CreditCard, 1),
-        Triple("Ajustes", Icons.Rounded.Settings, 2)
+        Triple("Minha Conta", R.drawable.bank, 0),
+        Triple("Extrato", R.drawable.extrato, 1),
+        Triple("Metas", R.drawable.metas, 2)
     )
 
     // Barra com efeito de vidro e borda neon superior
@@ -93,7 +94,7 @@ fun NeonBottomNavigation(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            imageVector = icone,
+                            painter = painterResource(id = icone),
                             contentDescription = titulo,
                             tint = animColor,
                             modifier = Modifier.size(if (selecionado) 28.dp else 24.dp)

@@ -21,6 +21,7 @@ data class Cartao(
     val nome: String,               // Ex: "Nubank Platinum"
     val finalCartao: String,        // Ex: "4321" (Apenas os 4 últimos dígitos)
     val tipo: String,               // "CRÉDITO", "DÉBITO" ou "MÚLTIPLO"
+    val limiteDisponivel: Double,        // Ex: 5000.00
     val limiteTotal: Double,        // Ex: 5000.00
     val diaFechamento: Int,         // Ex: 25
     val diaVencimento: Int,         // Ex: 5

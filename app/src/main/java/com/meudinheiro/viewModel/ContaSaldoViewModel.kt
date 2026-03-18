@@ -107,12 +107,12 @@ class ContaSaldoViewModel(
         carregarDadosIniciaisESincronizarWidget()
         realizarSnapshotPatrimonialAutomatico()
         calcularPrevisaoDoMes()
-            viewModelScope.launch  {
-                repository.atualizacaoSinal.collect {
-                    // Quando o sinal chegar, ele roda a sua função de carregar dados de novo
-                    carregarSaldosGlobais()
-                }
+        viewModelScope.launch {
+            repository.atualizacaoSinal.collect {
+                // Quando o sinal chegar, ele roda a sua função de carregar dados de novo
+                carregarSaldosGlobais()
             }
+        }
 
     }
 
@@ -204,6 +204,10 @@ class ContaSaldoViewModel(
     fun adicionarDespesa(despesa: Despesa) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.inserirDespesa(despesa)
+            despesa.cartaoId?.let { id ->
+                // Aqui chamamos o repositório de cartões
+                repository.registrarCompraNoCartao(id, despesa.valor)
+            }
             repository.recalcularSaldoTotal(despesa.conta)
             carregarSaldosGlobais()
         }
@@ -212,7 +216,8 @@ class ContaSaldoViewModel(
     fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val valorTotal = despesa.valor
-            val formatador = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
+            val formatador =
+                java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
             val textoTotal = formatador.format(valorTotal)
 
             val valorParcelaBase = floor((valorTotal / numeroParcelas) * 100) / 100.0
@@ -224,7 +229,8 @@ class ContaSaldoViewModel(
             calendar.timeInMillis = dataSelecionada
 
             for (i in 1..numeroParcelas) {
-                val valorFinal = if (i == numeroParcelas) valorParcelaBase + diferenca else valorParcelaBase
+                val valorFinal =
+                    if (i == numeroParcelas) valorParcelaBase + diferenca else valorParcelaBase
                 val novaDescricao = "${despesa.descricao} ($i/$numeroParcelas) • Total: $textoTotal"
 
                 val novaDespesa = despesa.copy(
@@ -302,11 +308,22 @@ class ContaSaldoViewModel(
         viewModelScope.launch(Dispatchers.IO) { repository.excluirConta(id) }
     }
 
-    fun obterReceitaPorConta(conta: String): Double = _dashboardState.value.dadosPorConta[conta]?.first ?: 0.0
-    fun obterDespesaPorConta(conta: String): Double = _dashboardState.value.dadosPorConta[conta]?.second ?: 0.0
-    fun alterarFiltro(novoFiltro: FiltroPeriodo) { filtroAtual = novoFiltro }
+    fun obterReceitaPorConta(conta: String): Double =
+        _dashboardState.value.dadosPorConta[conta]?.first ?: 0.0
 
-    fun transferirValor(contaOrigem: String, contaDestino: String, valor: Double, context: Context) {
+    fun obterDespesaPorConta(conta: String): Double =
+        _dashboardState.value.dadosPorConta[conta]?.second ?: 0.0
+
+    fun alterarFiltro(novoFiltro: FiltroPeriodo) {
+        filtroAtual = novoFiltro
+    }
+
+    fun transferirValor(
+        contaOrigem: String,
+        contaDestino: String,
+        valor: Double,
+        context: Context
+    ) {
         if (contaOrigem == contaDestino) {
             Toast.makeText(context, "Contas iguais!", Toast.LENGTH_SHORT).show()
             return
@@ -316,18 +333,32 @@ class ContaSaldoViewModel(
                 repository.transferirEntreContas(contaOrigem, contaDestino, valor)
                 carregarSaldosGlobais()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Transferência realizada com sucesso!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        "Transferência realizada com sucesso!",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Erro na transferência: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        context,
+                        "Erro na transferência: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
                 Log.e("Transferencia", "Erro: ${e.message}")
             }
         }
     }
 
-    fun agendarTransferencia(origem: String, destino: String, valor: Double, data: Long, context: Context) {
+    fun agendarTransferencia(
+        origem: String,
+        destino: String,
+        valor: Double,
+        data: Long,
+        context: Context
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val agendamento = TransferenciaAgendada(
@@ -352,7 +383,11 @@ class ContaSaldoViewModel(
                 WorkManager.getInstance(context).enqueue(tarefa)
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Transferência agendada com sucesso!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        "Transferência agendada com sucesso!",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             } catch (e: Exception) {
                 Log.e("AgendamentoWorker", "Erro ao agendar: ${e.message}")
@@ -369,7 +404,8 @@ class ContaSaldoViewModel(
                 repository.excluirAgendamento(id)
                 WorkManager.getInstance(context).cancelAllWorkByTag("transferencia_$id")
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Agendamento cancelado com sucesso", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Agendamento cancelado com sucesso", Toast.LENGTH_SHORT)
+                        .show()
                 }
             } catch (e: Exception) {
                 Log.e("ErroCancelamento", "Falha ao remover agendamento: ${e.message}")
@@ -380,7 +416,12 @@ class ContaSaldoViewModel(
     // ==========================================
     // 7. WIDGETS
     // ==========================================
-    private fun atualizarInformacoesWidget(context: Context, saldo: Double, metaNome: String, metaId: String) {
+    private fun atualizarInformacoesWidget(
+        context: Context,
+        saldo: Double,
+        metaNome: String,
+        metaId: String
+    ) {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         prefs.edit().apply {
             putFloat("saldo_atual", saldo.toFloat())
@@ -413,6 +454,7 @@ class ContaSaldoViewModel(
     fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
         carregarSaldosGlobais()
     }
+
     // Dentro do seu ContaSaldoViewModel
     val historicoPatrimonial: StateFlow<List<PatrimonioHistorico>> = repository
         .obterHistoricoPatrimonial() // Isso precisa retornar Flow<List<...>>
@@ -421,6 +463,7 @@ class ContaSaldoViewModel(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
     fun realizarSnapshotPatrimonialAutomatico() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -454,7 +497,10 @@ class ContaSaldoViewModel(
                     )
 
                     repository.salvarSnapshotPatrimonial(novoSnapshot)
-                    Log.d("PATRIMONIO", "✅ Snapshot VIP de $mesAtual registrado: R$ $totalPatrimonio")
+                    Log.d(
+                        "PATRIMONIO",
+                        "✅ Snapshot VIP de $mesAtual registrado: R$ $totalPatrimonio"
+                    )
                 } else {
                     Log.d("PATRIMONIO", "Ronda concluída: Snapshot de $mesAtual já está no cofre.")
                 }
@@ -465,6 +511,7 @@ class ContaSaldoViewModel(
             }
         }
     }
+
     // 2. A Função que calcula a previsão
     fun calcularPrevisaoDoMes() {
         viewModelScope.launch(Dispatchers.IO) {
