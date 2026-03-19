@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TransacaoDao {
-    @Query("SELECT * FROM transacoes ORDER BY timestamp DESC LIMIT 20")
+    @Query("SELECT * FROM transacoes ORDER BY timestamp DESC LIMIT 5")
     fun getUltimasTransacoes(): Flow<List<Transacao>>
 
     @Insert

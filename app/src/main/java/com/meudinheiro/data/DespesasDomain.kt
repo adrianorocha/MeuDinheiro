@@ -9,7 +9,8 @@ data class DespesasDomain(
     val conta: String,
     val categoria: String,
     val tipo: TipoDespesa,
-    val pago: Boolean
+    val pago: Boolean,
+    val cartaoId: Int? = 0
 )
 
 data class DespesaAviso(

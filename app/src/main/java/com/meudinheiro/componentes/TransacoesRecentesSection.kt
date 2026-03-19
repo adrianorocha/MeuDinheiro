@@ -27,8 +27,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TransacaoModel
+import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
+import kotlin.Int
 
 // Cores do Tema Blu Macaw
 private val CardBg = Color(0xFF1B263B)
@@ -37,59 +40,70 @@ private val NeonRed = Color(0xFFFF8A80)
 
 @Composable
 fun TransacoesRecentesSection(
-    transacoes: List<TransacaoModel>, // Sua classe de dados de transação
+    transacoes: List<TransacaoModel>,
     isPrivate: Boolean
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-    ) {
-        // CABEÇALHO DA SEÇÃO
-        Row(
+    // Só renderiza a seção INTEIRA se houver transações
+    if (transacoes.isNotEmpty()) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp)
         ) {
-            Text(
-                text = "Últimas Movimentações",
-                color = TextWhite,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Ver tudo",
-                color = Color(0xFF00E5FF),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.clickable { /* Abrir tela de extrato completo */ }
-            )
-        }
+            // CABEÇALHO (Igual ao seu)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Últimas Movimentações",
+                    color = Color.White, // Garanta que TextWhite esteja definido
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Ver tudo",
+                    color = Color(0xFF00E5FF),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable { /* Abrir extrato */ }
+                )
+            }
 
-        // LISTA ESTILIZADA
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = CardBg.copy(alpha = 0.5f)),
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                transacoes.forEachIndexed { index, transacao ->
-                    TransacaoItem(transacao = transacao, isPrivate = isPrivate)
-                    if (index < transacoes.lastIndex) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
-                            color = Color.White.copy(alpha = 0.05f)
-                        )
+            // LISTA
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardBg.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    transacoes.forEachIndexed { index, transacao ->
+                        TransacaoItem(transacao = transacao, isPrivate = isPrivate)
+                        if (index < transacoes.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+                                color = Color.White.copy(alpha = 0.05f)
+                            )
+                        }
                     }
                 }
             }
         }
+    } else {
+        // OPCIONAL: Mostrar um placeholder "Nenhuma movimentação este mês"
+        // Isso evita que a tela pareça quebrada
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Nenhuma movimentação encontrada.", color = Color.White.copy(0.3f), fontSize = 14.sp)
+        }
     }
 }
-
 @Composable
 private fun TransacaoItem(transacao: TransacaoModel, isPrivate: Boolean) {
     val isDespesa = transacao.valor < 0

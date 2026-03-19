@@ -189,4 +189,8 @@ ORDER BY data ASC
 
     @Query("UPDATE despesas SET Pago = 1 WHERE cartaoId = :cartaoId AND data BETWEEN :inicio AND :fim")
     suspend fun marcarComoPagas(cartaoId: Int, inicio: Long, fim: Long)
+
+    // Marca todas as despesas de um cartão num intervalo de tempo como pagas
+    @Query("UPDATE despesas SET Pago = 1 WHERE cartaoId = :cartaoId AND Pago = 0 AND data <= :dataLimite")
+    suspend fun quitarDespesasAteData(cartaoId: Int, dataLimite: Long)
 }

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,11 +44,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
+import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.DateUtils
+import com.meudinheiro.funcoes.compartilharComprovante
 import com.meudinheiro.funcoes.formatarMoedaBR
 import java.util.Date
+import com.meudinheiro.ui.theme.*
+import java.util.Calendar
 
 // Cores Premium Locais
 private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.9f)
@@ -58,10 +64,12 @@ private val RedColor = Color(0xFFEF5350)
 fun DespesasItem(
     item: DespesasDomain,
     isPrivate: Boolean = false,
-    // MUDANÇA 1: Passamos o objeto inteiro para o ViewModel decidir a lógica
     onRemover: (DespesasDomain) -> Unit,
     onTogglePago: ((DespesasDomain) -> Unit)? = null,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    // NOVO: Precisamos dos nomes reais do cartão/conta se quiser o recibo 100% fiel
+    // Se não passar, o recibo usa os dados genéricos do item
+    nomeCartao: String? = null
 ) {
     var showDialog by remember { mutableStateOf(false) }
     val dataFormatada = remember(item.data) { DateUtils.formatarData(Date(item.data)) }
@@ -73,13 +81,11 @@ fun DespesasItem(
     }
 
     if (showDialog) {
-        // MUDANÇA 2: Texto dinâmico baseado no status de pagamento
         val mensagemAviso = remember(item) {
             if (item.tipo == TipoDespesa.DEBITO) {
                 if (item.pago) "O valor será restituído ao saldo."
                 else "O saldo não será afetado (não estava pago)."
             } else {
-                // Para receitas (Crédito)
                 if (item.pago) "O valor será deduzido do saldo."
                 else "O saldo não será afetado."
             }
@@ -88,20 +94,40 @@ fun DespesasItem(
         AlertDialog(
             onDismissRequest = { showDialog = false },
             containerColor = Color(0xFF1E2B3E),
-            title = { Text("Remover movimentação", color = TextWhite) },
+            title = { Text("Ações da Movimentação", color = TextWhite) },
             text = {
                 Column {
-                    Text("Deseja remover '${item.descricao}'?", color = TextWhite.copy(0.9f))
-                    Spacer(Modifier.height(8.dp))
+                    Text("O que deseja fazer com '${item.descricao}'?", color = TextWhite.copy(0.9f))
+                    Spacer(Modifier.height(16.dp))
+
+                    // 💡 BOTÃO DE COMPARTILHAR COMPROVANTE (Dentro do Dialog)
+                    Button(
+                        onClick = {
+                            showDialog = false
+                            // COMO CONVERTER DespesasDomain para Despesa (Se suas classes forem diferentes)
+                            // Se forem a mesma, basta passar 'item'. Se não, crie uma função de mapeamento.
+                            // Aqui assumo que você tem uma forma de passar o item para a função:
+
+                             compartilharComprovante(context, item.toDespesa(), nomeCartao, item.conta)
+
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, tint = NeonCyan)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Ver Comprovante", color = NeonCyan, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(Modifier.height(16.dp))
                     Text(mensagemAviso, color = TextWhite.copy(0.6f), fontSize = 13.sp)
                 }
             },
             confirmButton = {
                 Button(
-                    // MUDANÇA 3: Passa o item completo
                     onClick = { onRemover(item); showDialog = false },
                     colors = ButtonDefaults.buttonColors(containerColor = RedColor)
-                ) { Text("Remover") }
+                ) { Text("Excluir") }
             },
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) { Text("Cancelar", color = TextWhite) }
@@ -114,10 +140,9 @@ fun DespesasItem(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .combinedClickable(
-                onClick = { onClick?.invoke() },
-                onLongClick = { showDialog = true }
-            ),
-        shape = RoundedCornerShape(16.dp),
+                onClick = { onClick?.invoke() }, // Clique rápido faz a ação padrão
+                onLongClick = { showDialog = true } // Segurar o clique abre as opções!
+            ),        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = ItemBg),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -195,4 +220,31 @@ fun DespesasItem(
             }
         }
     }
+}
+
+fun DespesasDomain.toDespesa(): Despesa {
+    // Usamos o Calendar para extrair mês e ano de forma eficiente e segura
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = this@toDespesa.data
+    }
+
+    return Despesa(
+        descricao = this.descricao,
+        valor = this.valor,
+        data = Date(this.data),
+        categoria = this.categoria ?: "Geral",
+        pic = this.pic,
+        conta = this.conta ?: "Conta Principal",
+
+        // 💡 CORREÇÃO 1: Tipo dinâmico baseado no objeto original
+        // Se o seu gerador de recibo espera String, use .name ou o texto formatado
+        tipo = this.tipo,
+        pago = this.pago,
+
+        // 💡 CORREÇÃO 2: Extração de data sem usar Formatter/String (mais rápido)
+        mes = cal.get(Calendar.MONTH) + 1, // Calendar.MONTH começa em 0
+        ano = cal.get(Calendar.YEAR),
+
+        cartaoId = this.cartaoId ?: 0
+    )
 }

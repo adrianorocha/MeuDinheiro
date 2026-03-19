@@ -1,14 +1,14 @@
 package com.meudinheiro.funcoes
 
-import android.R.attr.textSize
-import android.R.attr.typeface
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
-import android.graphics.DashPathEffect
+import android.graphics.LinearGradient
+import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.os.PowerManager
 import androidx.compose.animation.core.EaseInOutSine
@@ -24,9 +24,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,13 +54,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarData
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -89,10 +83,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,10 +96,11 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.meudinheiro.R
 import com.meudinheiro.componentes.MonthPill
-import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.PieChartData
 import kotlinx.coroutines.delay
@@ -140,182 +133,288 @@ fun lembrarEstadoPerformance(): Boolean {
     return isLowPower
 }
 
-fun compartilharComprovante(ctx: Context, bitmap: Bitmap) {
-    val cachePath = File(ctx.cacheDir, "images")
-    cachePath.mkdirs()
-    val file = File(cachePath, "comprovante_${System.currentTimeMillis()}.png")
+fun compartilharComprovante(
+    context: Context,
+    despesa: Despesa,
+    nomeCartao: String?,
+    nomeConta: String
+
+) {
+    // 1. Gera o Bitmap (Usando a função Ultra Premium que criamos)
+    val bitmap = gerarBitmapComprovanteUltraPremium(context, despesa, nomeCartao, nomeConta)
+
+    // 2. Salva temporariamente na pasta de cache
+    val imagesFolder = File(context.cacheDir, "images")
+    imagesFolder.mkdirs()
+    val file = File(imagesFolder, "comprovante_${despesa.id}.png")
     val stream = FileOutputStream(file)
     bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
     stream.close()
 
-    val contentUri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+    // 3. Pega a URI segura via FileProvider
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 
+    // 4. Dispara a intent de compartilhamento do Android
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "image/png"
-        putExtra(Intent.EXTRA_STREAM, contentUri)
+        putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    ctx.startActivity(Intent.createChooser(intent, "Compartilhar Comprovante"))
+    context.startActivity(Intent.createChooser(intent, "Compartilhar Recibo Blu Macaw"))
 }
 
-fun gerarBitmapComprovante(despesa: Despesa): Bitmap {
-    val width = 800
-    val height = 1350 // Mais espaço para organizar os dados com elegância
+fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNome: String?, contaNome: String): Bitmap {
+    val width = 850 // Ligeiramente mais largo para elegância
+    val height = 1500 // Mais altura para os detalhes refinados
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
 
-    // 1. Fundo Exterior (Fundo escuro do ecrã)
-    canvas.drawColor(android.graphics.Color.parseColor("#0D1B2A"))
+    // Cores Ultra Premium (Sincronizadas com o App)
+    val colorBackground = android.graphics.Color.parseColor("#0D1B2A")
+    val colorCard = android.graphics.Color.parseColor("#1B263B")
+    val colorNeonCyan = android.graphics.Color.parseColor("#00E5FF")
+    val colorNeonGreen = android.graphics.Color.parseColor("#69F0AE")
+    val colorLabelText = android.graphics.Color.parseColor("#8E9BAE")
+    val colorValueText = android.graphics.Color.WHITE
+    val colorDivider = android.graphics.Color.parseColor("#3A4B66")
 
-    // 2. Fundo do "Cartão" do Comprovante
+    canvas.drawColor(colorBackground)
+
+    // 2. Fundo do "Cartão" com Efeito Holográfico Suave
     val paintCard = android.graphics.Paint().apply {
-        color = android.graphics.Color.parseColor("#1B263B")
+        color = colorCard
         isAntiAlias = true
+        // Efeito de sombra suave para profundidade
+        setShadowLayer(30f, 0f, 15f, android.graphics.Color.parseColor("#99000000"))
     }
-    val cardRect = RectF(40f, 40f, width - 40f, height - 40f)
+    val cardRect = android.graphics.RectF(40f, 40f, width - 40f, height - 40f)
     canvas.drawRoundRect(cardRect, 32f, 32f, paintCard)
 
-    // --- PAINTS (Pincéis para os textos) ---
-    val paintTitle = android.graphics.Paint().apply {
-        color = android.graphics.Color.WHITE
-        textSize = 36f
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textAlign = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-    }
-
-    val paintSubtitle = android.graphics.Paint().apply {
-        color = android.graphics.Color.parseColor("#8E9BAE")
-        textSize = 24f
-        textAlign = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-    }
-
+    // --- PAINTS ---
     val paintAmount = android.graphics.Paint().apply {
-        color = android.graphics.Color.parseColor("#69F0AE") // Verde Neon
-        textSize = 72f
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        color = colorValueText
+        textSize = 90f // Valor enorme e imponente
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
+        // Brilho suave no valor
+        setShadowLayer(15f, 0f, 0f, colorNeonCyan)
     }
 
     val paintLabel = android.graphics.Paint().apply {
-        color = android.graphics.Color.parseColor("#8E9BAE")
+        color = colorLabelText
         textSize = 28f
         textAlign = android.graphics.Paint.Align.LEFT
         isAntiAlias = true
     }
 
     val paintValue = android.graphics.Paint().apply {
-        color = android.graphics.Color.WHITE
-        textSize = 28f
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        color = colorValueText
+        textSize = 30f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textAlign = android.graphics.Paint.Align.RIGHT
         isAntiAlias = true
     }
 
-    val paintDash = android.graphics.Paint().apply {
-        color = android.graphics.Color.parseColor("#3A4B66")
-        strokeWidth = 3f
-        style = android.graphics.Paint.Style.STROKE
-        pathEffect = DashPathEffect(floatArrayOf(15f, 15f), 0f) // Cria a linha tracejada
+    val paintBrand = android.graphics.Paint().apply {
+        color = colorNeonCyan
+        textSize = 20f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
 
+    val paintSubtitle = android.graphics.Paint().apply {
+        color = colorLabelText
+        textSize = 22f
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+    }
     // --- DESENHO DO CONTEÚDO ---
 
-    // Cabeçalho
-    canvas.drawText("COMPROVANTE DE TRANSAÇÃO", width / 2f, 120f, paintTitle)
-    val dataFormatada = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.getDefault()).format(despesa.data)
-    canvas.drawText(dataFormatada, width / 2f, 165f, paintSubtitle)
+    // 🏆 BRANDING NO TOPO (Logotipo e Nome)
+    val logoDrawable = androidx.core.content.ContextCompat.getDrawable(ctx, R.drawable.meu_dinheiro)
+    logoDrawable?.let {
+        val logoSize = 60
+        it.setBounds((width / 2) - (logoSize / 2), 100, (width / 2) + (logoSize / 2), 100 + logoSize)
+        // Opcional: Aplicar filtro de cor Neon Cyan no logotipo
+        androidx.core.graphics.drawable.DrawableCompat.setTint(it, colorNeonCyan)
+        it.draw(canvas)
+    }
 
-    // Valor da Transação
-    canvas.drawText("Valor da Despesa", width / 2f, 260f, paintSubtitle)
-    canvas.drawText(String.format("R$ %.2f", despesa.valor), width / 2f, 340f, paintAmount)
+    val paintTitle = android.graphics.Paint(paintBrand).apply { textSize = 26f; color = android.graphics.Color.WHITE }
+    canvas.drawText("Blu Macaw Lab's", width / 2f, 190f, paintBrand)
+    canvas.drawText("Comprovante Detalhado", width / 2f, 230f, paintTitle)
 
-    // Primeira Linha Tracejada
-    canvas.drawLine(80f, 420f, width - 80f, 420f, paintDash)
+    // 💰 VALOR IMPONENTE
+    canvas.drawText(formatarMoedaBR(despesa.valor,false), width / 2f, 380f, paintAmount)
 
-    // Detalhes da Transação (Layout Alinhado)
-    var startY = 500f
-    val lineSpacing = 60f
+    // ✅ STATUS TAG PREMIUM
+    val paintStatus = android.graphics.Paint(paintValue).apply {
+        color = colorNeonGreen
+        textSize = 24f
+        textAlign = android.graphics.Paint.Align.CENTER
+    }
+    canvas.drawText(if(despesa.pago) "PAGAMENTO CONFIRMADO" else "AGUARDANDO PAGAMENTO", width / 2f, 440f, paintStatus)
+
+    // LINHA DIVISORA ELEGANTE
+    val paintDivider = android.graphics.Paint().apply {
+        color = colorDivider
+        strokeWidth = 2f
+        isAntiAlias = true
+    }
+    canvas.drawLine(80f, 500f, width - 80f, 500f, paintDivider)
+
+    // --- DETALHES ---
+    var startY = 580f
+    val lineSpacing = 80f // Mais espaço para clareza
     val leftX = 80f
     val rightX = width - 80f
 
-    // Linha 1: Descrição
-    canvas.drawText("Descrição", leftX, startY, paintLabel)
-    // Limita o tamanho da descrição para não invadir o texto da esquerda
-    val desc = if (despesa.descricao.length > 20) despesa.descricao.take(17) + "..." else despesa.descricao
-    canvas.drawText(desc, rightX, startY, paintValue)
+    // Função auxiliar para desenhar linha com Ícone e Detalhe
+    fun drawDetailLine(canvas: android.graphics.Canvas, label: String, value: String, y: Float, iconDrawable: android.graphics.drawable.Drawable?) {
+        // Desenha Ícone sutil
+        iconDrawable?.let {
+            val iSize = 35
+            it.setBounds(leftX.toInt(), (y - iSize + 5).toInt(), (leftX + iSize).toInt(), (y + 5).toInt())
+            androidx.core.graphics.drawable.DrawableCompat.setTint(it, colorLabelText)
+            it.draw(canvas)
+        }
+        canvas.drawText(label, leftX + 50f, y, paintLabel)
+        canvas.drawText(value, rightX, y, paintValue)
+    }
+    val dataFormatada = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.getDefault()).format(despesa.data)
+    drawDetailLine(canvas, "Data do Pagamento", dataFormatada, startY, null)
 
-    // Linha 2: Categoria
     startY += lineSpacing
-    canvas.drawText("Categoria", leftX, startY, paintLabel)
-    canvas.drawText(despesa.categoria, rightX, startY, paintValue)
+    // Detalhe inteligente: Mostra Cartão se for crédito, ou Conta se for débito
+    if (cartaoNome != null) {
+        drawDetailLine(canvas, "Cartão de Crédito", cartaoNome, startY, null)
+    } else {
+        drawDetailLine(canvas, "Origem do Saldo", contaNome, startY, null)
+    }
 
-    // Linha 3: Conta de Origem
     startY += lineSpacing
-    canvas.drawText("Origem", leftX, startY, paintLabel)
-    canvas.drawText(despesa.conta, rightX, startY, paintValue)
-
-    // Linha 4: Autenticação (Gera um ID visual bonito com base no ID real)
-    startY += lineSpacing
-    canvas.drawText("Autenticação", leftX, startY, paintLabel)
     val authId = "MD-${despesa.id.toString().padStart(6, '0')}-${despesa.data.time.toString().takeLast(4)}"
-    canvas.drawText(authId, rightX, startY, paintValue)
+    drawDetailLine(canvas, "Autenticação MD", authId, startY, null)
 
-    // Segunda Linha Tracejada
-    canvas.drawLine(80f, startY + 60f, width - 80f, startY + 60f, paintDash)
+    // SEGUNDA DIVISORA
+    canvas.drawLine(80f, startY + 80f, width - 80f, startY + 80f, paintDivider)
 
     // --- QR CODE ---
-    // Estrutura um JSON pequeno para ficar pro no leitor de QR
     val textoQR = "{\"app\":\"BluMacaw\",\"id\":${despesa.id},\"valor\":${despesa.valor}}"
     val qrSize = 340
     val qrBitmap = gerarBitmapQRCode(textoQR, qrSize)
 
-    // Fundo branco arredondado para o QR Code (destaca e melhora a leitura)
     val qrLeft = (width - qrSize) / 2f
     val qrTop = startY + 120f
-    val qrBgRect = RectF(qrLeft - 10f, qrTop - 10f, qrLeft + qrSize + 10f, qrTop + qrSize + 10f)
+    val qrBgRect = android.graphics.RectF(qrLeft - 10f, qrTop - 10f, qrLeft + qrSize + 10f, qrTop + qrSize + 10f)
     val paintQrBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
     canvas.drawRoundRect(qrBgRect, 16f, 16f, paintQrBg)
 
-    // Desenha o QR Code por cima
     canvas.drawBitmap(qrBitmap, qrLeft, qrTop, null)
 
-    // Rodapé
     paintSubtitle.textSize = 20f
     canvas.drawText("Escaneie para validar a autenticidade", width / 2f, qrTop + qrSize + 60f, paintSubtitle)
 
-    // Branding da Blu Macaw
-    val paintBrand = android.graphics.Paint().apply {
-        color = android.graphics.Color.parseColor("#00E5FF") // Ciano Neon
+    val paintBrand2 = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#00E5FF")
         textSize = 18f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
-    canvas.drawText("Gerado por Meu Dinheiro • Blu Macaw Lab's", width / 2f, height - 80f, paintBrand)
+
+    // BRANDING FINAL
+    canvas.drawText("Gerado por Meu Dinheiro", width / 2f, height - 80f, paintBrand2)
 
     return bitmap
+
 }
 
-fun gerarBitmapQRCode(conteudo: String, tamanho: Int): Bitmap {
+fun gerarBitmapQRCode(
+    conteudo: String,
+    tamanho: Int,
+    logo: Bitmap? = null // Adicionado como opcional para manter compatibilidade
+): Bitmap {
+    // 1. Configurações para permitir o logo no centro (Erro nível H para suportar sobreposição)
+    val hints = HashMap<EncodeHintType, Any>()
+    hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.H
+    hints[EncodeHintType.MARGIN] = 1
+
     val writer = QRCodeWriter()
-    val bitMatrix = writer.encode(conteudo, BarcodeFormat.QR_CODE, tamanho, tamanho)
+    val bitMatrix = writer.encode(conteudo, BarcodeFormat.QR_CODE, tamanho, tamanho, hints)
+
     val width = bitMatrix.width
     val height = bitMatrix.height
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
 
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+    // Fundo Branco Arredondado
+    val paintBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+    canvas.drawRoundRect(RectF(0f, 0f, width.f, height.f), 40f, 40f, paintBg)
 
+    // 2. Configuração do Gradiente (Laranja -> Roxo/Rosa)
+    val paint = Paint().apply {
+        isAntiAlias = true
+        shader = LinearGradient(
+            0f, 0f, width.f, height.f,
+            intArrayOf(
+                android.graphics.Color.parseColor("#F58529"), // Laranja
+                android.graphics.Color.parseColor("#DD2A7B"), // Rosa
+                android.graphics.Color.parseColor("#8134AF")  // Roxo
+            ),
+            null, Shader.TileMode.CLAMP
+        )
+    }
+
+    val moduleSize = width / bitMatrix.width.toFloat()
+    val dotRadius = moduleSize / 2 * 0.85f // Reduzi um pouco para dar o efeito de "bolinhas" separadas
+
+    // 3. Desenho dos módulos
     for (x in 0 until width) {
         for (y in 0 until height) {
-            val cor = if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE
-            bitmap.setPixel(x, y, cor)
+            if (bitMatrix.get(x, y)) {
+                // Pular a área central para o Logo (aproximadamente 20% do centro)
+                val centralLimit = bitMatrix.width * 0.2
+                val center = bitMatrix.width / 2
+                if (logo != null &&
+                    x > (center - centralLimit) && x < (center + centralLimit) &&
+                    y > (center - centralLimit) && y < (center + centralLimit)) {
+                    continue
+                }
+
+                // Desenha bolinhas em vez de quadrados
+                val cx = x * moduleSize + moduleSize / 2
+                val cy = y * moduleSize + moduleSize / 2
+                canvas.drawCircle(cx, cy, dotRadius, android.graphics.Paint())
+            }
         }
     }
+
+    // 4. Desenho do Logo Central (Estilo Premium)
+    logo?.let {
+        val logoSize = (tamanho * 0.22).toInt() // Tamanho proporcional
+        val left = (tamanho - logoSize) / 2
+        val top = (tamanho - logoSize) / 2
+        val rect = Rect(left, top, left + logoSize, top + logoSize)
+
+        // Fundo branco do logo para não misturar com os pontos
+        val paintLogoBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+        val logoBgRect = RectF(
+            (left - 5).f, (top - 5).f,
+            (left + logoSize + 5).f, (top + logoSize + 5).f
+        )
+        canvas.drawRoundRect(logoBgRect, 20f, 20f, paintLogoBg)
+
+        canvas.drawBitmap(it, null, rect, null)
+    }
+
     return bitmap
 }
+
+// Extensão apenas para facilitar a escrita
+private val Int.f get() = this.toFloat()
 @Composable
 fun SuccessAnimation(onFinished: () -> Unit) {
     // 1. Tenta carregar a composição

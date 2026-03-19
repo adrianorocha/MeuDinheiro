@@ -2,6 +2,7 @@ package com.meudinheiro.componentes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,30 +13,33 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.room3.util.copy
+import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.funcoes.compartilharComprovante
 import com.meudinheiro.funcoes.formatarMoedaBR
-import com.meudinheiro.ui.theme.CardGlass
+import com.meudinheiro.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Locale
-import com.meudinheiro.ui.theme.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.* // Para pegar todos os ícones arredondados
 
 
 @Composable
-fun ItemExtratoNeon(despesa: Despesa) {
+fun ItemExtratoNeon(despesa: Despesa, cartao: CartaoComConta) {
+    val context = LocalContext.current
 
     // Mapeamento de estilo baseado na categoria (String que vem do banco)
     val (corNeon, icone) = when (despesa.categoria.uppercase()) {
@@ -51,6 +55,9 @@ fun ItemExtratoNeon(despesa: Despesa) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
+            .clickable{
+                compartilharComprovante(context, despesa, cartao.nomeCartao, cartao.nomeConta)
+            }
             .clip(RoundedCornerShape(16.dp))
             .background(CardGlass.copy(alpha = 0.4f))
             .border(0.5.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
@@ -78,7 +85,7 @@ fun ItemExtratoNeon(despesa: Despesa) {
         // Info da Despesa Real
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = despesa.descricao, // 👈 Antes era 'estabelecimento'
+                text = despesa.descricao,
                 color = Color.White,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -95,10 +102,26 @@ fun ItemExtratoNeon(despesa: Despesa) {
 
         // Valor Formatado
         Text(
-            text = "R$ ${String.format("%.2f", despesa.valor)}",
+            text = formatarMoedaBR(despesa.valor, false),
             color = Color.White,
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold
         )
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // 💡 2. ÍCONE EXPLÍCITO DE COMPARTILHAR (A "Reimpressão")
+        IconButton(
+            onClick = {
+                compartilharComprovante(context, despesa, cartao.nomeCartao, cartao.nomeConta)
+            },
+            modifier = Modifier.size(24.dp)
+        ) {
+            Icon(
+                Icons.Rounded.Share,
+                contentDescription = "Reimprimir Comprovante",
+                tint = NeonCyan.copy(0.5f), // Ciano sutil para não brigar com o valor
+                modifier = Modifier.size(16.dp) // Ícone pequeno e elegante
+            )
+        }
     }
 }

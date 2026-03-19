@@ -80,7 +80,7 @@ import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.SuccessAnimation
 import com.meudinheiro.funcoes.compartilharComprovante
-import com.meudinheiro.funcoes.gerarBitmapComprovante
+import com.meudinheiro.funcoes.gerarBitmapComprovanteUltraPremium
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -618,6 +618,8 @@ fun AddDespesaDialog(
                                         val idDoCartao =
                                             if (formaPagamento == "CARTAO") cartaoSelecionadoId else null
 
+                                        val nomeCartaoParaRecibo = cartoesFiltrados.find { it.id == idDoCartao }?.nomeCartao
+
                                         val desp = Despesa(
                                             //id = 0,
                                             descricao = descricao.trim(),
@@ -654,8 +656,8 @@ fun AddDespesaDialog(
                                             }
                                             mostrarSucesso = true
                                             delay(100)
-                                            val bitmap = gerarBitmapComprovante(desp)
-                                            compartilharComprovante(currentContext, bitmap)
+                                            compartilharComprovante(currentContext,desp,
+                                                nomeCartaoParaRecibo ,contaAtual)
                                             onDismiss()
                                         }
                                     }

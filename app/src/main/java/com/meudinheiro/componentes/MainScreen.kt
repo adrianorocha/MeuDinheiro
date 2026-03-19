@@ -1,6 +1,5 @@
 package com.meudinheiro.componentes
 
-import android.R.attr.text
 import android.app.Application
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,7 +31,6 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -139,7 +137,8 @@ fun MainScreen(
         viewModel(factory = InvestimentoViewModelFactory(db.investimentoDao()))
     val transacaoVM: TransacaoViewModel =
         viewModel(factory = TransacaoViewModelFactory(db.transacaoDao()))
-    val cartoesViewModel: CartoesViewModel = viewModel(factory = CartoesViewModelFactory(LocalContext.current))
+    val cartoesViewModel: CartoesViewModel =
+        viewModel(factory = CartoesViewModelFactory(LocalContext.current))
     // ==========================================
     // 2. ESTADOS DE PREFERÊNCIAS E USUÁRIO
     // ==========================================
@@ -153,7 +152,8 @@ fun MainScreen(
     // 3. ESTADOS DE CONTROLE DE TELA (UI)
     // ==========================================
     var mainTabSelecionada by remember { mutableIntStateOf(0) }
-    val mainTabs = remember { listOf("Saldo", "Contas", "Cartões","Cofrinhos", "Investimentos", "Resumos") }
+    val mainTabs =
+        remember { listOf("Saldo", "Contas", "Cartões", "Cofrinhos", "Investimentos", "Resumos") }
     var selectedIndex by remember { mutableIntStateOf(-1) } // Controle das telas cheias sobrepostas
 
     // Controles de Dialogs
@@ -282,11 +282,11 @@ fun MainScreen(
                     abaSelecionada = selectedIndex,
                     onTabSelected = { selectedIndex = it }
                 )
-/*
-                NavigationSection(
-                    selectedIndex = selectedIndex,
-                    onItemSelected = { selectedIndex = it })
-*/
+                /*
+                                NavigationSection(
+                                    selectedIndex = selectedIndex,
+                                    onItemSelected = { selectedIndex = it })
+                */
             },
             snackbarHost = {
                 SnackbarHost(hostState = snackbarHostState) { data ->
@@ -308,20 +308,26 @@ fun MainScreen(
             },
             floatingActionButton = {
                 Column(horizontalAlignment = Alignment.End) {
-                    FloatingActionButton(
+                    SmallFloatingActionButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             showPatrimonioDialog = true
                         },
                         containerColor = Color(0xFF1B263B),
                         contentColor = NeonCyan,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier
+                            .offset(x = (-10).dp, y = 15.dp)
+                            .size(48.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ShowChart, "Evolução", modifier = Modifier.size(22.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ShowChart,
+                            "Evolução",
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
-                    FloatingActionButton(
+                    SmallFloatingActionButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             showRelatorioDialog = true
@@ -335,7 +341,7 @@ fun MainScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
                     if (agendados.isNotEmpty() && mainTabSelecionada in listOf(0, 1)) {
-                        FloatingActionButton(
+                        SmallFloatingActionButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 showAgendamentosDialog = true
@@ -370,26 +376,6 @@ fun MainScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    if (mainTabSelecionada in listOf(0, 1, 3)) {
-                        SpeedDialFAB(
-                            onNovoGasto = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showAddDespesaDialog = true
-                            },
-                            onNovoInvestimento = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showInvestDialog = true
-                            },
-                            onTransferencia = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showTransferenciaDialog = true
-                            },
-                            onScanBoleto = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                permissionLauncher.launch(android.Manifest.permission.CAMERA)
-                            }
-                        )
                     }
                 }
             }
@@ -439,10 +425,20 @@ fun MainScreen(
 
                 // --- FILTRO GLOBAL ---
                 Box(modifier = Modifier.padding(horizontal = 8.dp)) {
-                    SeletorPeriodo(
+                    BarraFiltrosEAcoes(
+                        filtroAtual = filtroAtivo,
+                        onFiltroSelected = { contaVM.alterarFiltro(it) },
+                        onEvolucaoPatrimonial = {showPatrimonioDialog = true},
+                        onSaudeFinanceiro = {showRelatorioDialog = true},
+                        onPreviaoMes = {showPrevisaoDialog = true},
+                        onTransacoesAgendadas = {showAgendamentosDialog = true},
+                        modifier = Modifier
+                    )
+
+                    /*SeletorPeriodo(
                         filtroSelecionado = contaVM.filtroAtual,
                         onFiltroSelected = { contaVM.alterarFiltro(it) }
-                    )
+                    )*/
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -748,6 +744,31 @@ fun MainScreen(
                                         }
                                     }
                                 }
+                                item {
+                                    if (mainTabSelecionada in listOf(0, 1, 3)) {
+                                        BarraAcoesRapidas(
+                                            onNovoGasto = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showAddDespesaDialog = true
+                                            },
+                                            onNovoInvestimento = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showInvestDialog = true
+                                            },
+                                            onTransferencia = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showTransferenciaDialog = true
+                                            },
+                                            onScanBoleto = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                permissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                            },
+                                            modifier = Modifier
+                                                .padding(vertical = 8.dp)
+                                                .background(Color.White.copy(0.02f))
+                                        )
+                                    }
+                                }
 
                                 // 6. Lista de Despesas
                                 if (despesasFiltradas.isEmpty()) {
@@ -784,7 +805,6 @@ fun MainScreen(
                             )
                         }
 
-
                         3 -> {
                             // --- ABA 3: COFRINHOS ---
                             CofrinhosTab(
@@ -807,6 +827,7 @@ fun MainScreen(
                     }
                 }
             }
+/*
             SmallFloatingActionButton(
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -814,7 +835,6 @@ fun MainScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.TopEnd) // Prende no canto superior direito
-                    // ⚠️ O PULO DO GATO: Use o offset para mover pixel por pixel até o seu círculo vermelho
                     .offset(x = (-16).dp, y = 255.dp),
                 containerColor = Color(0xFF1B263B),
                 contentColor = Color(0xFF00E5FF), // NeonCyan
@@ -826,6 +846,7 @@ fun MainScreen(
                     modifier = Modifier.size(20.dp)
                 )
             }
+*/
         }
 
         // ==========================================

@@ -937,6 +937,12 @@ class MainRepository(
    fun getDespesasPorCartao(cartaoId: Int): Flow<List<Despesa>> {
         return despesaDao.getDespesasPorCartao(cartaoId)
     }
+
+    suspend fun quitarDespesasAteData(id: Int,data: Long) {
+        withContext(Dispatchers.IO) {
+            despesaDao.quitarDespesasAteData(id, data)
+        }
+    }
 }
 
 

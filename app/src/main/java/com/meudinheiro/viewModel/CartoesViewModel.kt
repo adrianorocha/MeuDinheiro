@@ -9,6 +9,7 @@ import com.meudinheiro.data.CategoriaCompra
 import com.meudinheiro.data.Compra
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
@@ -106,8 +108,10 @@ class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
             else -> CategoriaCompra.OUTROS
         }
     }
-
-    fun pagarFatura(cartao: CartaoComConta, valor: Double) {
+    private var pagandoId: Int? = null
+    fun pagarFatura(cartao: CartaoComConta, valor: Double, dataReferencia: Date) {
+        if (pagandoId == cartao.id) return
+        pagandoId = cartao.id
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // 1. Tira o dinheiro da conta bancária vinculada ao cartão
@@ -116,11 +120,31 @@ class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
                 // 2. Devolve o limite para o cartão
                 repository.estornarLimiteCartao(cartao.id, valor)
 
-                // 3. (Opcional) Você pode criar uma transação de "Pagamento de Fatura"
-                // no histórico geral de despesas para registro futuro.
+                repository.quitarDespesasAteData(cartao.id, dataReferencia.time)
 
+                // 4. CRIA O REGISTRO HISTÓRICO (A sugestão opcional)
+                val registroPagamento = Despesa(
+                    descricao = "Pagamento Fatura: ${cartao.nomeCartao}",
+                    valor = valor,
+                    data = Date(), // Data de hoje (momento do pagamento)
+                    categoria = "CARTÃO",
+                    cartaoId = 0, // 💡 0 ou null indica que foi direto na conta, não no cartão
+                    conta = cartao.numeroConta,
+                    pago = true, // Já nasce paga porque é uma saída imediata da conta
+                    pic = "payments",
+                    tipo = TipoDespesa.DEBITO,
+                    mes = dataReferencia.month,
+                    ano = dataReferencia.year,
+                    valorOriginal = valor,
+                    moedaOriginal = "BRL",
+                    cotacaoNaData = 1.0
+
+                )
+                repository.inserirDespesa(registroPagamento)
+                pagandoId = null
                 Log.d("PAGAMENTO", "Fatura de R$ $valor paga com sucesso!")
             } catch (e: Exception) {
+                pagandoId = null
                 Log.e("VM_ERROR", "Falha ao pagar fatura: ${e.message}")
             }
         }
