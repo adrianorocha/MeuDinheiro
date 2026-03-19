@@ -88,6 +88,7 @@ dependencies {
     implementation("androidx.glance:glance-material3:1.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation(libs.androidx.room3.runtime)
+    implementation(libs.foundation)
 
     val camerax_version = "1.3.1"
     implementation("androidx.camera:camera-camera2:$camerax_version")

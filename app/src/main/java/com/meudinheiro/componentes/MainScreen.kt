@@ -200,6 +200,12 @@ fun MainScreen(
             Toast.makeText(context, "Permissão de câmera negada", Toast.LENGTH_SHORT).show()
         }
     }
+
+    LaunchedEffect(Unit) {
+        contaVM.uiEvent.collect { mensagem ->
+            snackbarHostState.showSnackbar(mensagem)
+        }
+    }
     // ==========================================
     // 5. VERIFICAÇÕES DE INICIALIZAÇÃO E SPLASH
     // ==========================================
@@ -420,10 +426,10 @@ fun MainScreen(
                     BarraFiltrosEAcoes(
                         filtroAtual = filtroAtivo,
                         onFiltroSelected = { contaVM.alterarFiltro(it) },
-                        onEvolucaoPatrimonial = {showPatrimonioDialog = true},
-                        onSaudeFinanceiro = {showRelatorioDialog = true},
-                        onPreviaoMes = {showPrevisaoDialog = true},
-                        onTransacoesAgendadas = {showAgendamentosDialog = true},
+                        onEvolucaoPatrimonial = { showPatrimonioDialog = true },
+                        onSaudeFinanceiro = { showRelatorioDialog = true },
+                        onPreviaoMes = { showPrevisaoDialog = true },
+                        onTransacoesAgendadas = { showAgendamentosDialog = true },
                         agendados = agendados,
                         modifier = Modifier
                     )
@@ -820,26 +826,26 @@ fun MainScreen(
                     }
                 }
             }
-/*
-            SmallFloatingActionButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    showPrevisaoDialog = true
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd) // Prende no canto superior direito
-                    .offset(x = (-16).dp, y = 255.dp),
-                containerColor = Color(0xFF1B263B),
-                contentColor = Color(0xFF00E5FF), // NeonCyan
-                shape = CircleShape
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AreaChart,
-                    contentDescription = "Previsão",
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-*/
+            /*
+                        SmallFloatingActionButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showPrevisaoDialog = true
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd) // Prende no canto superior direito
+                                .offset(x = (-16).dp, y = 255.dp),
+                            containerColor = Color(0xFF1B263B),
+                            contentColor = Color(0xFF00E5FF), // NeonCyan
+                            shape = CircleShape
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AreaChart,
+                                contentDescription = "Previsão",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+            */
         }
 
         // ==========================================
@@ -904,7 +910,7 @@ fun MainScreen(
                 onDismiss = { showTransferenciaDialog = false },
                 onConfirmar = { origem, destino, valor, dataAgendada ->
                     if (dataAgendada == null) {
-                        contaVM.transferirValor(origem, destino, valor, context)
+                        contaVM.transferirValor(origem, destino, valor)
                     } else {
                         contaVM.agendarTransferencia(origem, destino, valor, dataAgendada, context)
                     }

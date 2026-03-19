@@ -25,6 +25,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -48,17 +50,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -103,6 +106,10 @@ import com.meudinheiro.R
 import com.meudinheiro.componentes.MonthPill
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.PieChartData
+import com.meudinheiro.ui.theme.CardGlass
+import com.meudinheiro.ui.theme.DeepSpaceBlue
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.ui.theme.NeonRed
 import kotlinx.coroutines.delay
 import java.io.File
 import java.io.FileOutputStream
@@ -163,7 +170,12 @@ fun compartilharComprovante(
     context.startActivity(Intent.createChooser(intent, "Compartilhar Recibo Blu Macaw"))
 }
 
-fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNome: String?, contaNome: String): Bitmap {
+fun gerarBitmapComprovanteUltraPremium(
+    ctx: Context,
+    despesa: Despesa,
+    cartaoNome: String?,
+    contaNome: String
+): Bitmap {
     val width = 850 // Ligeiramente mais largo para elegância
     val height = 1500 // Mais altura para os detalhes refinados
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -194,7 +206,10 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
     val paintAmount = android.graphics.Paint().apply {
         color = colorValueText
         textSize = 90f // Valor enorme e imponente
-        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        typeface = android.graphics.Typeface.create(
+            android.graphics.Typeface.DEFAULT,
+            android.graphics.Typeface.BOLD
+        )
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
         // Brilho suave no valor
@@ -211,7 +226,10 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
     val paintValue = android.graphics.Paint().apply {
         color = colorValueText
         textSize = 30f
-        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        typeface = android.graphics.Typeface.create(
+            android.graphics.Typeface.DEFAULT,
+            android.graphics.Typeface.BOLD
+        )
         textAlign = android.graphics.Paint.Align.RIGHT
         isAntiAlias = true
     }
@@ -219,7 +237,10 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
     val paintBrand = android.graphics.Paint().apply {
         color = colorNeonCyan
         textSize = 20f
-        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        typeface = android.graphics.Typeface.create(
+            android.graphics.Typeface.DEFAULT,
+            android.graphics.Typeface.BOLD
+        )
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
@@ -236,18 +257,24 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
     val logoDrawable = androidx.core.content.ContextCompat.getDrawable(ctx, R.drawable.meu_dinheiro)
     logoDrawable?.let {
         val logoSize = 60
-        it.setBounds((width / 2) - (logoSize / 2), 100, (width / 2) + (logoSize / 2), 100 + logoSize)
+        it.setBounds(
+            (width / 2) - (logoSize / 2),
+            100,
+            (width / 2) + (logoSize / 2),
+            100 + logoSize
+        )
         // Opcional: Aplicar filtro de cor Neon Cyan no logotipo
         androidx.core.graphics.drawable.DrawableCompat.setTint(it, colorNeonCyan)
         it.draw(canvas)
     }
 
-    val paintTitle = android.graphics.Paint(paintBrand).apply { textSize = 26f; color = android.graphics.Color.WHITE }
+    val paintTitle = android.graphics.Paint(paintBrand)
+        .apply { textSize = 26f; color = android.graphics.Color.WHITE }
     canvas.drawText("Blu Macaw Lab's", width / 2f, 190f, paintBrand)
     canvas.drawText("Comprovante Detalhado", width / 2f, 230f, paintTitle)
 
     // 💰 VALOR IMPONENTE
-    canvas.drawText(formatarMoedaBR(despesa.valor,false), width / 2f, 380f, paintAmount)
+    canvas.drawText(formatarMoedaBR(despesa.valor, false), width / 2f, 380f, paintAmount)
 
     // ✅ STATUS TAG PREMIUM
     val paintStatus = android.graphics.Paint(paintValue).apply {
@@ -255,7 +282,12 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
         textSize = 24f
         textAlign = android.graphics.Paint.Align.CENTER
     }
-    canvas.drawText(if(despesa.pago) "PAGAMENTO CONFIRMADO" else "AGUARDANDO PAGAMENTO", width / 2f, 440f, paintStatus)
+    canvas.drawText(
+        if (despesa.pago) "PAGAMENTO CONFIRMADO" else "AGUARDANDO PAGAMENTO",
+        width / 2f,
+        440f,
+        paintStatus
+    )
 
     // LINHA DIVISORA ELEGANTE
     val paintDivider = android.graphics.Paint().apply {
@@ -272,18 +304,31 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
     val rightX = width - 80f
 
     // Função auxiliar para desenhar linha com Ícone e Detalhe
-    fun drawDetailLine(canvas: android.graphics.Canvas, label: String, value: String, y: Float, iconDrawable: android.graphics.drawable.Drawable?) {
+    fun drawDetailLine(
+        canvas: android.graphics.Canvas,
+        label: String,
+        value: String,
+        y: Float,
+        iconDrawable: android.graphics.drawable.Drawable?
+    ) {
         // Desenha Ícone sutil
         iconDrawable?.let {
             val iSize = 35
-            it.setBounds(leftX.toInt(), (y - iSize + 5).toInt(), (leftX + iSize).toInt(), (y + 5).toInt())
+            it.setBounds(
+                leftX.toInt(),
+                (y - iSize + 5).toInt(),
+                (leftX + iSize).toInt(),
+                (y + 5).toInt()
+            )
             androidx.core.graphics.drawable.DrawableCompat.setTint(it, colorLabelText)
             it.draw(canvas)
         }
         canvas.drawText(label, leftX + 50f, y, paintLabel)
         canvas.drawText(value, rightX, y, paintValue)
     }
-    val dataFormatada = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.getDefault()).format(despesa.data)
+
+    val dataFormatada =
+        SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.getDefault()).format(despesa.data)
     drawDetailLine(canvas, "Data do Pagamento", dataFormatada, startY, null)
 
     startY += lineSpacing
@@ -295,7 +340,8 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
     }
 
     startY += lineSpacing
-    val authId = "MD-${despesa.id.toString().padStart(6, '0')}-${despesa.data.time.toString().takeLast(4)}"
+    val authId =
+        "MD-${despesa.id.toString().padStart(6, '0')}-${despesa.data.time.toString().takeLast(4)}"
     drawDetailLine(canvas, "Autenticação MD", authId, startY, null)
 
     // SEGUNDA DIVISORA
@@ -308,14 +354,25 @@ fun gerarBitmapComprovanteUltraPremium(ctx: Context, despesa: Despesa, cartaoNom
 
     val qrLeft = (width - qrSize) / 2f
     val qrTop = startY + 120f
-    val qrBgRect = android.graphics.RectF(qrLeft - 10f, qrTop - 10f, qrLeft + qrSize + 10f, qrTop + qrSize + 10f)
-    val paintQrBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+    val qrBgRect = android.graphics.RectF(
+        qrLeft - 10f,
+        qrTop - 10f,
+        qrLeft + qrSize + 10f,
+        qrTop + qrSize + 10f
+    )
+    val paintQrBg =
+        android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
     canvas.drawRoundRect(qrBgRect, 16f, 16f, paintQrBg)
 
     canvas.drawBitmap(qrBitmap, qrLeft, qrTop, null)
 
     paintSubtitle.textSize = 20f
-    canvas.drawText("Escaneie para validar a autenticidade", width / 2f, qrTop + qrSize + 60f, paintSubtitle)
+    canvas.drawText(
+        "Escaneie para validar a autenticidade",
+        width / 2f,
+        qrTop + qrSize + 60f,
+        paintSubtitle
+    )
 
     val paintBrand2 = android.graphics.Paint().apply {
         color = android.graphics.Color.parseColor("#00E5FF")
@@ -351,7 +408,8 @@ fun gerarBitmapQRCode(
     val canvas = android.graphics.Canvas(bitmap)
 
     // Fundo Branco Arredondado
-    val paintBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+    val paintBg =
+        android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
     canvas.drawRoundRect(RectF(0f, 0f, width.f, height.f), 40f, 40f, paintBg)
 
     // 2. Configuração do Gradiente (Laranja -> Roxo/Rosa)
@@ -369,7 +427,8 @@ fun gerarBitmapQRCode(
     }
 
     val moduleSize = width / bitMatrix.width.toFloat()
-    val dotRadius = moduleSize / 2 * 0.85f // Reduzi um pouco para dar o efeito de "bolinhas" separadas
+    val dotRadius =
+        moduleSize / 2 * 0.85f // Reduzi um pouco para dar o efeito de "bolinhas" separadas
 
     // 3. Desenho dos módulos
     for (x in 0 until width) {
@@ -380,7 +439,8 @@ fun gerarBitmapQRCode(
                 val center = bitMatrix.width / 2
                 if (logo != null &&
                     x > (center - centralLimit) && x < (center + centralLimit) &&
-                    y > (center - centralLimit) && y < (center + centralLimit)) {
+                    y > (center - centralLimit) && y < (center + centralLimit)
+                ) {
                     continue
                 }
 
@@ -400,7 +460,8 @@ fun gerarBitmapQRCode(
         val rect = Rect(left, top, left + logoSize, top + logoSize)
 
         // Fundo branco do logo para não misturar com os pontos
-        val paintLogoBg = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+        val paintLogoBg = android.graphics.Paint()
+            .apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
         val logoBgRect = RectF(
             (left - 5).f, (top - 5).f,
             (left + logoSize + 5).f, (top + logoSize + 5).f
@@ -415,6 +476,7 @@ fun gerarBitmapQRCode(
 
 // Extensão apenas para facilitar a escrita
 private val Int.f get() = this.toFloat()
+
 @Composable
 fun SuccessAnimation(onFinished: () -> Unit) {
     // 1. Tenta carregar a composição
@@ -1026,57 +1088,106 @@ fun EmptyStateSection(
 
 @Composable
 fun PremiumSnackbar(data: SnackbarData) {
-    // Detecta se é erro ou sucesso pela mensagem (opcional, mas inteligente)
-    val isError = data.visuals.message.contains("erro", ignoreCase = true) ||
-            data.visuals.message.contains("falha", ignoreCase = true)
+    // Split: "Título | Subtítulo | Tipo (Sucesso/Erro)"
+    val partes = data.visuals.message.split("|")
+    val titulo = partes.getOrNull(0)?.trim() ?: ""
+    val subtitulo = partes.getOrNull(1)?.trim() ?: ""
+    val isErro = partes.getOrNull(2)?.trim()?.contains("Erro", ignoreCase = true) ?: false
 
-    val accentColor = if (isError) Color(0xFFFF5252) else Color(0xFF00E5FF) // Vermelho ou Neon Cyan
+    val corDestaque = if (isErro) NeonRed else NeonCyan
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 90.dp), // Um pouco mais alto para flutuar sobre a BottomBar
+            .padding(bottom = 90.dp)
+            .padding(horizontal = 20.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
-        Card(
+        // 1. O Card Principal com Gradiente Escuro e Borda Glow
+        Surface(
             modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .graphicsLayer { shadowElevation = 12f }, // Sombra suave
-            shape = RoundedCornerShape(24.dp), // Bordas modernas mais suaves
-            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)), // Borda Neon sutil
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xEB1B263B) // Azul marinho com 92% de opacidade
-            )
+                .fillMaxWidth()
+                .padding(top = 16.dp), // Espaço para o avatar "sobrar" em cima
+            shape = RoundedCornerShape(24.dp),
+            shadowElevation = 8.dp,
+            color = Color.Transparent // Necessário para o brush background aparecer
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(CardGlass, DeepSpaceBlue),
+                            start = Offset(0f, 0f),
+                            end = Offset(1000f, 1000f)
+                        )
+                    )
+                    .border(1.dp, corDestaque.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+                    .padding(start = 16.dp, top = 20.dp, bottom = 20.dp, end = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Ícone com brilho Neon
-                Icon(
-                    imageVector = if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = accentColor
-                )
+                // Espaço reservado para o avatar flutuante (empurra o texto pra direita)
+                Spacer(modifier = Modifier.width(68.dp))
 
-                Spacer(Modifier.width(12.dp))
-
-                Text(
-                    text = data.visuals.message,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp
-                )
-
-                // Se houver uma ação (ex: "DESFAZER"), mostramos um botão aqui
-                data.visuals.actionLabel?.let { label ->
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { data.performAction() }) {
-                        Text(label, color = accentColor, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = titulo,
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp
+                    )
+                    if (subtitulo.isNotEmpty()) {
+                        Text(
+                            text = subtitulo,
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
                 }
+            }
+        }
+
+        // 2. O Avatar Sobreposto (Hanging Avatar com Badge)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 24.dp) // Alinhamento lateral que o card respeita
+        ) {
+            // Foto/Avatar Principal
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = DeepSpaceBlue,
+                border = BorderStroke(1.5.dp, corDestaque.copy(alpha = 0.8f)), // Borda Neon
+                shadowElevation = 8.dp
+            ) {
+                Icon(
+                    imageVector = if (isErro) Icons.Default.WarningAmber else Icons.Default.NotificationsActive,
+                    contentDescription = null,
+                    tint = corDestaque,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+
+            // 💡 TOQUE PREMIUM: Mini Badge de Status no canto inferior direito
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 6.dp, y = 6.dp) // Joga o badge metade pra fora do avatar
+                    .background(corDestaque, CircleShape)
+                    .border(2.dp, DeepSpaceBlue, CircleShape), // Borda escura para dar contraste
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isErro) Icons.Default.Close else Icons.Default.Check,
+                    contentDescription = null,
+                    tint = DeepSpaceBlue, // Ícone escuro sobre fundo claro
+                    modifier = Modifier.size(12.dp)
+                )
             }
         }
     }

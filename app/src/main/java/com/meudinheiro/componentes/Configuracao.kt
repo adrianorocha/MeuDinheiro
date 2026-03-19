@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -29,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
@@ -51,6 +52,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -61,6 +64,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -99,6 +106,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.meudinheiro.funcoes.PremiumSnackbar
 
 // --- CORES BLU MACAW ---
 private val NeonCyan = Color(0xFF00E5FF)
@@ -106,7 +114,6 @@ private val DeepSpaceBlue = Color(0xFF131E29)
 private val CardGlass = Color(0xFF1B263B).copy(alpha = 0.8f)
 private val NeonRed = Color(0xFFFF5252)
 private val SuccessGreen = Color(0xFF69F0AE)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Configuracao(
@@ -115,6 +122,9 @@ fun Configuracao(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // 💡 1. ESTADO DA SNACKBAR
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // --- ESTADOS DE CONTROLE ---
     var processingMessage by remember { mutableStateOf<String?>(null) }
@@ -158,10 +168,14 @@ fun Configuracao(
                             outputStream.write(jsonBackup.toByteArray(Charsets.UTF_8))
                         } ?: throw Exception("Não foi possível fechar o cofre.")
                     }
-                    Toast.makeText(context, "✅ Backup salvo com sucesso no padrão Blu Macaw!", Toast.LENGTH_SHORT).show()
+                    delay(1000)
+                    processingMessage = null
+                    // 💡 Trocando Toast por Snackbar
+                    snackbarHostState.showSnackbar("Backup | ✅ Backup salvo com sucesso no padrão Blu Macaw! | Sucesso")
+                    delay(2000)
                 } catch (e: Exception) {
                     Log.e("BackupError", "Erro ao salvar", e)
-                    Toast.makeText(context, "Erro ao salvar: ${e.message}", Toast.LENGTH_LONG).show()
+                    snackbarHostState.showSnackbar("Backup | Erro ao salvar: ${e.message} | Erro")
                 } finally {
                     processingMessage = null
                 }
@@ -184,10 +198,13 @@ fun Configuracao(
                     }
                     processingMessage = "Restaurando base de dados..."
                     mainRepository.restaurarBackupCompleto(jsonLimpo)
-                    Toast.makeText(context, "✅ Dados restaurados com sucesso!", Toast.LENGTH_SHORT).show()
+                    delay(1000)
+                    processingMessage = null
+                    snackbarHostState.showSnackbar("Restore | ✅ Dados restaurados com sucesso! | Sucesso")
+                    delay(2000)
                 } catch (e: Exception) {
                     Log.e("RestoreError", "Erro na restauração", e)
-                    Toast.makeText(context, "Falha na leitura: Arquivo incompatível.", Toast.LENGTH_LONG).show()
+                    snackbarHostState.showSnackbar("Restore | Falha na leitura: Arquivo incompatível. | Erro")
                 } finally {
                     processingMessage = null
                 }
@@ -198,11 +215,13 @@ fun Configuracao(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            Toast.makeText(context, "Permissão VIP concedida!", Toast.LENGTH_SHORT).show()
-            if (enabled) AgendadorNotifDespesas.scheduleDaily(context, hour, minute)
-        } else {
-            Toast.makeText(context, "O motor financeiro precisa de permissão para alertar.", Toast.LENGTH_LONG).show()
+        scope.launch {
+            if (granted) {
+                snackbarHostState.showSnackbar("VIP | Permissão VIP concedida! | Sucesso")
+                if (enabled) AgendadorNotifDespesas.scheduleDaily(context, hour, minute)
+            } else {
+                snackbarHostState.showSnackbar("VIP | O motor financeiro precisa de permissão para alertar. | Erro")
+            }
         }
     }
 
@@ -220,6 +239,12 @@ fun Configuracao(
     ) {
         Scaffold(
             containerColor = Color.Transparent,
+            // 💡 2. ACOPLANDO A SUA PREMIUM SNACKBAR NO SCAFFOLD
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState) { data ->
+                    PremiumSnackbar(data = data)
+                }
+            },
             topBar = {
                 TopAppBar(
                     title = { Text("Configurações", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
@@ -329,7 +354,7 @@ fun Configuracao(
                                 descricao = "Avisar apenas Faturas de Cartão",
                                 checked = onlyCredit,
                                 onCheckedChange = { v -> scope.launch { userPrefs.saveNotifOnlyCredit(v) } },
-                                padding = PaddingValues(0.dp) // Sem padding extra para ficar alinhado no card expandido
+                                padding = PaddingValues(0.dp)
                             )
                         }
                     }
@@ -361,13 +386,13 @@ fun Configuracao(
                                                 mainRepository.exportarExtratoPDF(context, nomesMeses.getOrElse(mesIndex) { "Mes" }, anoAtual, listaDespesas)
                                             }
                                         } catch (e: Exception) {
-                                            Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_LONG).show()
+                                            snackbarHostState.showSnackbar("Erro: ${e.message}")
                                         } finally {
                                             processingMessage = null
                                         }
                                     }
                                 } else {
-                                    Toast.makeText(context, "O cofre não tem lançamentos neste mês.", Toast.LENGTH_SHORT).show()
+                                    scope.launch { snackbarHostState.showSnackbar("O cofre não tem lançamentos neste mês.") }
                                 }
                             }
                         )
@@ -445,10 +470,12 @@ fun Configuracao(
                         try {
                             withContext(Dispatchers.IO) { mainRepository.limparBancoDeDadosCompleto() }
                             delay(1000)
-                            Toast.makeText(context, "O cofre foi resetado. Voltando ao início...", Toast.LENGTH_LONG).show()
+                            processingMessage = null
+                            snackbarHostState.showSnackbar("Processando | O cofre foi resetado. Voltando ao início... | Sucesso")
+                            delay(2000)
                             onBack()
                         } catch (e: Exception) {
-                            Toast.makeText(context, "Falha na destruição: ${e.message}", Toast.LENGTH_LONG).show()
+                            snackbarHostState.showSnackbar("Falha na Destruição | Falha na destruição: ${e.message} | Erro")
                         } finally {
                             processingMessage = null
                         }
@@ -461,6 +488,7 @@ fun Configuracao(
         }
     }
 }
+
 
 // --- SUB-COMPONENTES VISUAIS BLU MACAW ---
 

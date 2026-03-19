@@ -1,5 +1,8 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -34,6 +37,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.TransferenciaAgendada
 import com.meudinheiro.ui.theme.NeonCyan
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.scale
 
 @Composable
 fun BarraFiltrosEAcoes(
@@ -105,19 +114,45 @@ fun BarraFiltrosEAcoes(
 
 @Composable
 fun IconeAcaoSuperior(
-    agendados: List<TransferenciaAgendada> = emptyList(), // Mantive sua lista
+    agendados: List<TransferenciaAgendada> = emptyList(),
     icone: ImageVector,
     cor: Color,
     tooltip: String,
     onClick: () -> Unit
 ) {
-    // 1️⃣ BOX PAI INVISÍVEL: Não tem fundo nem clip. Só serve de âncora.
+    // 💡 LÓGICA DE ANIMAÇÃO DO TOQUE FINAL
+    // Estado para controlar a escala da bolinha (começa em 0.0f)
+    var scaleFactor by remember { mutableStateOf(0.0f) }
+
+    // Animação de escala suave (spring)
+    val scaleAnim by animateFloatAsState(
+        targetValue = scaleFactor,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy, // Dá o "pulo"
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "BadgeScale"
+    )
+
+    // Efeito para disparar a animação quando a quantidade de agendados mudar
+    LaunchedEffect(key1 = agendados.size) {
+        if (agendados.isNotEmpty()) {
+            scaleFactor = 0.0f // Reseta
+            // Dá um tempo mínimo para o Compose registrar o 0.0f
+            kotlinx.coroutines.delay(10)
+            scaleFactor = 1.0f // Ativa o tamanho real, disparando o spring
+        } else {
+            scaleFactor = 0.0f // Encolhe para sumir
+        }
+    }
+
+    // 1️⃣ BOX PAI INVISÍVEL (Âncora, sem clip)
     Box(
         modifier = Modifier.wrapContentSize(),
-        contentAlignment = Alignment.Center // Centraliza o botão dentro da área
+        contentAlignment = Alignment.Center
     ) {
 
-        // 2️⃣ O BOTÃO REAL (Escuro e clicável)
+        // 2️⃣ O BOTÃO REAL (Escuro e clicável, com clip)
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -134,17 +169,15 @@ fun IconeAcaoSuperior(
             )
         }
 
-        // 3️⃣ A BOLINHA DE NOTIFICAÇÃO (Por cima de tudo)
-        if (agendados.isNotEmpty()) {
+        // 3️⃣ A BOLINHA DE NOTIFICAÇÃO (Animada e por cima)
+        // Só renderiza se a animação ainda estiver visível
+        if (scaleAnim > 0.1f) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd) // Joga para o canto superior direito do Box Pai
-                    .offset(
-                        x = 4.dp,
-                        y = (-4).dp
-                    ) // Puxa ela um pouco para fora para o efeito "Premium"
+                    .offset(x = 4.dp, y = (-4).dp) // Puxa ela um pouco para fora
+                    .scale(scaleAnim) // 💡 APLICA A ANIMAÇÃO DE ESCALA AQUI
                     .size(16.dp)
-                    // 💡 Dica: background com CircleShape já faz o clip automático!
                     .background(Color.Red, CircleShape),
                 contentAlignment = Alignment.Center
             ) {

@@ -35,9 +35,11 @@ import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.worker.TransferenciaWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
@@ -66,6 +68,8 @@ class ContaSaldoViewModel(
     private val repository: MainRepository
 ) : AndroidViewModel(application) {
 
+    private val _uiEvent = MutableSharedFlow<String>()
+    val uiEvent = _uiEvent.asSharedFlow()
     // ==========================================
     // 1. ESTADOS GLOBAIS DA UI
     // ==========================================
@@ -321,43 +325,31 @@ class ContaSaldoViewModel(
     fun transferirValor(
         contaOrigem: String,
         contaDestino: String,
-        valor: Double,
-        context: Context
+        valor: Double
     ) {
         if (contaOrigem == contaDestino) {
-            Toast.makeText(context, "Contas iguais!", Toast.LENGTH_SHORT).show()
+            viewModelScope.launch {
+                _uiEvent.emit("Atenção | As contas de origem e destino são iguais. | Erro")
+            }
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 repository.transferirEntreContas(contaOrigem, contaDestino, valor)
                 carregarSaldosGlobais()
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Transferência realizada com sucesso!",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                _uiEvent.emit("Sucesso | Transferência realizada com sucesso! | Sucesso")
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Erro na transferência: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+                _uiEvent.emit("Erro na Transferência | ${e.message} | Erro")
                 Log.e("Transferencia", "Erro: ${e.message}")
             }
         }
     }
-
     fun agendarTransferencia(
         origem: String,
         destino: String,
         valor: Double,
         data: Long,
-        context: Context
+        context: Context // Mantemos o context aqui apenas para o WorkManager
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -382,18 +374,10 @@ class ContaSaldoViewModel(
 
                 WorkManager.getInstance(context).enqueue(tarefa)
 
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Transferência agendada com sucesso!",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                _uiEvent.emit("Agendamento VIP | Sua transferência foi programada com sucesso. | Sucesso")
             } catch (e: Exception) {
                 Log.e("AgendamentoWorker", "Erro ao agendar: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Erro ao tentar agendar.", Toast.LENGTH_SHORT).show()
-                }
+                _uiEvent.emit("Falha no Agendamento | Não conseguimos programar esta operação. | Erro")
             }
         }
     }
@@ -403,16 +387,13 @@ class ContaSaldoViewModel(
             try {
                 repository.excluirAgendamento(id)
                 WorkManager.getInstance(context).cancelAllWorkByTag("transferencia_$id")
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Agendamento cancelado com sucesso", Toast.LENGTH_SHORT)
-                        .show()
-                }
+                _uiEvent.emit("Agendamento Cancelado | A operação foi removida do calendário. | Sucesso")
             } catch (e: Exception) {
                 Log.e("ErroCancelamento", "Falha ao remover agendamento: ${e.message}")
+                _uiEvent.emit("Erro | Não foi possível cancelar o agendamento. | Erro")
             }
         }
     }
-
     // ==========================================
     // 7. WIDGETS
     // ==========================================
