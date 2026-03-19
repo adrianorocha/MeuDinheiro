@@ -14,7 +14,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.rounded.DirectionsCar
+import androidx.compose.material.icons.rounded.LocalHospital
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.ShoppingBag
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -32,7 +38,9 @@ import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.funcoes.compartilharComprovante
 import com.meudinheiro.funcoes.formatarMoedaBR
-import com.meudinheiro.ui.theme.*
+import com.meudinheiro.ui.theme.CardGlass
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.ui.theme.NeonRed
 import java.text.SimpleDateFormat
 import java.util.Locale
 

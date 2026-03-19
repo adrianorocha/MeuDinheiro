@@ -27,11 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.TransacaoModel
-import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.formatarMoedaBR
-import kotlin.Int
 
 // Cores do Tema Blu Macaw
 private val CardBg = Color(0xFF1B263B)

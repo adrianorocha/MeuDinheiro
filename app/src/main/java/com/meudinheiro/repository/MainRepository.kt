@@ -1,9 +1,6 @@
 package com.meudinheiro.repository
 
 import android.content.Context
-import android.util.Log
-import androidx.compose.runtime.snapshots.toInt
-import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.meudinheiro.dao.ContaSaldoDao
@@ -36,11 +33,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
-import kotlin.String
 
 class MainRepository(
     private val context: Context,

@@ -15,8 +15,8 @@ import com.meudinheiro.dao.DespesaFixaDao
 import com.meudinheiro.dao.InvestimentoDao
 import com.meudinheiro.dao.MetaDao
 import com.meudinheiro.dao.OrcamentoDao
-import com.meudinheiro.dao.TransacaoDao
 import com.meudinheiro.dao.PatrimonioDao
+import com.meudinheiro.dao.TransacaoDao
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {

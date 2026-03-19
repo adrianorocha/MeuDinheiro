@@ -4,7 +4,6 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.meudinheiro.data.PatrimonioHistorico
 import com.meudinheiro.data.Transacao
 import kotlinx.coroutines.flow.Flow
 

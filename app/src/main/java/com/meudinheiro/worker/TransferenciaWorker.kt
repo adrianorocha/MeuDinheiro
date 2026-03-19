@@ -4,9 +4,9 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.meudinheiro.funcoes.NotificacaoVIPHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.meudinheiro.funcoes.NotificacaoVIPHelper
 
 class TransferenciaWorker(
     appContext: Context,

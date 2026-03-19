@@ -50,9 +50,9 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.compartilharComprovante
 import com.meudinheiro.funcoes.formatarMoedaBR
-import java.util.Date
-import com.meudinheiro.ui.theme.*
+import com.meudinheiro.ui.theme.NeonCyan
 import java.util.Calendar
+import java.util.Date
 
 // Cores Premium Locais
 private val ItemBg = Color(0xFF1E2B3E).copy(alpha = 0.9f)

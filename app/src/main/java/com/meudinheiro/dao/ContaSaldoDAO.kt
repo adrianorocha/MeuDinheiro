@@ -7,9 +7,8 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
-import com.meudinheiro.data.DespesasDomain
-import kotlinx.coroutines.flow.Flow
 import com.meudinheiro.data.TransferenciaAgendada
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ContaSaldoDao {

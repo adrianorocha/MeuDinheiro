@@ -39,6 +39,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +53,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,12 +78,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.R
+import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.funcoes.SuccessAnimation
 import com.meudinheiro.funcoes.compartilharComprovante
-import com.meudinheiro.funcoes.gerarBitmapComprovanteUltraPremium
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.ui.theme.NeonGreen
+import com.meudinheiro.viewModel.CartoesViewModel
+import com.meudinheiro.viewModel.CartoesViewModelFactory
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -89,15 +97,6 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import com.meudinheiro.ui.theme.NeonCyan
-import com.meudinheiro.ui.theme.NeonGreen
-import com.meudinheiro.data.*
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.runtime.collectAsState
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.meudinheiro.viewModel.CartoesViewModel
-import com.meudinheiro.viewModel.CartoesViewModelFactory
 
 // Cores Premium Blu Macaw
 private val DialogBg = Color(0xFF1B263B)

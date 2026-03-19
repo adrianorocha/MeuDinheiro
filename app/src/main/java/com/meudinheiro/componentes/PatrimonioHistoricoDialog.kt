@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,7 +31,7 @@ import androidx.compose.ui.window.Dialog
 import com.meudinheiro.data.PatrimonioHistorico
 import com.meudinheiro.data.PatrimonioPonto
 import com.meudinheiro.funcoes.formatarMoedaBR
-import com.meudinheiro.ui.theme.*
+import com.meudinheiro.ui.theme.NeonCyan
 
 @Composable
 fun PatrimonioHistoricoDialog(
