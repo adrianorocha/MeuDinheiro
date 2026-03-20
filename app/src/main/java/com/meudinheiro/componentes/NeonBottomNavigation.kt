@@ -2,6 +2,13 @@ package com.meudinheiro.componentes
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.InfiniteRepeatableSpec
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -44,11 +52,35 @@ fun NeonBottomNavigation(
         Triple("Extrato", R.drawable.extrato, 1),
         Triple("Metas", R.drawable.metas, 2)
     )
+// 🚀 O MOTOR DE ANIMAÇÃO INFINITA
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
 
+    // Animação de Alpha: Faz o glow oscilar (Fade In/Out)
+    val infiniteAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0.9f,
+        animationSpec = InfiniteRepeatableSpec(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    // Animação de Scale: Faz o ícone "respirar" (Pulsar o tamanho)
+    val infinitePulseScale by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.08f, // 8% de aumento para o efeito ser sutil
+        animationSpec = InfiniteRepeatableSpec(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
     // Barra com efeito de vidro e borda neon superior
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .graphicsLayer { shadowElevation = 20f },
         color = DeepSpaceBlue.copy(alpha = 0.95f), // Quase opaco para esconder o conteúdo atrás
         border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f)) // Linha ultra fina
