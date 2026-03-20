@@ -479,7 +479,7 @@ private val Int.f get() = this.toFloat()
 @Composable
 fun SuccessAnimation(onFinished: () -> Unit) {
     // 1. Tenta carregar a composição
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_animation1))
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_animation))
 
     // 2. Controla o progresso
     val progress by animateLottieCompositionAsState(
