@@ -206,10 +206,10 @@ fun CartoesScreen(
                 item {
                     HorizontalPager(
                         state = pagerState,
-                        contentPadding = PaddingValues(horizontal = 40.dp),
+                        contentPadding = PaddingValues(horizontal = 55.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(210.dp)
+                            .height(185.dp)
                     ) { page ->
                         val cartao = listaCartoes[page]
                         val pageOffset =
@@ -402,23 +402,22 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
 
     Card(
         modifier = Modifier
-            .fillMaxSize() // 👇 Agora ele preenche o espaço reduzido definido no Pager
-            .clip(RoundedCornerShape(20.dp)) // Borda um pouco mais suave
-            .border(1.dp, corBorda.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
+            .fillMaxSize()
+            .clip(RoundedCornerShape(18.dp)) // Borda levemente menor para acompanhar o tamanho
+            .border(1.dp, corBorda.copy(alpha = 0.3f), RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = CardGlass),
-        elevation = CardDefaults.cardElevation(defaultElevation = 20.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 15.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(shimmerBrush)
-            )
+            // Efeito holográfico
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .background(shimmerBrush))
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp), // 👇 Reduzi o padding interno para acomodar no cartão menor
+                    .padding(16.dp), // 👈 Reduzido de 20.dp para 16.dp
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 // TOPO
@@ -430,17 +429,21 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                         Text(
                             cartao.nomeCartao,
                             color = Color.White,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp, // 👈 Reduzido de 18.sp
                             fontWeight = FontWeight.Bold
-                        ) // Fonte menor
+                        )
                         Text(
                             cartao.tipo,
                             color = corBorda,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp, // 👈 Reduzido de 10.sp
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
-                    Text("🏦 ${cartao.nomeConta}", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                    Text(
+                        "🏦 ${cartao.nomeConta}",
+                        color = Color.White.copy(0.6f),
+                        fontSize = 11.sp // 👈 Reduzido de 12.sp
+                    )
                 }
 
                 // MEIO: CHIP E LIMITE
@@ -449,38 +452,38 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                         Icons.Rounded.Memory,
                         null,
                         tint = Color(0xFFFFD700),
-                        modifier = Modifier.size(32.dp)
-                    ) // Chip menor
+                        modifier = Modifier.size(28.dp) // 👈 Reduzido de 32.dp
+                    )
 
                     if (cartao.tipo == "CRÉDITO" && cartao.limiteTotal > 0.0) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
                                 "Limite Disponível",
-                                color = Color.White.copy(0.6f),
-                                fontSize = 10.sp
+                                color = Color.White.copy(0.5f),
+                                fontSize = 9.sp // 👈 Reduzido de 10.sp
                             )
                             Text(
                                 formatarMoedaBR(cartao.limiteDisponivel, false),
                                 color = Color.White,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp, // 👈 Reduzido de 11.sp
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
 
                         val progressoLimite =
-                            (cartao.limiteDisponivel.toDouble() / cartao.limiteTotal.toDouble()).toFloat()
-                                .coerceIn(0f, 1f)
+                            (cartao.limiteDisponivel.toDouble() / cartao.limiteTotal.toDouble())
+                                .toFloat().coerceIn(0f, 1f)
 
                         LinearProgressIndicator(
                             progress = { progressoLimite },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(4.dp)
+                                .padding(top = 4.dp)
+                                .height(3.dp) // 👈 Barra mais fina (de 4.dp para 3.dp)
                                 .clip(CircleShape),
                             color = corBorda,
                             trackColor = Color.White.copy(0.1f)
@@ -497,7 +500,7 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                     Text(
                         text = "•••• ${cartao.finalCartao}",
                         color = Color.White,
-                        fontSize = 18.sp, // Fonte menor
+                        fontSize = 16.sp, // 👈 Reduzido de 18.sp
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 2.sp
                     )
@@ -505,13 +508,13 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                         Text(
                             "VENCTO",
                             color = Color.White.copy(0.5f),
-                            fontSize = 8.sp,
+                            fontSize = 7.sp, // 👈 Reduzido de 8.sp
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             "${cartao.diaVencimento}",
                             color = Color.White,
-                            fontSize = 14.sp,
+                            fontSize = 13.sp, // 👈 Reduzido de 14.sp
                             fontWeight = FontWeight.Bold
                         )
                     }

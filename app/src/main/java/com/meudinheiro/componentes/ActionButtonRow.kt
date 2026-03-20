@@ -455,7 +455,7 @@ fun AddDespesaDialog(
     cartoesDisponiveis: List<CartaoComConta> = emptyList(),
     getPicCategoria: (String) -> String,
     viewModel: ContaSaldoViewModel,
-    cartoesViewModel : CartoesViewModel,
+    cartoesViewModel: CartoesViewModel,
     parentScope: CoroutineScope,
     onDismiss: () -> Unit
 ) {
@@ -604,6 +604,8 @@ fun AddDespesaDialog(
 
                             Spacer(Modifier.height(8.dp))
 
+                            // Substitua o ActionButtons e a lógica de salvar por esta versão corrigida:
+
                             ActionButtons(
                                 onCancel = onDismiss,
                                 onSave = {
@@ -613,14 +615,28 @@ fun AddDespesaDialog(
                                         val vOriginal = (valorTexto.toDoubleOrNull() ?: 0.0) / 100.0
                                         val vFinalBRL = vOriginal * vCotacao
 
-                                        // 👇 NOVO: Passando o cartaoId se for crédito
-                                        val idDoCartao =
-                                            if (formaPagamento == "CARTAO") cartaoSelecionadoId else null
+                                        // 💡 CORREÇÃO CRÍTICA: Garantir a extração do ID correto no momento do clique
+                                        val idDoCartaoParaSalvar: Int? =
+                                            if (formaPagamento == "CARTAO") {
+                                                // Força a validação: se o usuário selecionou "CARTÃO", o ID NÃO PODE ser nulo.
+                                                // Se for nulo por algum bug de estado, ele pega o primeiro cartão válido daquela conta.
+                                                cartaoSelecionadoId
+                                                    ?: cartoesFiltrados.firstOrNull()?.id
+                                            } else {
+                                                null // Se for débito em conta, é nulo.
+                                            }
 
-                                        val nomeCartaoParaRecibo = cartoesFiltrados.find { it.id == idDoCartao }?.nomeCartao
+                                        // Log de segurança para você conferir no Logcat
+                                        android.util.Log.d(
+                                            "CADASTRO_DESPESA",
+                                            "Forma Pgto: $formaPagamento | Cartão ID capturado: $idDoCartaoParaSalvar"
+                                        )
+
+                                        val nomeCartaoParaRecibo =
+                                            cartoesFiltrados.find { it.id == idDoCartaoParaSalvar }?.nomeCartao
 
                                         val desp = Despesa(
-                                            //id = 0,
+                                            // id = 0, // O Room vai auto-gerar o ID
                                             descricao = descricao.trim(),
                                             valor = vFinalBRL,
                                             data = Date(dataMillis.value!!),
@@ -628,10 +644,17 @@ fun AddDespesaDialog(
                                             pic = getPicCategoria(categoriaSelecionada!!),
                                             conta = contaAtual,
                                             tipo = TipoDespesa.DEBITO,
-                                            pago = (formaPagamento == "CONTA"), // Se for cartão, não está "pago" ainda, vai pra fatura!
+
+                                            // 💡 CORREÇÃO SEMÂNTICA:
+                                            // Se for pago no cartão de crédito, a despesa entra como NÃO PAGA na conta (pois vai pra fatura).
+                                            // Se for débito na conta, ela entra como PAGA.
+                                            pago = (formaPagamento == "CONTA"),
+
                                             mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                                             ano = Calendar.getInstance().get(Calendar.YEAR),
-                                            cartaoId = idDoCartao // Aqui a mágica acontece
+
+                                            // 💡 ATRIBUINDO O ID CORRETO
+                                            cartaoId = idDoCartaoParaSalvar
                                         )
 
                                         parentScope.launch {
@@ -650,13 +673,23 @@ fun AddDespesaDialog(
                                                         .get(Calendar.DAY_OF_MONTH)
                                                 )
                                             }
-                                            if (formaPagamento == "CARTAO" && idDoCartao != null) {
-                                                cartoesViewModel.abaterLimite(idDoCartao, vFinalBRL)
+
+                                            // Se for no crédito, abata o limite do cartão!
+                                            if (formaPagamento == "CARTAO" && idDoCartaoParaSalvar != null) {
+                                                cartoesViewModel.abaterLimite(
+                                                    idDoCartaoParaSalvar,
+                                                    vFinalBRL
+                                                )
                                             }
+
                                             mostrarSucesso = true
                                             delay(100)
-                                            compartilharComprovante(currentContext,desp,
-                                                nomeCartaoParaRecibo ,contaAtual)
+                                            compartilharComprovante(
+                                                currentContext,
+                                                desp,
+                                                nomeCartaoParaRecibo,
+                                                contaAtual
+                                            )
                                             onDismiss()
                                         }
                                     }
