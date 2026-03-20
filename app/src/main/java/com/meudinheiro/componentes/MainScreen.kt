@@ -93,6 +93,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import com.meudinheiro.ui.theme.*
 
 // --- Cores Globais Premium ---
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -192,6 +193,8 @@ fun MainScreen(
     val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
     var metaSelecionadaParaDeposito by remember { mutableStateOf<MetaPremium?>(null) }
 
+    var mostrarCelebracao by remember { mutableStateOf(false) }
+    var corCelebracao by remember { mutableStateOf(NeonCyan) }
     val contasAVencer by contaVM.contasAVencer.collectAsState()
     //val saldoTotal by contaVM.saldoPatrimonial.collectAsState(initial = 0.0)
 
@@ -935,6 +938,10 @@ fun MainScreen(
                     onConfirmar = { valor ->
                         // Aqui você chama seu ViewModel para salvar no banco!
                         metaVM.depositarNaMeta(meta.id.toLong(), valor)
+
+                        corCelebracao = meta.corDestaque
+                        mostrarCelebracao = true
+
                         metaSelecionadaParaDeposito = null
                     },
                     onDismiss = { metaSelecionadaParaDeposito = null }
@@ -963,5 +970,11 @@ fun MainScreen(
                 onBack = { selectedIndex = -1 }
             )
         }
+        if (mostrarCelebracao) {
+            NeonConfettiEffect(corDestaque = corCelebracao) {
+                mostrarCelebracao = false // Reseta para a próxima
+            }
+        }
+
     }
 }
