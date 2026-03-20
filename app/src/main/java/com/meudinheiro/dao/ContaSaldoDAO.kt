@@ -83,6 +83,13 @@ interface ContaSaldoDao {
         apagarContas()
         apagarCategorias()
         apagarDespesas()
+        apagarMetas()
+        apagarCartoes()
+        apagarOrcamentos()
+        apagarTransferenciasAgendadas()
+        apagarInvestimentos()
+        apagarPatrimonioHistorico()
+        apagarTransacoes()
         // Adicione outras tabelas se houver
     }
 
@@ -97,6 +104,27 @@ interface ContaSaldoDao {
 
     @Query("DELETE FROM despesas")
     suspend fun apagarDespesas()
+
+    @Query("DELETE FROM metas")
+    suspend fun apagarMetas()
+
+    @Query("DELETE FROM cartoes")
+    suspend fun apagarCartoes()
+
+    @Query("DELETE FROM orcamentos")
+    suspend fun apagarOrcamentos()
+
+    @Query("DELETE FROM transferencias_agendadas")
+    suspend fun apagarTransferenciasAgendadas()
+
+    @Query("DELETE FROM investimentos")
+    suspend fun apagarInvestimentos()
+
+    @Query("DELETE FROM patrimonio_historico")
+    suspend fun apagarPatrimonioHistorico()
+
+    @Query("DELETE FROM transacoes")
+    suspend fun apagarTransacoes()
 
     @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 ORDER BY dataAgendada ASC")
     fun obterAgendamentosAtivos(): Flow<List<TransferenciaAgendada>>

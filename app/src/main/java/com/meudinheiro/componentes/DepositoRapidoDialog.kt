@@ -2,7 +2,10 @@ package com.meudinheiro.componentes
 
 import androidx.benchmark.traceprocessor.Row
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,33 +56,55 @@ fun DepositoRapidoDialog(
                 // 🚀 O CAMPO REFORMADO
                 BasicTextField(
                     value = valorText,
-                    onValueChange = { if (it.length <= 10) valorText = it },
+                    onValueChange = {
+                        // Aceita apenas números e um ponto/vírgula
+                        if (it.all { char -> char.isDigit() || char == ',' || char == '.' } && it.length <= 10) {
+                            valorText = it
+                        }
+                    },
                     textStyle = TextStyle(
                         color = Color.White,
                         fontSize = 36.sp,
                         fontWeight = FontWeight.Black,
                         textAlign = TextAlign.Center
                     ),
-                    // 💡 Faz o cursor brilhar com a cor da meta!
                     cursorBrush = SolidColor(meta.corDestaque),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp),
                     decorationBox = { innerTextField ->
-                        // Criamos uma estrutura para o texto não "sumir"
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        // 🚀 O SEGREDO: Box para sobrepor o placeholder e o campo real
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             if (valorText.isEmpty()) {
-                                // Placeholder: aparece apenas quando não há texto
                                 Text(
                                     text = "R$ 0,00",
                                     color = Color.White.copy(alpha = 0.15f),
                                     fontSize = 36.sp,
                                     fontWeight = FontWeight.Black
                                 )
-                            } else {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("R$ ", color = meta.corDestaque, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                    innerTextField() // Aqui entra o número que o usuário digita
+                            }
+
+                            // O R$ aparece apenas quando começa a digitar
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                if (valorText.isNotEmpty()) {
+                                    Text(
+                                        text = "R$ ",
+                                        color = meta.corDestaque,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
+
+                                // 💡 O innerTextField() PRECISA estar fora de qualquer 'if'
+                                // para que o campo de digitação esteja sempre ativo!
+                                innerTextField()
                             }
                         }
                     }
