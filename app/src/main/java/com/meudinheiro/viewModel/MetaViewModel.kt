@@ -38,5 +38,14 @@ class MetaViewModel(private val repository: MainRepository) : ViewModel() {
             repository.salvarMeta(meta)
         }
     }
-
+    fun depositarNaMeta(id: Long, valor: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.adicionarValorMeta(id, valor)
+                // 🚀 Opcional: Você pode emitir um evento de sucesso aqui para mostrar um Toast
+            } catch (e: Exception) {
+                // Trate o erro se algo der errado no banco
+            }
+        }
+    }
 }

@@ -1,11 +1,16 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -123,6 +128,8 @@ fun CartoesScreen(
     val paginaAtual by remember { derivedStateOf { pagerState.currentPage } }
     var mesFaturaOffset by remember(paginaAtual) { mutableIntStateOf(0) }
 
+    var visivel by remember { mutableStateOf(false) }
+
     val mesesNomes = remember {
         arrayOf(
             "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -137,6 +144,8 @@ fun CartoesScreen(
             processandoPagamento = false
         }
     }
+
+    LaunchedEffect(Unit) { visivel = true }
 
     // 💡 LÓGICA DE CÁLCULO CORRIGIDA (Usando a classe EstadoFatura)
     val faturaInfo by remember(despesasDoCartaoAtual, mesFaturaOffset, paginaAtual, listaCartoes) {
@@ -167,166 +176,185 @@ fun CartoesScreen(
             }
         }
     }
-
-    Scaffold(
-        containerColor = Color.Transparent,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showBottomSheet = true },
-                containerColor = NeonCyan,
-                shape = CircleShape
-            ) { Icon(Icons.Default.Add, contentDescription = null, tint = DeepSpaceBlue) }
-        }
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(bottom = 120.dp)
-        ) {
-            item {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        "Minha Carteira",
-                        color = Color.White,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
+    AnimatedVisibility(
+        visible = visivel,
+        enter = fadeIn(animationSpec = tween(600)) +
+                slideInVertically(
+                    initialOffsetY = { it / 20 }, // Desliza só um pouquinho (5%)
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessLow
                     )
-                    Text(
-                        "${listaCartoes.size} cartões ativos",
-                        color = NeonCyan.copy(0.7f),
-                        fontSize = 14.sp
-                    )
-                }
+                ),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { showBottomSheet = true },
+                    containerColor = NeonCyan,
+                    shape = CircleShape
+                ) { Icon(Icons.Default.Add, contentDescription = null, tint = DeepSpaceBlue) }
             }
-
-            if (listaCartoes.isEmpty()) {
-                item { EstadoVazioCartoes() }
-            } else {
+        ) { paddingValues ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(bottom = 120.dp)
+            ) {
                 item {
-                    HorizontalPager(
-                        state = pagerState,
-                        contentPadding = PaddingValues(horizontal = 55.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(185.dp)
-                    ) { page ->
-                        val cartao = listaCartoes[page]
-                        val pageOffset =
-                            (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-                        Box(modifier = Modifier.graphicsLayer {
-                            val scale = 1f - (pageOffset.absoluteValue * 0.15f).coerceIn(0f, 1f)
-                            scaleX = scale; scaleY = scale
-                            alpha = 1f - (pageOffset.absoluteValue * 0.5f).coerceIn(0f, 1f)
-                            rotationY = pageOffset * 15f
-                        }) {
-                            CartaoFisicoHolografico(cartao)
+                    Column(
+                        modifier = Modifier.padding(
+                            start = 24.dp,
+                            end = 24.dp,
+                            top = 8.dp,
+                            bottom = 16.dp
+                        )
+                    ) {
+                        Text(
+                            "Minha Carteira",
+                            color = Color.White,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "${listaCartoes.size} cartões ativos",
+                            color = NeonCyan.copy(0.7f),
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+
+                if (listaCartoes.isEmpty()) {
+                    item { EstadoVazioCartoes() }
+                } else {
+                    item {
+                        HorizontalPager(
+                            state = pagerState,
+                            contentPadding = PaddingValues(horizontal = 48.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(165.dp)
+                        ) { page ->
+                            val cartao = listaCartoes[page]
+                            val pageOffset =
+                                (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                            Box(modifier = Modifier.graphicsLayer {
+                                val scale = 1f - (pageOffset.absoluteValue * 0.15f).coerceIn(0f, 1f)
+                                scaleX = scale; scaleY = scale
+                                alpha = 1f - (pageOffset.absoluteValue * 0.5f).coerceIn(0f, 1f)
+                                rotationY = pageOffset * 15f
+                            }) {
+                                CartaoFisicoHolografico(cartao)
+                            }
                         }
                     }
-                }
 
-                // Exibe as informações da fatura se o cálculo existir
-                faturaInfo?.let { fatura ->
-                    val cartaoFocado = listaCartoes[paginaAtual]
+                    // Exibe as informações da fatura se o cálculo existir
+                    faturaInfo?.let { fatura ->
+                        val cartaoFocado = listaCartoes[paginaAtual]
 
-                    item {
-                        Spacer(modifier = Modifier.height(24.dp))
-                        AcoesCartao(
-                            cartao = cartaoFocado,
-                            onDelete = { viewModel.removerCartao(cartaoFocado) },
-                            onPagar = { if (!fatura.jaPaga) exibirConfirmacao = true },
-                            onFatura = { showResumoFatura = true },
-                            faturaPaga = fatura.jaPaga || processandoPagamento
-                        )
-                    }
-
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        SelectorDeMes(
-                            mesNome = fatura.mesNome,
-                            total = fatura.total,
-                            diaFechamento = fatura.diaFechamento,
-                            mesOffset = mesFaturaOffset,
-                            onAnterior = { mesFaturaOffset-- },
-                            onProximo = { mesFaturaOffset++ }
-                        )
-                    }
-
-                    if (fatura.lista.isEmpty()) {
                         item {
-                            Text(
-                                "Nenhuma despesa nesta fatura", color = Color.White.copy(0.3f),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 20.dp),
-                                textAlign = TextAlign.Center, fontSize = 14.sp
+                            Spacer(modifier = Modifier.height(24.dp))
+                            AcoesCartao(
+                                cartao = cartaoFocado,
+                                onDelete = { viewModel.removerCartao(cartaoFocado) },
+                                onPagar = { if (!fatura.jaPaga) exibirConfirmacao = true },
+                                onFatura = { showResumoFatura = true },
+                                faturaPaga = fatura.jaPaga || processandoPagamento
                             )
                         }
-                    } else {
-                        items(fatura.lista, key = { it.id }) { despesa ->
-                            Box(modifier = Modifier.padding(horizontal = 24.dp)) {
-                                ItemExtratoNeon(despesa = despesa, cartao = cartaoFocado!!)
+
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            SelectorDeMes(
+                                mesNome = fatura.mesNome,
+                                total = fatura.total,
+                                diaFechamento = fatura.diaFechamento,
+                                mesOffset = mesFaturaOffset,
+                                onAnterior = { mesFaturaOffset-- },
+                                onProximo = { mesFaturaOffset++ }
+                            )
+                        }
+
+                        if (fatura.lista.isEmpty()) {
+                            item {
+                                Text(
+                                    "Nenhuma despesa nesta fatura", color = Color.White.copy(0.3f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 20.dp),
+                                    textAlign = TextAlign.Center, fontSize = 14.sp
+                                )
+                            }
+                        } else {
+                            items(fatura.lista, key = { it.id }) { despesa ->
+                                Box(modifier = Modifier.padding(horizontal = 24.dp)) {
+                                    ItemExtratoNeon(despesa = despesa, cartao = cartaoFocado!!)
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // --- DIALOG DE CONFIRMAÇÃO ---
-        if (exibirConfirmacao && faturaInfo != null) {
-            val fatura = faturaInfo!!
-            AlertDialog(
-                onDismissRequest = { exibirConfirmacao = false },
-                containerColor = DeepSpaceBlue,
-                title = { Text("Confirmar Pagamento", color = Color.White) },
-                text = {
-                    Text(
-                        "Pagar fatura de ${fatura.mesNome} no valor de ${
-                            formatarMoedaBR(
-                                fatura.totalPendente,
-                                false
-                            )
-                        }?", color = Color.White.copy(0.8f)
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                        onClick = {
-                            exibirConfirmacao = false
-                            processandoPagamento = true
-                            viewModel.pagarFatura(
-                                listaCartoes[paginaAtual],
-                                fatura.totalPendente,
-                                fatura.dataReferencia
-                            )
+            // --- DIALOG DE CONFIRMAÇÃO ---
+            if (exibirConfirmacao && faturaInfo != null) {
+                val fatura = faturaInfo!!
+                AlertDialog(
+                    onDismissRequest = { exibirConfirmacao = false },
+                    containerColor = DeepSpaceBlue,
+                    title = { Text("Confirmar Pagamento", color = Color.White) },
+                    text = {
+                        Text(
+                            "Pagar fatura de ${fatura.mesNome} no valor de ${
+                                formatarMoedaBR(
+                                    fatura.totalPendente,
+                                    false
+                                )
+                            }?", color = Color.White.copy(0.8f)
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                            onClick = {
+                                exibirConfirmacao = false
+                                processandoPagamento = true
+                                viewModel.pagarFatura(
+                                    listaCartoes[paginaAtual],
+                                    fatura.totalPendente,
+                                    fatura.dataReferencia
+                                )
+                            }
+                        ) { Text("Confirmar", color = DeepSpaceBlue) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { exibirConfirmacao = false }) {
+                            Text("Cancelar", color = Color.White.copy(0.6f))
                         }
-                    ) { Text("Confirmar", color = DeepSpaceBlue) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { exibirConfirmacao = false }) {
-                        Text("Cancelar", color = Color.White.copy(0.6f))
                     }
-                }
-            )
-        }
-
-        if (showBottomSheet) {
-            FormularioCartaoBottomSheet(
-                contasDisponiveis = listaContas,
-                onDismiss = { showBottomSheet = false },
-                onSalvar = { novo -> viewModel.salvarCartao(novo) }
-            )
-        }
-        if (showResumoFatura && faturaInfo != null) {
-            val cartaoFocado = listaCartoes.getOrNull(paginaAtual)
-            if (cartaoFocado != null) {
-                ResumoFaturaBottomSheet(
-                    fatura = faturaInfo!!,
-                    cartao = cartaoFocado,
-                    onDismiss = { showResumoFatura = false }
                 )
+            }
+
+            if (showBottomSheet) {
+                FormularioCartaoBottomSheet(
+                    contasDisponiveis = listaContas,
+                    onDismiss = { showBottomSheet = false },
+                    onSalvar = { novo -> viewModel.salvarCartao(novo) }
+                )
+            }
+            if (showResumoFatura && faturaInfo != null) {
+                val cartaoFocado = listaCartoes.getOrNull(paginaAtual)
+                if (cartaoFocado != null) {
+                    ResumoFaturaBottomSheet(
+                        fatura = faturaInfo!!,
+                        cartao = cartaoFocado,
+                        onDismiss = { showResumoFatura = false }
+                    )
+                }
             }
         }
     }
@@ -403,13 +431,12 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
     Card(
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(18.dp)) // Borda levemente menor para acompanhar o tamanho
-            .border(1.dp, corBorda.copy(alpha = 0.3f), RoundedCornerShape(18.dp)),
+            .clip(RoundedCornerShape(20.dp)) // Borda mais arredondada como no Nubank
+            .border(1.dp, corBorda.copy(alpha = 0.3f), RoundedCornerShape(20.dp)),
         colors = CardDefaults.cardColors(containerColor = CardGlass),
-        elevation = CardDefaults.cardElevation(defaultElevation = 15.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Efeito holográfico
             Box(modifier = Modifier
                 .fillMaxSize()
                 .background(shimmerBrush))
@@ -417,59 +444,62 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp), // 👈 Reduzido de 20.dp para 16.dp
+                    .padding(14.dp), // 👈 Padding reduzido para ganhar espaço vertical
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 // TOPO
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
                     Column {
                         Text(
-                            cartao.nomeCartao,
+                            cartao.nomeCartao.uppercase(),
                             color = Color.White,
-                            fontSize = 16.sp, // 👈 Reduzido de 18.sp
-                            fontWeight = FontWeight.Bold
+                            fontSize = 15.sp, // 👈 Ajustado
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
                         )
                         Text(
                             cartao.tipo,
                             color = corBorda,
-                            fontSize = 9.sp, // 👈 Reduzido de 10.sp
-                            fontWeight = FontWeight.ExtraBold
+                            fontSize = 8.sp, // 👈 Ajustado
+                            fontWeight = FontWeight.Black
                         )
                     }
                     Text(
                         "🏦 ${cartao.nomeConta}",
-                        color = Color.White.copy(0.6f),
-                        fontSize = 11.sp // 👈 Reduzido de 12.sp
+                        color = Color.White.copy(0.5f),
+                        fontSize = 10.sp
                     )
                 }
 
-                // MEIO: CHIP E LIMITE
+                // MEIO: CHIP E LIMITE (Seção mais compacta)
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Icon(
                         Icons.Rounded.Memory,
                         null,
                         tint = Color(0xFFFFD700),
-                        modifier = Modifier.size(28.dp) // 👈 Reduzido de 32.dp
+                        modifier = Modifier.size(24.dp) // 👈 Chip menor para não "empurrar" o layout
                     )
 
                     if (cartao.tipo == "CRÉDITO" && cartao.limiteTotal > 0.0) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
                         ) {
                             Text(
                                 "Limite Disponível",
                                 color = Color.White.copy(0.5f),
-                                fontSize = 9.sp // 👈 Reduzido de 10.sp
+                                fontSize = 8.sp
                             )
                             Text(
                                 formatarMoedaBR(cartao.limiteDisponivel, false),
                                 color = Color.White,
-                                fontSize = 10.sp, // 👈 Reduzido de 11.sp
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -482,8 +512,8 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                             progress = { progressoLimite },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 4.dp)
-                                .height(3.dp) // 👈 Barra mais fina (de 4.dp para 3.dp)
+                                .padding(top = 3.dp)
+                                .height(2.5.dp) // 👈 Barra ainda mais fina
                                 .clip(CircleShape),
                             color = corBorda,
                             trackColor = Color.White.copy(0.1f)
@@ -500,21 +530,22 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                     Text(
                         text = "•••• ${cartao.finalCartao}",
                         color = Color.White,
-                        fontSize = 16.sp, // 👈 Reduzido de 18.sp
+                        fontSize = 16.sp,
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 2.sp
                     )
+
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             "VENCTO",
-                            color = Color.White.copy(0.5f),
-                            fontSize = 7.sp, // 👈 Reduzido de 8.sp
+                            color = Color.White.copy(0.4f),
+                            fontSize = 7.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             "${cartao.diaVencimento}",
                             color = Color.White,
-                            fontSize = 13.sp, // 👈 Reduzido de 14.sp
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }

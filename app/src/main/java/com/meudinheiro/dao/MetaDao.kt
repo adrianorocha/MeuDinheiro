@@ -39,4 +39,7 @@ interface MetaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(contas: List<Meta>)
+
+    @Query("UPDATE metas SET valorGuardado = valorGuardado + :valor WHERE id = :id")
+    suspend fun adicionarValorMeta(id: Long, valor: Double)
 }

@@ -3,8 +3,8 @@ package com.meudinheiro.componentes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColor
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -48,9 +49,10 @@ import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.HorizontalBalanceBarSlim
 import com.meudinheiro.funcoes.PremiumPieChart
-import com.meudinheiro.funcoes.TrendIndicator
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.lembrarEstadoPerformance
+import com.meudinheiro.ui.theme.NeonCyan
+import com.meudinheiro.ui.theme.NeonRed
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -65,58 +67,66 @@ fun ResumoGeralCard(
     // --- LÓGICA DE DADOS ---
     val saldoDisponivel = receitaTotal - despesaTotal
     val patrimonioTotal = saldoDisponivel + metasTotal
-
-    // Define o 100% da largura das barras baseado no maior valor
     val maxVal = maxOf(receitaTotal, despesaTotal, metasTotal, 1.0)
 
-    // --- ANIMAÇÕES E PERFORMANCE ---
+    // --- ANIMAÇÕES E PRIVACIDADE ---
     val modoEconomia = lembrarEstadoPerformance()
     var animationPlayed by remember { mutableStateOf(false) }
     val duracaoAnim = if (modoEconomia) 0 else 800
 
+    // 🚀 A MÁGICA DO BLUR: Se estiver privado, desfoque 16dp. Se não, 0dp.
+    val animBlur by animateDpAsState(
+        targetValue = if (isPrivate) 16.dp else 0.dp,
+        animationSpec = tween(500),
+        label = "blurPrivacy"
+    )
+
     LaunchedEffect(Unit) { animationPlayed = true }
 
-    // Animação das Barras
+    // Animações das barras (Mantidas conforme seu original)
     val animBarReceita by animateFloatAsState(
         targetValue = if (animationPlayed) (receitaTotal / maxVal).toFloat() else 0f,
-        animationSpec = tween(duracaoAnim, 0, FastOutSlowInEasing), label = "barR"
+        animationSpec = tween(duracaoAnim)
     )
     val animBarMetas by animateFloatAsState(
         targetValue = if (animationPlayed) (metasTotal / maxVal).toFloat() else 0f,
-        animationSpec = tween(duracaoAnim, 150, FastOutSlowInEasing), label = "barM"
+        animationSpec = tween(duracaoAnim, 150)
     )
     val animBarDespesa by animateFloatAsState(
         targetValue = if (animationPlayed) (despesaTotal / maxVal).toFloat() else 0f,
-        animationSpec = tween(duracaoAnim, 300, FastOutSlowInEasing), label = "barD"
+        animationSpec = tween(duracaoAnim, 300)
     )
 
-    // Animação do Indicador Circular (Donut Esquerdo)
     val sweepDespesa = if (receitaTotal > 0) (despesaTotal / receitaTotal).toFloat()
         .coerceIn(0f, 1f) * 360f else 0f
     val animSweep by animateFloatAsState(
         targetValue = if (animationPlayed) sweepDespesa else 0f,
-        animationSpec = tween(1200, easing = FastOutSlowInEasing), label = "donut"
+        animationSpec = tween(1200)
     )
 
-    // --- ALERTA VISUAL (Pulso Vermelho) ---
+// --- ALERTA VISUAL (Pulso Vermelho) ---
+    // Lógica para o TrendIndicator
+
+    // Alerta Visual (Mantido)
     val estaNoVermelho = despesaTotal > receitaTotal && receitaTotal > 0
     val infiniteTransition = rememberInfiniteTransition(label = "alerta")
+    val economizou = despesaTotal < despesaMesAnterior
+    val excessoGrave = despesaTotal > despesaMesAnterior && despesaMesAnterior > 0
+
     val corAlerta by infiniteTransition.animateColor(
         initialValue = Color(0xFFEF5350).copy(alpha = 0.2f),
         targetValue = Color(0xFFEF5350).copy(alpha = 0.8f),
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
+            animation = tween(1000),
             repeatMode = RepeatMode.Reverse
         ),
         label = "corPulso"
     )
 
-    // --- UI DO CARD ---
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
-        // Removemos a altura fixa para deixar o layout responsivo
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2B3E).copy(alpha = 0.98f)),
         border = if (estaNoVermelho) BorderStroke(2.dp, corAlerta) else BorderStroke(
@@ -132,42 +142,55 @@ fun ResumoGeralCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-
-            // =================================================
-            // SEÇÃO 1: ESQUERDA - Indicador de Consumo (Donut)
-            // =================================================
+// =================================================
+// SEÇÃO 1: ESQUERDA - Indicador de Consumo (Donut)
+// =================================================
             Box(
-                modifier = Modifier.size(70.dp),
+                modifier = Modifier
+                    .size(80.dp) // Aumentamos um pouco o container para respirar
+                    .blur(animBlur),
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.size(60.dp)) {
-                    val stroke = 6.dp.toPx()
+                    val espessuraBorda = 6.dp.toPx()
+
+                    // 💡 O PULO DO GATO: Definimos um tamanho ligeiramente menor que o Canvas
+                    // subtraindo a espessura da borda para que ela não sangre para fora.
+                    val tamanhoAjustado = size.width - espessuraBorda
+                    val deslocamento = espessuraBorda / 2
+
                     // Fundo do trilho
                     drawArc(
                         color = Color.White.copy(alpha = 0.05f),
-                        startAngle = 0f, sweepAngle = 360f, useCenter = false,
-                        style = Stroke(width = stroke, cap = StrokeCap.Round)
+                        startAngle = 0f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        topLeft = androidx.compose.ui.geometry.Offset(deslocamento, deslocamento),
+                        size = androidx.compose.ui.geometry.Size(tamanhoAjustado, tamanhoAjustado),
+                        style = Stroke(width = espessuraBorda, cap = StrokeCap.Round)
                     )
-                    // Arco de despesas
+
+                    // Arco de despesas (O progresso)
                     drawArc(
                         brush = Brush.linearGradient(listOf(Color(0xFFFF8A80), Color(0xFFEF5350))),
-                        startAngle = -90f, sweepAngle = animSweep, useCenter = false,
-                        style = Stroke(width = stroke, cap = StrokeCap.Round)
+                        startAngle = -90f,
+                        sweepAngle = animSweep,
+                        useCenter = false,
+                        topLeft = androidx.compose.ui.geometry.Offset(deslocamento, deslocamento),
+                        size = androidx.compose.ui.geometry.Size(tamanhoAjustado, tamanhoAjustado),
+                        style = Stroke(width = espessuraBorda, cap = StrokeCap.Round)
                     )
                 }
 
                 val percent =
                     if (receitaTotal > 0) ((despesaTotal / receitaTotal) * 100).toInt() else 0
                 Text(
-                    text = if (isPrivate) "**" else "$percent%",
+                    text = "$percent%",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
             }
-
-            // =================================================
-            // SEÇÃO 2: CENTRO - Dados Financeiros e Barras
-            // =================================================
+            // SEÇÃO 2: Dados (Centro)
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -178,68 +201,106 @@ fun ResumoGeralCard(
                 AnimatedContent(
                     targetState = patrimonioTotal,
                     transitionSpec = {
-                        if (modoEconomia) fadeIn(tween(0)) with fadeOut(tween(0))
-                        else (fadeIn(tween(duracaoAnim)) + slideInVertically { it / 2 }) with fadeOut(
+                        (fadeIn(tween(duracaoAnim)) + slideInVertically { it / 2 }) with fadeOut(
                             tween(duracaoAnim)
                         )
                     },
                     label = "animSaldo"
                 ) { valor ->
                     Text(
-                        text = formatarMoedaBR(valor, isPrivate),
+                        // 💡 Note: Passamos 'false' no isPrivate para o Blur fazer o trabalho
+                        text = formatarMoedaBR(valor, false),
                         fontSize = 18.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (estaNoVermelho) Color(0xFFEF5350) else Color.White
+                        fontWeight = FontWeight.Black,
+                        color = if (estaNoVermelho) Color(0xFFEF5350) else Color.White,
+                        modifier = Modifier.blur(animBlur) // 🚀 APLICA O BLUR AQUI
                     )
                 }
 
                 Spacer(modifier = Modifier.height(3.dp))
 
-                // Barra 1: Entradas
-                HorizontalBalanceBarSlim(
-                    label = "Entradas", value = receitaTotal, progress = animBarReceita,
-                    color = Color(0xFF69F0AE), isPrivate = isPrivate, isLoading = !animationPlayed
-                )
+                // Barras com Blur aplicado individualmente para um efeito mais refinado
+                Column(modifier = Modifier.blur(animBlur)) {
+                    HorizontalBalanceBarSlim(
+                        label = "Entradas",
+                        value = receitaTotal,
+                        progress = animBarReceita,
+                        color = Color(0xFF69F0AE),
+                        isPrivate = false,
+                        isLoading = !animationPlayed
+                    )
+                    HorizontalBalanceBarSlim(
+                        label = "Poupado",
+                        value = metasTotal,
+                        progress = animBarMetas,
+                        color = Color(0xFF00E676),
+                        isPrivate = false,
+                        isLoading = !animationPlayed
+                    )
+                    HorizontalBalanceBarSlim(
+                        label = "Saídas",
+                        value = despesaTotal,
+                        progress = animBarDespesa,
+                        color = Color(0xFFEF5350),
+                        isPrivate = false,
+                        isLoading = !animationPlayed
+                    )
+                }
 
-                // Barra 2: Poupado (Metas)
-                HorizontalBalanceBarSlim(
-                    label = "Poupado",
-                    value = metasTotal,
-                    progress = animBarMetas,
-                    color = Color(0xFF00E676),
-                    isPrivate = isPrivate,
-                    isLoading = !animationPlayed // Verde um pouco mais forte
-                )
+                Row(
+                    modifier = Modifier
+                        .padding(top = 6.dp)
+                        .blur(animBlur),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Tendência", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                    Spacer(Modifier.width(8.dp))
 
-                // Barra 3: Saídas
-                HorizontalBalanceBarSlim(
-                    label = "Saídas", value = despesaTotal, progress = animBarDespesa,
-                    color = Color(0xFFEF5350), isPrivate = isPrivate, isLoading = !animationPlayed
-                )
-
-                TrendIndicator(
-                    valorAtual = despesaTotal,
-                    valorAnterior = despesaMesAnterior, // Você precisará passar esse valor via parâmetro
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                    if (economizou) {
+                        // Tendência de Economia (Foguetes!)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🚀🚀🚀", fontSize = 12.sp, modifier = Modifier.padding(end = 4.dp))
+                            Text(
+                                "Economia VIP",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyan
+                            )
+                        }
+                    } else if (excessoGrave) {
+                        // Tendência de Excesso (Fogo!)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔥🔥🔥", fontSize = 12.sp, modifier = Modifier.padding(end = 4.dp))
+                            Text(
+                                "Alerta de Gasto",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonRed
+                            )
+                        }
+                    } else {
+                        // Estável
+                        Text(
+                            "Estável",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(0.6f)
+                        )
+                    }
+                }
             }
 
-// =================================================
-// SEÇÃO 3: DIREITA - Gráfico de Pizza Animado
-// =================================================
+            // SEÇÃO 3: Pizza (Direita)
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .width(80.dp) // Espaço reservado para o gráfico
+                    .width(80.dp)
                     .padding(start = 8.dp)
+                    .blur(animBlur)
             ) {
                 if (dadosGrafico.isNotEmpty()) {
-                    PremiumPieChart(
-                        dados = dadosGrafico,
-                        modifier = Modifier.size(70.dp) // Tamanho compacto para o Card
-                    )
+                    PremiumPieChart(dados = dadosGrafico, modifier = Modifier.size(70.dp))
                 } else {
-                    // Círculo vazio caso não haja despesas
                     Canvas(modifier = Modifier.size(65.dp)) {
                         drawCircle(
                             color = Color.White.copy(alpha = 0.05f),

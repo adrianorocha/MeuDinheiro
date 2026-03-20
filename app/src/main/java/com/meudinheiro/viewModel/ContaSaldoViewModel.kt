@@ -500,4 +500,6 @@ class ContaSaldoViewModel(
             _contasAVencer.value = pendentes
         }
     }
+
+
 }

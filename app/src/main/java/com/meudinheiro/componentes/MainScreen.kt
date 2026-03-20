@@ -4,6 +4,12 @@ import android.app.Application
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +33,6 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
@@ -60,10 +65,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.AppDatabase
+import com.meudinheiro.data.MetaPremium
 import com.meudinheiro.data.OrcamentoProgresso
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.CompactCategoryGrid
-import com.meudinheiro.funcoes.EmptyStateSection
 import com.meudinheiro.funcoes.PremiumSnackbar
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.funcoes.gerarCorParaCategoria
@@ -174,6 +179,7 @@ fun MainScreen(
     val resumo by contaVM.resumoFinanceiro.collectAsState()
     val totalMetas by contaVM.totalPoupado.collectAsState()
     val agendados by contaVM.agendamentosFiltrados.collectAsState()
+    val listaMetasReal by metaVM.metas.collectAsState(initial = emptyList())
 
     val mesAtual by despVM.mesSelecionado.collectAsState()
     val anoAtual by despVM.anoSelecionado.collectAsState()
@@ -184,6 +190,7 @@ fun MainScreen(
     val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
     val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
     val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
+    var metaSelecionadaParaDeposito by remember { mutableStateOf<MetaPremium?>(null) }
 
     val contasAVencer by contaVM.contasAVencer.collectAsState()
     //val saldoTotal by contaVM.saldoPatrimonial.collectAsState(initial = 0.0)
@@ -474,7 +481,7 @@ fun MainScreen(
                     }
                 }
 
-                // --- CORPO DA ABA SELECIONADA ---
+// --- CORPO DA ABA SELECIONADA (AGORA COM ANIMAÇÃO TOPZERA) ---
                 val folderShape = if (mainTabSelecionada == 0) {
                     RoundedCornerShape(
                         topStart = 0.dp,
@@ -486,13 +493,26 @@ fun MainScreen(
                     RoundedCornerShape(24.dp)
                 }
 
-                Box(
+                // 🚀 O AnimatedContent substitui a antiga Box para criar a transição
+                AnimatedContent(
+                    targetState = mainTabSelecionada,
+                    transitionSpec = {
+                        // Entrada: Aparece (Fade) e sobe um pouquinho (Slide)
+                        // Saída: Desaparece (Fade) suavemente
+                        (fadeIn(animationSpec = tween(500)) +
+                                slideInVertically(
+                                    animationSpec = tween(500),
+                                    initialOffsetY = { 40 }))
+                            .togetherWith(fadeOut(animationSpec = tween(300)))
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .clip(folderShape)
-                        .background(PremiumLightBlue)
-                ) {
+                        .background(PremiumLightBlue),
+                    label = "TabTransition"
+                ) { targetTab ->
+                    // 💡 IMPORTANTE: Usamos o 'targetTab' que a animação nos dá para evitar "pulos"
                     val dadosGrafico = remember(despesasFiltradas) {
                         despesasFiltradas.groupBy { it.categoria }
                             .map { (categoria, despesasDaCategoria) ->
@@ -504,7 +524,7 @@ fun MainScreen(
                             }
                     }
 
-                    when (mainTabSelecionada) {
+                    when (targetTab) {
                         0 -> {
                             // --- ABA 0: SALDO ---
                             LazyColumn(
@@ -521,16 +541,6 @@ fun MainScreen(
                                         dadosGrafico = dadosGrafico
                                     )
                                 }
-                                /*
-                                                                item {
-                                                                    RelatorioSaudeFinanceiraCard(
-                                                                        receitaAtual = resumo.entradas,
-                                                                        despesaAtual = resumo.saidas,
-                                                                        despesaAnterior = saidasMesAnterior,
-                                                                        isPrivate = isPrivate
-                                                                    )
-                                                                }
-                                */
                                 item {
                                     if (dadosGrafico.isNotEmpty()) {
                                         CompactCategoryGrid(
@@ -548,6 +558,29 @@ fun MainScreen(
                                         )
                                     }
                                 }
+                                item {
+                                    // Transformamos as metas do banco no modelo 'MetaPremium' que criamos
+                                    val metasMapeadas = listaMetasReal.map { meta ->
+                                        MetaPremium(
+                                            id = meta.id.toString(),
+                                            nome = meta.nome,
+                                            valorAlvo = meta.valorObjetivo,
+                                            valorPoupado = meta.valorGuardado,
+                                            iconePic = meta.icone,
+                                            corDestaque = gerarCorParaCategoria(meta.nome) // Ou uma cor fixa neon
+                                        )
+                                    }
+
+                                    SecaoCofresMetas(
+                                        metas = metasMapeadas,
+                                        isPrivate = isPrivate,
+                                        userName = nome ?: "Viajante",
+                                        // 💡 Adicionamos o ': MetaPremium' explicitamente aqui:
+                                        onMetaLongClick = { meta: MetaPremium ->
+                                            metaSelecionadaParaDeposito = meta
+                                        }
+                                    )
+                                }
                             }
                         }
 
@@ -557,7 +590,6 @@ fun MainScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
                             ) {
-                                // 1. Carrossel de Contas
                                 item {
                                     if (contas.isNotEmpty()) {
                                         key(contaSelecionadaId, filtroAtivo) {
@@ -570,9 +602,7 @@ fun MainScreen(
                                                     contaVM.carregarSaldosGlobais()
                                                 },
                                                 onContaSelecionada = { novaContaId ->
-                                                    contaVM.selecionarConta(
-                                                        novaContaId
-                                                    )
+                                                    contaVM.selecionarConta(novaContaId)
                                                 },
                                                 onAtualizar = {},
                                                 getReceitaConta = { id ->
@@ -591,38 +621,19 @@ fun MainScreen(
                                                 isPrivate = isPrivate
                                             )
                                         }
-                                    } else {
-                                        Text(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(32.dp),
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextWhite.copy(alpha = 0.5f),
-                                            textAlign = TextAlign.Center,
-                                            text = "Você ainda não possui contas cadastradas."
-                                        )
                                     }
                                 }
 
-                                // 2. Botões de Ação Rápida
                                 item {
-                                    Box(modifier = Modifier.padding(top = 8.dp)) {
-                                        ActionButtonRow(
-                                            categorias = repository.categorias.map { it.title },
-                                            getPicCategoria = { nomeCategoria ->
-                                                repository.getPicCategoria(
-                                                    nomeCategoria
-                                                )
-                                            },
-                                            contaSelecionada = contaSelecionadaId.orEmpty(),
-                                            viewModel = contaVM,
-                                            onConfigClick = onOpenAvisos
-                                        )
-                                    }
+                                    ActionButtonRow(
+                                        categorias = repository.categorias.map { it.title },
+                                        getPicCategoria = { repository.getPicCategoria(it) },
+                                        contaSelecionada = contaSelecionadaId.orEmpty(),
+                                        viewModel = contaVM,
+                                        onConfigClick = onOpenAvisos
+                                    )
                                 }
 
-                                // 3. Cabeçalho Orçamentos
                                 item {
                                     Row(
                                         modifier = Modifier
@@ -632,18 +643,11 @@ fun MainScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "Orçamentos",
-                                            style = MaterialTheme.typography.titleMedium,
+                                            "Orçamentos",
                                             color = Color.White,
                                             fontWeight = FontWeight.Bold
                                         )
-                                        TextButton(
-                                            onClick = { showAddOrcamentoDialog = true },
-                                            contentPadding = PaddingValues(
-                                                horizontal = 12.dp,
-                                                vertical = 4.dp
-                                            )
-                                        ) {
+                                        TextButton(onClick = { showAddOrcamentoDialog = true }) {
                                             Icon(
                                                 Icons.Default.Add,
                                                 null,
@@ -661,7 +665,6 @@ fun MainScreen(
                                     }
                                 }
 
-                                // 4. Grid de Orçamentos
                                 item {
                                     val gruposDeQuatro = orcamentosComProgresso.chunked(4)
                                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -680,7 +683,11 @@ fun MainScreen(
                                                     }
                                                 }
                                                 repeat(4 - linhaDeOrcamentos.size) {
-                                                    Spacer(modifier = Modifier.weight(1f))
+                                                    Spacer(
+                                                        modifier = Modifier.weight(
+                                                            1f
+                                                        )
+                                                    )
                                                 }
                                             }
                                             Spacer(modifier = Modifier.height(8.dp))
@@ -688,24 +695,21 @@ fun MainScreen(
                                     }
                                 }
 
-                                // 5. Seletor de Meses
                                 item {
-                                    val meses = remember {
-                                        listOf(
-                                            "Janeiro",
-                                            "Fevereiro",
-                                            "Março",
-                                            "Abril",
-                                            "Maio",
-                                            "Junho",
-                                            "Julho",
-                                            "Agosto",
-                                            "Setembro",
-                                            "Outubro",
-                                            "Novembro",
-                                            "Dezembro"
-                                        )
-                                    }
+                                    val meses = listOf(
+                                        "Janeiro",
+                                        "Fevereiro",
+                                        "Março",
+                                        "Abril",
+                                        "Maio",
+                                        "Junho",
+                                        "Julho",
+                                        "Agosto",
+                                        "Setembro",
+                                        "Outubro",
+                                        "Novembro",
+                                        "Dezembro"
+                                    )
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -723,14 +727,12 @@ fun MainScreen(
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
                                                 text = meses.getOrElse(mesAtual) { "" },
-                                                style = MaterialTheme.typography.titleMedium.copy(
-                                                    fontWeight = FontWeight.Bold
-                                                ),
+                                                fontWeight = FontWeight.Bold,
                                                 color = TextWhite
                                             )
                                             Text(
                                                 text = "$anoAtual",
-                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 11.sp,
                                                 color = TextWhite.copy(alpha = 0.6f)
                                             )
                                         }
@@ -743,89 +745,36 @@ fun MainScreen(
                                         }
                                     }
                                 }
-                                item {
-                                    if (mainTabSelecionada in listOf(0, 1, 3)) {
-                                        BarraAcoesRapidas(
-                                            onNovoGasto = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                showAddDespesaDialog = true
-                                            },
-                                            onNovoInvestimento = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                showInvestDialog = true
-                                            },
-                                            onTransferencia = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                showTransferenciaDialog = true
-                                            },
-                                            onScanBoleto = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                permissionLauncher.launch(android.Manifest.permission.CAMERA)
-                                            },
-                                            modifier = Modifier
-                                                .padding(vertical = 8.dp)
-                                                .background(Color.White.copy(0.02f))
-                                        )
-                                    }
-                                }
 
-                                // 6. Lista de Despesas
-                                if (despesasFiltradas.isEmpty()) {
-                                    item {
-                                        EmptyStateSection(
-                                            onAddClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                showAddDespesaDialog = true
-                                            }
-                                        )
-                                    }
-                                } else {
-                                    items(despesasFiltradas, key = { it.id }) { item ->
-                                        DespesasItem(
-                                            item = item,
-                                            isPrivate = isPrivate,
-                                            onRemover = { despesa -> contaVM.removerDespesa(despesa) },
-                                            onTogglePago = { itemClicado ->
-                                                contaVM.alternarStatusDespesa(
-                                                    itemClicado
-                                                )
-                                            }
-                                        )
-                                    }
+                                items(despesasFiltradas, key = { it.id }) { item ->
+                                    DespesasItem(
+                                        item = item,
+                                        isPrivate = isPrivate,
+                                        onRemover = { despesa -> contaVM.removerDespesa(despesa) },
+                                        onTogglePago = { itemClicado ->
+                                            contaVM.alternarStatusDespesa(
+                                                itemClicado
+                                            )
+                                        }
+                                    )
                                 }
                             }
                         }
 
-                        2 -> {
+                        2 -> CartoesScreen(viewModel = cartaoVM)
+                        3 -> CofrinhosTab(
+                            viewModel = metaVM,
+                            isPrivate = isPrivate,
+                            snackbarHostState = snackbarHostState,
+                            userName = nome ?: "Viajante"
+                        )
 
-                            // --- ABA 2: Cartões ---
-                            CartoesScreen(
-                                viewModel = cartaoVM
-                            )
-                        }
-
-                        3 -> {
-                            // --- ABA 3: COFRINHOS ---
-                            CofrinhosTab(
-                                viewModel = metaVM,
-                                isPrivate = isPrivate,
-                                snackbarHostState = snackbarHostState,
-                                userName = nome ?: "Viajante"
-                            )
-                        }
-
-                        4 -> {
-                            // --- ABA 4: INVESTIMENTOS ---
-                            InvestimentosTab(viewModel = investimentoVM, isPrivate = isPrivate)
-                        }
-
-                        5 -> {
-                            // --- ABA 5: RESUMOS
-                            SecaoAgendamentosAtivos(viewModel = contaVM)
-                        }
+                        4 -> InvestimentosTab(viewModel = investimentoVM, isPrivate = isPrivate)
+                        5 -> SecaoAgendamentosAtivos(viewModel = contaVM)
                     }
                 }
             }
+
             /*
                         SmallFloatingActionButton(
                             onClick = {
@@ -979,6 +928,18 @@ fun MainScreen(
                 onDismiss = { showAddOrcamentoDialog = false }
             )
         }
+
+            metaSelecionadaParaDeposito?.let { meta ->
+                DepositoRapidoDialog(
+                    meta = meta,
+                    onConfirmar = { valor ->
+                        // Aqui você chama seu ViewModel para salvar no banco!
+                        metaVM.depositarNaMeta(meta.id.toLong(), valor)
+                        metaSelecionadaParaDeposito = null
+                    },
+                    onDismiss = { metaSelecionadaParaDeposito = null }
+                )
+            }
 
         // ==========================================
         // 9. NAVEGAÇÃO DE TELAS SOBREPOSTAS (Z-Index)

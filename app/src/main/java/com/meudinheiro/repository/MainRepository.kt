@@ -938,6 +938,8 @@ class MainRepository(
             despesaDao.quitarDespesasAteData(id, data)
         }
     }
+
+    suspend fun adicionarValorMeta(id: Long, valor: Double) {
+        db.metaDao().adicionarValorMeta(id, valor) // 💡 Ajuste para o nome do seu DAO de metas
+    }
 }
-
-

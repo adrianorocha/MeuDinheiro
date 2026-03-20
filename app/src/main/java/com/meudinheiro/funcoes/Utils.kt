@@ -1191,3 +1191,19 @@ fun PremiumSnackbar(data: SnackbarData) {
         }
     }
 }
+
+@Composable
+fun obterResIdPelaPic(picName: String?): Int {
+    val context = LocalContext.current
+    val nomeLimpo = picName?.lowercase() ?: "ic_default" // Fallback se for nulo
+
+    // Tenta encontrar o ID do drawable pelo nome da String
+    val resId = context.resources.getIdentifier(
+        nomeLimpo,
+        "drawable",
+        context.packageName
+    )
+
+    // Se não encontrar (resId == 0), retorna um ícone padrão do seu projeto
+    return if (resId != 0) resId else R.drawable.sim_chip_2 // 👈 Use um ícone que você já tenha
+}
