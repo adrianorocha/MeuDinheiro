@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -480,7 +479,7 @@ private val Int.f get() = this.toFloat()
 @Composable
 fun SuccessAnimation(onFinished: () -> Unit) {
     // 1. Tenta carregar a composição
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_animation))
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_animation1))
 
     // 2. Controla o progresso
     val progress by animateLottieCompositionAsState(
