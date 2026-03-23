@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,6 +31,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -52,7 +55,8 @@ fun NeonBottomNavigation(
         Triple("Extrato", R.drawable.extrato, 1),
         Triple("Metas", R.drawable.metas, 2)
     )
-// 🚀 O MOTOR DE ANIMAÇÃO INFINITA
+
+    // 🚀 O MOTOR DE ANIMAÇÃO INFINITA
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
 
     // Animação de Alpha: Faz o glow oscilar (Fade In/Out)
@@ -76,21 +80,24 @@ fun NeonBottomNavigation(
         ),
         label = "scale"
     )
+
     // Barra com efeito de vidro e borda neon superior
+// Barra com efeito de vidro, cantos arredondados e borda neon superior
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .graphicsLayer { shadowElevation = 20f },
-        color = DeepSpaceBlue.copy(alpha = 0.95f), // Quase opaco para esconder o conteúdo atrás
-        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f)) // Linha ultra fina
+            .navigationBarsPadding(),
+        // Removemos a sombra porque no fundo escuro ela não ajuda muito
+        color = DeepSpaceBlue, // Mantém a cor base
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), // 🚀 SEGREDO 1: Cantos arredondados
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)) // 🚀 SEGREDO 2: Borda um pouquinho mais clara
     ) {
         Column {
             // Linha Neon de destaque no topo da barra
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
+                    .height(2.dp) // 🚀 SEGREDO 3: Engrossamos a linha neon para 2.dp
                     .background(
                         Brush.horizontalGradient(
                             listOf(Color.Transparent, NeonCyan, Color.Transparent)
@@ -101,7 +108,7 @@ fun NeonBottomNavigation(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(70.dp)
+                    .height(75.dp) // Aumentamos 5.dp na altura para respirar melhor com os cantos
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically
@@ -109,7 +116,8 @@ fun NeonBottomNavigation(
                 itens.forEach { (titulo, icone, index) ->
                     val selecionado = abaSelecionada == index
                     val animColor by animateColorAsState(
-                        targetValue = if (selecionado) NeonCyan else Color.White.copy(alpha = 0.4f),
+                        // 🚀 SEGREDO 4: Subimos de 0.4f para 0.7f para não sumir no fundo
+                        targetValue = if (selecionado) NeonCyan else Color.White.copy(alpha = 0.7f),
                         label = "color"
                     )
 
@@ -122,12 +130,35 @@ fun NeonBottomNavigation(
                             ) { onTabSelected(index) },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            painter = painterResource(id = icone),
-                            contentDescription = titulo,
-                            tint = animColor,
-                            modifier = Modifier.size(if (selecionado) 28.dp else 24.dp)
-                        )
+
+                        // O ÍCONE DUPLO PULSANTE
+                        Box(contentAlignment = Alignment.Center) {
+                            // 1. Camada de Glow (Borrada e Transparente)
+                            Icon(
+                                painter = painterResource(id = icone),
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier
+                                    .size(if (selecionado) 32.dp else 0.dp)
+                                    .alpha(if (selecionado) infiniteAlpha else 0f)
+                                    .blur(8.dp)
+                            )
+
+                            // 2. O Ícone Principal (O que respira)
+                            Icon(
+                                painter = painterResource(id = icone),
+                                contentDescription = titulo,
+                                tint = animColor, // Usa a cor mais clara se inativo
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .graphicsLayer {
+                                        if (selecionado) {
+                                            scaleX = infinitePulseScale
+                                            scaleY = infinitePulseScale
+                                        }
+                                    }
+                            )
+                        }
 
                         AnimatedVisibility(visible = selecionado) {
                             Text(

@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FabPosition
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -192,6 +195,7 @@ fun MainScreen(
     val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
     val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
     var metaSelecionadaParaDeposito by remember { mutableStateOf<MetaPremium?>(null) }
+    var showMenuRapido by remember { mutableStateOf(false) }
 
     var mostrarCelebracao by remember { mutableStateOf(false) }
     var corCelebracao by remember { mutableStateOf(NeonCyan) }
@@ -284,18 +288,29 @@ fun MainScreen(
     ) {
         Scaffold(
             containerColor = Color.Transparent,
+            floatingActionButton = {
+                PowerCoreFab(onClick = {
+                    // 🚀 Aqui você abre o Dialog de Nova Transação ou Meta
+                    showMenuRapido = true
+                })
+            },
+            floatingActionButtonPosition = FabPosition.Center, // 💡 Alinha no centro da barra
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+
+/*
             bottomBar = {
 
                 NeonBottomNavigation(
                     abaSelecionada = selectedIndex,
                     onTabSelected = { selectedIndex = it }
                 )
+*/
                 /*
                                 NavigationSection(
                                     selectedIndex = selectedIndex,
                                     onItemSelected = { selectedIndex = it })
                 */
-            },
+           /* },*/ // Para não cobrir o fundo do app
             snackbarHost = {
                 SnackbarHost(hostState = snackbarHostState) { data ->
                     PremiumSnackbar(data)
@@ -387,12 +402,15 @@ fun MainScreen(
                     }
                 }
             }*/
+
+
         ) { innerPadding ->
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    //.navigationBarsPadding()
             ) {
                 // --- HEADER ---
                 HeaderSection(

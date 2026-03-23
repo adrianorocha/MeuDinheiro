@@ -46,6 +46,8 @@ room3Runtime = "3.0.0-alpha01"
 androidxFoundation = "1.10.5"
 animationVersion = "1.10.5"
 benchmarkTraceprocessor = "1.4.1"
+animationCoreVersion = "1.10.5"
+androidxFoundationLayout = "1.10.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -97,6 +99,8 @@ androidx-room3-runtime = { group = "androidx.room3", name = "room3-runtime", ver
 foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "androidxFoundation" }
 androidx-animation = { group = "androidx.compose.animation", name = "animation", version.ref = "animationVersion" }
 androidx-benchmark-traceprocessor = { group = "androidx.benchmark", name = "benchmark-traceprocessor", version.ref = "benchmarkTraceprocessor" }
+androidx-animation-core = { group = "androidx.compose.animation", name = "animation-core", version.ref = "animationCoreVersion" }
+foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "androidxFoundationLayout" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
