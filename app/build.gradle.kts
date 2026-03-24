@@ -93,6 +93,7 @@ dependencies {
     implementation(libs.androidx.benchmark.traceprocessor)
     implementation(libs.androidx.animation.core)
     implementation(libs.foundation.layout)
+    implementation(libs.androidx.compose.ui.ui)
 
     val camerax_version = "1.3.1"
     implementation("androidx.camera:camera-camera2:$camerax_version")
