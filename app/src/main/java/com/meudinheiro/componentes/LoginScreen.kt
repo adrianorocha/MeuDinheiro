@@ -27,6 +27,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -207,7 +209,6 @@ fun LoginScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                // BOTÃO ENTRAR (Com as mensagens Premium)
                 Button(
                     onClick = {
                         when {
@@ -223,6 +224,7 @@ fun LoginScreen(
                 ) {
                     Text("ENTRAR", color = DeepSpaceBlue, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
+
 
                 // BIOMETRIA
                 if (canBiometric) {

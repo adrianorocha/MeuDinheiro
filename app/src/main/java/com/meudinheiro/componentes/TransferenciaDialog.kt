@@ -95,7 +95,7 @@ fun TransferenciaDialog(
     Dialog(onDismissRequest = onDismiss) {
         PremiumDialogCard {
             if(contas.isEmpty()) {
-               // --- ESTADO VAZIO: DESIGN PREMIUM ---
+                // --- ESTADO VAZIO: DESIGN PREMIUM ---
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally

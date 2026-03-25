@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,11 +35,14 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.meudinheiro.R
+import com.meudinheiro.funcoes.Haptics
 import com.meudinheiro.ui.theme.DeepSpaceBlue
 import com.meudinheiro.ui.theme.NeonCyan
 import com.meudinheiro.ui.theme.NeonGreen
@@ -50,7 +54,9 @@ fun PowerCoreFab(
     onToggleMenu: () -> Unit,
     onOpcaoSelected: (String) -> Unit
 ) {
-    // --- ANIMAÇÕES (Mantidas) ---
+    val context = LocalContext.current
+
+    // --- 1. ANIMAÇÕES DE TRANSIÇÃO (Menu Aberto/Fechado) ---
     val expansionProgress by animateFloatAsState(
         targetValue = if (isMenuOpen) 1f else 0f,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
@@ -63,76 +69,119 @@ fun PowerCoreFab(
         label = "rotation"
     )
 
-    val infiniteTransition = rememberInfiniteTransition(label = "fab_pulse")
+    // --- 2. MOTOR DE PULSO DO GLOW (Anti-Burn-in) ---
+    val infiniteTransition = rememberInfiniteTransition(label = "power_core_pulse")
     val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f, targetValue = 0.4f,
-        animationSpec = InfiniteRepeatableSpec(tween(2000, easing = LinearEasing), RepeatMode.Reverse),
+        initialValue = 0.3f, targetValue = 0.6f,
+        animationSpec = InfiniteRepeatableSpec(
+            tween(2000, easing = LinearEasing),
+            RepeatMode.Reverse
+        ),
         label = "glow"
     )
 
-    // 🚀 O AJUSTE DE PROFUNDIDADE
+    // --- 3. MOTOR DE PULO IDLE (Flutuação Magnética) ---
+    // Ele só pula se o menu estiver FECHADO (para facilitar o clique nas opções)
+    val idleOffset by if (!isMenuOpen) {
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = -8f, // Flutua 8dp para cima
+            animationSpec = InfiniteRepeatableSpec(
+                animation = tween(1800, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "idle_jump"
+        )
+    } else {
+        remember { mutableStateOf(0f) }
+    }
+
+    // --- 4. RENDERIZAÇÃO ---
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .navigationBarsPadding()
-            .offset(y = 75.dp) // 🚀 Aumentamos para 75.dp para descer até o limite
-            .size(180.dp)      // Reduzimos o container para 180dp para ficar mais compacto
+            .offset(y = 75.dp)
+            .size(220.dp)
     ) {
 
-        // 🪐 SATÉLITES (Ajustamos o offsetY para eles continuarem subindo bem)
-
-        // Esquerda: Minha Conta
+        // 🪐 SATÉLITES (Mantêm a posição deles, pois já têm sua própria lógica no MiniFab)
         MiniFabOrbital(
             iconeRes = R.drawable.bank,
             cor = Color(0xFFFF4B4B),
-            offsetX = (-65).dp,
-            offsetY = (-75).dp, // Subimos mais o satélite para compensar o botão mais baixo
+            offsetX = (-70).dp,
+            offsetY = (-70).dp,
             progresso = expansionProgress,
-            onClick = { onOpcaoSelected("minha conta") }
-        )
+            onClick = {
+                Haptics.vibrar(context, "impacto")
+                onOpcaoSelected("minha conta")
+            })
 
-        // Centro: Depósito
         MiniFabOrbital(
             iconeRes = R.drawable.extrato,
             cor = NeonGreen,
-            offsetX = 0.dp,
-            offsetY = (-105).dp, // Subimos mais aqui também
+            offsetX = (-25).dp,
+            offsetY = (-110).dp,
             progresso = expansionProgress,
-            onClick = { onOpcaoSelected("extrato") }
-        )
+            onClick = {
+                Haptics.vibrar(context, "sucesso")
+                onOpcaoSelected("extrato")
+            })
 
-        // Direita: Metas
         MiniFabOrbital(
             iconeRes = R.drawable.metas,
             cor = Color(0xFFBB86FC),
-            offsetX = (65).dp,
-            offsetY = (-75).dp, // Subimos mais aqui também
+            offsetX = (25).dp,
+            offsetY = (-110).dp,
             progresso = expansionProgress,
-            onClick = { onOpcaoSelected("meta") }
-        )
+            onClick = {
+                Haptics.vibrar(context, "energia")
+                onOpcaoSelected("meta")
+            })
 
-        // Direita: Transferências
         MiniFabOrbital(
             iconeRes = R.drawable.transferencia,
             cor = NeonOrange,
-            offsetX = (105).dp,
-            offsetY = (-15).dp, // Subimos mais aqui também
+            offsetX = (70).dp,
+            offsetY = (-70).dp,
             progresso = expansionProgress,
-            onClick = { onOpcaoSelected("transferencia") }
-        )
+            onClick = {
+                Haptics.vibrar(context, "movimento")
+                onOpcaoSelected("transferencia")
+            })
 
-        // 🌟 O NÚCLEO CENTRAL (Botão que você vê)
+        // 🌟 O NÚCLEO CENTRAL (Power Core)
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(52.dp)
+                .size(60.dp)
+                // 🚀 APLICAÇÃO DO PULO
+                .graphicsLayer {
+                    translationY = idleOffset.dp.toPx()
+                }
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onToggleMenu() }
+                    interactionSource = remember { MutableInteractionSource() }, indication = null
+                ) {
+                    Haptics.vibrar(context, "click_menu")
+                    onToggleMenu()
+                }
         ) {
-            Surface(modifier = Modifier.size(40.dp).alpha(glowAlpha).blur(10.dp), shape = CircleShape, color = NeonCyan) {}
 
+            // GLOW RADIAL
+            Box(
+                modifier = Modifier
+                    .size(54.dp)
+                    .graphicsLayer { alpha = glowAlpha }
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(NeonCyan.copy(alpha = 0.5f), Color.Transparent),
+                            center = Offset.Unspecified,
+                            radius = Float.POSITIVE_INFINITY
+                        )
+                    )
+            )
+
+            // BOTÃO FÍSICO NEON
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -145,7 +194,9 @@ fun PowerCoreFab(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Menu",
                     tint = DeepSpaceBlue,
-                    modifier = Modifier.size(26.dp).rotate(rotation)
+                    modifier = Modifier
+                        .size(26.dp)
+                        .rotate(rotation)
                 )
             }
         }

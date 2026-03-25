@@ -34,8 +34,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,7 +42,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SegmentedButton
@@ -66,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -101,8 +99,6 @@ import java.util.Locale
 // Cores Premium Blu Macaw
 private val DialogBg = Color(0xFF1B263B)
 private val TextColor = Color(0xFFE0E1DD)
-//private val NeonGreen = Color(0xFF69F0AE)
-//private val NeonCyan = Color(0xFF00E5FF)
 
 enum class Frequencia {
     UNICA,
@@ -176,7 +172,7 @@ fun ActionButtonRow(
 
             ActionButton(
                 icon = R.drawable.assinaturas,
-                text = "Assinaturas ",
+                text = "Assinaturas",
                 color = Color(0xFFE040FB), // Roxo
                 modifier = modifierItem,
                 onClick = {
@@ -208,13 +204,10 @@ fun ActionButtonRow(
             viewModel = viewModel,
             cartoesViewModel = cartoesViewModel,
             parentScope = parentScope,
-            // --- NOVOS PARÂMETROS ---
             valorInicial = valorEscaneado ?: 0.0,
             codigoBarras = codigoEscaneado,
-            // -------------------------
             onDismiss = {
                 exibirFormulario = false
-                // Limpa os dados do scanner após fechar para não lixar o próximo lançamento manual
                 valorEscaneado = null
                 codigoEscaneado = ""
             }
@@ -255,15 +248,22 @@ fun ActionButton(
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .background(color.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
-                .border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(18.dp)),
+                // 🚀 Adicionado Glassmorphism aos botões do topo também!
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.White.copy(alpha = 0.03f),
+                        0.5f to Color.White.copy(alpha = 0.08f),
+                        1.0f to Color.White.copy(alpha = 0.03f)
+                    ),
+                    RoundedCornerShape(18.dp)
+                )
+                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(icon),
                 contentDescription = null,
                 tint = Color.Unspecified,
-//                tint = color,
                 modifier = Modifier.size(26.dp)
             )
         }
@@ -398,18 +398,26 @@ private fun DepositDialog(
                 }
             )
 
+            // 🚀 BotaGlassmorphic IMPLEMENTADOS AQUI!
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 16.dp) // Um respiro extra
             ) {
-                OutlinedButton(
-                    onClick = onDismiss,
+                BotaGlassmorphic(
+                    texto = "Cancelar",
+                    corAcento = Color.White.copy(alpha = 0.6f),
+                    hapticType = "impacto",
+                    animateIdleJump = false, // 🚀 Sem pulo no formulário
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextColor),
-                    border = BorderStroke(1.dp, Color.White.copy(0.3f))
-                ) { Text("Cancelar") }
+                    onClick = onDismiss
+                )
 
-                Button(
+                BotaGlassmorphic(
+                    texto = "Confirmar",
+                    corAcento = NeonGreen,
+                    hapticType = "sucesso",
+                    animateIdleJump = false, // 🚀 Sem pulo no formulário
+                    modifier = Modifier.weight(1f),
                     onClick = {
                         val v = valor.replace(",", ".").toDoubleOrNull()
                         if (v != null && v > 0) {
@@ -432,13 +440,8 @@ private fun DepositDialog(
                             }
                             onDismiss()
                         }
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NeonGreen,
-                        contentColor = DialogBg
-                    )
-                ) { Text("Confirmar", fontWeight = FontWeight.Bold) }
+                    }
+                )
             }
         }
     }
@@ -451,7 +454,6 @@ fun AddDespesaDialog(
     codigoBarras: String = "",
     categorias: List<String>,
     contaSelecionada: String,
-    // 👇 NOVO: Recebemos a lista de cartões para mostrar no Dropdown
     cartoesDisponiveis: List<CartaoComConta> = emptyList(),
     getPicCategoria: (String) -> String,
     viewModel: ContaSaldoViewModel,
@@ -464,7 +466,6 @@ fun AddDespesaDialog(
     val contaAtual by rememberUpdatedState(contaSelecionada.trim())
     var mostrarSucesso by remember { mutableStateOf(false) }
 
-    // --- NOVOS ESTADOS PARA O CARTÃO ---
     var formaPagamento by remember { mutableStateOf("CONTA") } // "CONTA" ou "CARTAO"
     var cartaoSelecionadoId by remember { mutableStateOf<Int?>(cartoesDisponiveis.firstOrNull()?.id) }
 
@@ -482,8 +483,6 @@ fun AddDespesaDialog(
 
     var observacao by remember { mutableStateOf(if (codigoBarras.isNotEmpty()) "Boleto: $codigoBarras" else "") }
 
-
-    // 📍 Filtro Inteligente: Só mostra cartões vinculados à conta que está aberta no topo
     val cartoesFiltrados = remember(contaAtual, cartoesDisponiveis) {
         cartoesDisponiveis.filter { cartao ->
             cartao.numeroConta.trim().equals(contaAtual, ignoreCase = true)
@@ -506,7 +505,6 @@ fun AddDespesaDialog(
         return novosErros.isEmpty()
     }
 
-    // 📍 Efeito colateral: Se a lista filtrada mudar, atualiza o cartão selecionado
     LaunchedEffect(cartoesFiltrados) {
         if (cartaoSelecionadoId != null && cartoesFiltrados.none { it.id == cartaoSelecionadoId }) {
             cartaoSelecionadoId = cartoesFiltrados.firstOrNull()?.id
@@ -542,16 +540,14 @@ fun AddDespesaDialog(
                         ) {
                             HeaderSection(contaAtual)
 
-                            // 👇 NOVO: O SELETOR DE CONTA VS CARTÃO
                             FormaPagamentoSelector(
                                 atual = formaPagamento,
                                 onSelect = { formaPagamento = it }
                             )
 
-                            // 👇 NOVO: SE ESCOLHER CARTÃO, MOSTRA O DROPDOWN
                             if (formaPagamento == "CARTAO") {
                                 CartaoDropdownSection(
-                                    cartoes = cartoesFiltrados, // 👈 Agora passamos apenas os vinculados
+                                    cartoes = cartoesFiltrados,
                                     selecionadoId = cartaoSelecionadoId,
                                     onSelect = { cartaoSelecionadoId = it },
                                     erro = erros["cartao"]
@@ -604,8 +600,6 @@ fun AddDespesaDialog(
 
                             Spacer(Modifier.height(8.dp))
 
-                            // Substitua o ActionButtons e a lógica de salvar por esta versão corrigida:
-
                             ActionButtons(
                                 onCancel = onDismiss,
                                 onSave = {
@@ -615,18 +609,14 @@ fun AddDespesaDialog(
                                         val vOriginal = (valorTexto.toDoubleOrNull() ?: 0.0) / 100.0
                                         val vFinalBRL = vOriginal * vCotacao
 
-                                        // 💡 CORREÇÃO CRÍTICA: Garantir a extração do ID correto no momento do clique
                                         val idDoCartaoParaSalvar: Int? =
                                             if (formaPagamento == "CARTAO") {
-                                                // Força a validação: se o usuário selecionou "CARTÃO", o ID NÃO PODE ser nulo.
-                                                // Se for nulo por algum bug de estado, ele pega o primeiro cartão válido daquela conta.
                                                 cartaoSelecionadoId
                                                     ?: cartoesFiltrados.firstOrNull()?.id
                                             } else {
-                                                null // Se for débito em conta, é nulo.
+                                                null
                                             }
 
-                                        // Log de segurança para você conferir no Logcat
                                         android.util.Log.d(
                                             "CADASTRO_DESPESA",
                                             "Forma Pgto: $formaPagamento | Cartão ID capturado: $idDoCartaoParaSalvar"
@@ -636,7 +626,6 @@ fun AddDespesaDialog(
                                             cartoesFiltrados.find { it.id == idDoCartaoParaSalvar }?.nomeCartao
 
                                         val desp = Despesa(
-                                            // id = 0, // O Room vai auto-gerar o ID
                                             descricao = descricao.trim(),
                                             valor = vFinalBRL,
                                             data = Date(dataMillis.value!!),
@@ -644,16 +633,9 @@ fun AddDespesaDialog(
                                             pic = getPicCategoria(categoriaSelecionada!!),
                                             conta = contaAtual,
                                             tipo = TipoDespesa.DEBITO,
-
-                                            // 💡 CORREÇÃO SEMÂNTICA:
-                                            // Se for pago no cartão de crédito, a despesa entra como NÃO PAGA na conta (pois vai pra fatura).
-                                            // Se for débito na conta, ela entra como PAGA.
                                             pago = (formaPagamento == "CONTA"),
-
                                             mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                                             ano = Calendar.getInstance().get(Calendar.YEAR),
-
-                                            // 💡 ATRIBUINDO O ID CORRETO
                                             cartaoId = idDoCartaoParaSalvar
                                         )
 
@@ -674,7 +656,6 @@ fun AddDespesaDialog(
                                                 )
                                             }
 
-                                            // Se for no crédito, abata o limite do cartão!
                                             if (formaPagamento == "CARTAO" && idDoCartaoParaSalvar != null) {
                                                 cartoesViewModel.abaterLimite(
                                                     idDoCartaoParaSalvar,
@@ -712,6 +693,7 @@ fun AddDespesaDialog(
         }
     }
 }
+
 // --- SUB-COMPOSABLES REFATORADOS ---
 
 @Composable
@@ -799,9 +781,6 @@ fun ValueSection(
     }
 }
 
-// -----------------------------------------------------------
-// GRID DE CATEGORIAS - ATUALIZADO: ÍCONES LIVRES (SEM FUNDO)
-// -----------------------------------------------------------
 @Composable
 fun CategoryGridSection(
     categorias: List<String>,
@@ -826,7 +805,7 @@ fun CategoryGridSection(
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
-            modifier = Modifier.height(170.dp), // Aumentei ligeiramente a altura
+            modifier = Modifier.height(170.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -845,12 +824,10 @@ fun CategoryGridSection(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        // Mantivemos um fundo ultra subtil no item inteiro para feedback de clique
                         .background(if (isSelected) corCat.copy(0.12f) else Color.Transparent)
                         .clickable { onSelect(cat) }
                         .padding(vertical = 8.dp, horizontal = 4.dp)
                 ) {
-                    // CONTEINER DO ÍCONE - REFATORADO
                     Box(
                         modifier = Modifier
                             .size(44.dp)
@@ -866,14 +843,13 @@ fun CategoryGridSection(
                             painter = painterResource(resId),
                             contentDescription = cat,
                             tint = Color.Unspecified,
-//                            tint = if (isSelected) corCat else Color.White.copy(alpha = 0.7f),
                             modifier = Modifier.size(24.dp)
                         )
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = cat,
-                        fontSize = 11.sp, // Aumentei ligeiramente a fonte
+                        fontSize = 11.sp,
                         color = if (isSelected) Color.White else Color.White.copy(0.6f),
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 1,
@@ -928,19 +904,28 @@ fun DateAndInstallmentSection(
 
 @Composable
 fun ActionButtons(onCancel: () -> Unit, onSave: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedButton(
-            onClick = onCancel,
+    // 🚀 BotaGlassmorphic IMPLEMENTADOS AQUI TAMBÉM!
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.padding(top = 8.dp)
+    ) {
+        BotaGlassmorphic(
+            texto = "Cancelar",
+            corAcento = Color.White.copy(alpha = 0.6f),
+            hapticType = "impacto",
+            animateIdleJump = false, // 🚀 Sem pulo no formulário
             modifier = Modifier.weight(1f),
-            border = BorderStroke(1.dp, Color.White.copy(0.2f)),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-        ) { Text("Cancelar") }
+            onClick = onCancel
+        )
 
-        Button(
-            onClick = onSave,
+        BotaGlassmorphic(
+            texto = "Salvar",
+            corAcento = NeonCyan,
+            hapticType = "sucesso",
+            animateIdleJump = false, // 🚀 Sem pulo no formulário
             modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
-        ) { Text("Salvar", color = DialogBg, fontWeight = FontWeight.Black) }
+            onClick = onSave
+        )
     }
 }
 
