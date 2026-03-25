@@ -1,11 +1,19 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.animation.core.InfiniteRepeatableSpec
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -15,21 +23,28 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -37,16 +52,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.TransferenciaAgendada
 import com.meudinheiro.ui.theme.NeonCyan
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.scale
+import kotlinx.coroutines.delay
 
 @Composable
 fun BarraFiltrosEAcoes(
-    filtroAtual: FiltroPeriodo,
+    filtroAtual: FiltroPeriodo, // Certifique-se de que este enum/classe existe no seu projeto
     onFiltroSelected: (FiltroPeriodo) -> Unit,
     onEvolucaoPatrimonial: () -> Unit,
     onSaudeFinanceiro: () -> Unit,
@@ -61,131 +71,150 @@ fun BarraFiltrosEAcoes(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // GRUPO DA ESQUERDA: Filtros Deslizáveis
         Row(
             modifier = Modifier
                 .weight(1f)
-                .horizontalScroll(rememberScrollState()), // Permite deslizar os chips
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SeletorPeriodo(
                 filtroSelecionado = filtroAtual,
-                onFiltroSelected = { onFiltroSelected(it) }
+                onFiltroSelected = onFiltroSelected
             )
         }
+
         Spacer(modifier = Modifier.width(12.dp))
-        // GRUPO DA DIREITA: Ações Consolidadas
+
+        // GRUPO DA DIREITA: Orbitais Consolidados
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconeAcaoSuperior(
+            ActionOrbital(
                 icone = Icons.AutoMirrored.Filled.ShowChart,
                 cor = NeonCyan,
                 tooltip = "Evolução",
                 onClick = onEvolucaoPatrimonial
             )
 
-            IconeAcaoSuperior(
+            ActionOrbital(
                 icone = Icons.AutoMirrored.Filled.ReceiptLong,
-                cor = Color(0xFF69F0AE),
+                cor = Color(0xFF69F0AE), // NeonGreen
                 tooltip = "Saúde",
                 onClick = onSaudeFinanceiro
             )
 
-            IconeAcaoSuperior(
+            ActionOrbital(
                 icone = Icons.Default.AutoGraph,
-                cor = Color(0xFFCE93D8),
+                cor = Color(0xFFCE93D8), // Roxo
                 tooltip = "Insights",
                 onClick = onPreviaoMes
             )
 
-            IconeAcaoSuperior(
+            ActionOrbital(
                 icone = Icons.Default.CalendarToday,
-                cor = NeonCyan,
+                // 🚀 Muda a cor do brilho se houver pendências!
+                cor = if (agendados.isNotEmpty()) Color(0xFFFF4B4B) else NeonCyan,
                 tooltip = "Agendados",
-                onClick = onTransacoesAgendadas,
-                agendados = agendados
-
+                badgeCount = agendados.size, // 🚀 Passamos apenas o número agora!
+                onClick = onTransacoesAgendadas
             )
         }
     }
 }
 
 @Composable
-fun IconeAcaoSuperior(
-    agendados: List<TransferenciaAgendada> = emptyList(),
+fun ActionOrbital(
     icone: ImageVector,
     cor: Color,
     tooltip: String,
+    badgeCount: Int = 0, // 🚀 Arquitetura limpa: recebe apenas o Int
     onClick: () -> Unit
 ) {
-    // 💡 LÓGICA DE ANIMAÇÃO DO TOQUE FINAL
-    // Estado para controlar a escala da bolinha (começa em 0.0f)
-    var scaleFactor by remember { mutableStateOf(0.0f) }
+    // 💡 1. MOTOR DE PULSO (Anti-Burn-in e Estética Neon)
+    val infiniteTransition = rememberInfiniteTransition(label = "orbital_pulse")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f, targetValue = 0.5f,
+        animationSpec = InfiniteRepeatableSpec(tween(2000, easing = LinearEasing), RepeatMode.Reverse),
+        label = "glow"
+    )
 
-    // Animação de escala suave (spring)
+    // 💡 2. ANIMAÇÃO DO BADGE (O Pulo / Spring)
+    var scaleFactor by remember { mutableFloatStateOf(0f) }
     val scaleAnim by animateFloatAsState(
         targetValue = scaleFactor,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy, // Dá o "pulo"
+            dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ),
         label = "BadgeScale"
     )
 
-    // Efeito para disparar a animação quando a quantidade de agendados mudar
-    LaunchedEffect(key1 = agendados.size) {
-        if (agendados.isNotEmpty()) {
-            scaleFactor = 0.0f // Reseta
-            // Dá um tempo mínimo para o Compose registrar o 0.0f
-            kotlinx.coroutines.delay(10)
-            scaleFactor = 1.0f // Ativa o tamanho real, disparando o spring
+    LaunchedEffect(key1 = badgeCount) {
+        if (badgeCount > 0) {
+            scaleFactor = 0f
+            delay(50) // Pequeno delay para garantir o reset visual
+            scaleFactor = 1f
         } else {
-            scaleFactor = 0.0f // Encolhe para sumir
+            scaleFactor = 0f
         }
     }
 
-    // 1️⃣ BOX PAI INVISÍVEL (Âncora, sem clip)
+    // 💡 3. RENDERIZAÇÃO DO COMPONENTE
     Box(
-        modifier = Modifier.wrapContentSize(),
+        modifier = Modifier.size(42.dp), // Espaço total para o botão + badge não cortarem
         contentAlignment = Alignment.Center
     ) {
+        // AURA NEON (No fundo)
+        Surface(
+            modifier = Modifier
+                .size(30.dp)
+                .alpha(glowAlpha)
+                .blur(8.dp),
+            shape = CircleShape,
+            color = cor
+        ) {}
 
-        // 2️⃣ O BOTÃO REAL (Escuro e clicável, com clip)
+        // O BOTÃO DE VIDRO (Glassmorphism)
         Box(
             modifier = Modifier
-                .size(38.dp)
-                .background(Color(0xFF1B263B), RoundedCornerShape(12.dp))
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(onClick = onClick),
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.05f)) // Fundo translúcido
+                .border(1.dp, cor.copy(alpha = 0.3f), CircleShape) // Borda sutil
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null // Tira aquele ripple cinza feio do Android
+                ) { onClick() },
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icone,
                 contentDescription = tooltip,
                 tint = cor,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
 
-        // 3️⃣ A BOLINHA DE NOTIFICAÇÃO (Animada e por cima)
-        // Só renderiza se a animação ainda estiver visível
-        if (scaleAnim > 0.1f) {
+        // O BADGE ANIMADO (Por cima de tudo)
+        if (scaleAnim > 0.05f) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd) // Joga para o canto superior direito do Box Pai
-                    .offset(x = 4.dp, y = (-4).dp) // Puxa ela um pouco para fora
-                    .scale(scaleAnim) // 💡 APLICA A ANIMAÇÃO DE ESCALA AQUI
+                    .align(Alignment.TopEnd)
+                    .offset(x = 2.dp, y = (-2).dp)
+                    .scale(scaleAnim)
                     .size(16.dp)
-                    .background(Color.Red, CircleShape),
+                    .background(Color(0xFFFF4B4B), CircleShape) // Vermelho Alerta
+                    .border(1.dp, Color(0xFF0D1B2A), CircleShape), // Borda escura para destacar
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "${agendados.size}",
+                    text = "$badgeCount",
                     color = Color.White,
                     fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Black
                 )
             }
         }
