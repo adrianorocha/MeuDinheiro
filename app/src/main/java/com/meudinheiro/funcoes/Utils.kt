@@ -115,6 +115,8 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.atan2
+import android.graphics.Canvas
+import androidx.core.content.ContextCompat
 
 @Composable
 fun lembrarEstadoPerformance(): Boolean {
@@ -1206,4 +1208,21 @@ fun obterResIdPelaPic(picName: String?): Int {
 
     // Se não encontrar (resId == 0), retorna um ícone padrão do seu projeto
     return if (resId != 0) resId else R.drawable.sim_chip_2 // 👈 Use um ícone que você já tenha
+}
+
+fun converterVetorParaBitmap(context: Context, drawableId: Int, corTint: Int? = null): Bitmap? {
+    val drawable = ContextCompat.getDrawable(context, drawableId) ?: return null
+
+    // Opcional: Se quiser pintar o ícone de Neon Cyan antes de ir pra notificação
+    corTint?.let { drawable.setTint(it) }
+
+    val bitmap = Bitmap.createBitmap(
+        drawable.intrinsicWidth.coerceAtLeast(1), // Evita crash se o vetor não tiver tamanho fixo
+        drawable.intrinsicHeight.coerceAtLeast(1),
+        Bitmap.Config.ARGB_8888
+    )
+    val canvas = Canvas(bitmap)
+    drawable.setBounds(0, 0, canvas.width, canvas.height)
+    drawable.draw(canvas)
+    return bitmap
 }

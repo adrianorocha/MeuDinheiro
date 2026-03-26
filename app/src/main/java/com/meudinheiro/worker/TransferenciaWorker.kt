@@ -4,7 +4,9 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.meudinheiro.R
 import com.meudinheiro.funcoes.NotificacaoVIPHelper
+import com.meudinheiro.funcoes.formatarMoedaBR
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -53,15 +55,22 @@ class TransferenciaWorker(
                         repository.marcarAgendamentoComoExecutado(agendamento.id)
 
                         // Formatação Premium
-                        val valorFormatado = String.format("R$ %.2f", agendamento.valor).replace(".", ",")
 
+                        val valorFormatado = formatarMoedaBR(agendamento.valor,false)
+                        val bitmapSucesso = NotificacaoVIPHelper.converterVetorParaBitmap(
+                            applicationContext,
+                            R.drawable.transferencia, // Ou R.drawable.ic_check se você tiver
+                            android.graphics.Color.parseColor("#69F0AE") // Pinta de Neon Green!
+                        )
                         // 4. Dispara o Feedback VIP no A56
                         NotificacaoVIPHelper.enviarAlertaVencimento(
                             context = applicationContext,
                             titulo = "Transferência Concluída 🔄",
+                            textoBadge = "SUCESSO",
                             mensagemCurta = "$valorFormatado enviado com sucesso.",
                             detalhes = "A sua transferência automática para a conta '${agendamento.contaDestino}' foi realizada pelo motor Blu Macaw. Valor processado: $valorFormatado.",
-                            notificacaoId = agendamento.id
+                            notificacaoId = agendamento.id,
+                            imagemDireita = bitmapSucesso
                         )
 
                         Log.d("BluMacaw_Worker", "Sucesso Diário: $valorFormatado de ${agendamento.contaOrigem} para ${agendamento.contaDestino}")
@@ -77,15 +86,23 @@ class TransferenciaWorker(
                     val valor = inputData.getDouble("VALOR", 0.0)
                     val destino = inputData.getString("DESTINO") ?: "Cofre"
 
-                    val valorFormatado = String.format("R$ %.2f", valor).replace(".", ",")
+                    val valorFormatado = formatarMoedaBR(valor,false)
 
+                    val bitmapSucesso = NotificacaoVIPHelper.converterVetorParaBitmap(
+                        applicationContext,
+                        R.drawable.transferencia, // Ou R.drawable.ic_check se você tiver
+                        android.graphics.Color.parseColor("#69F0AE") // Pinta de Neon Green!
+                    )
                     // Apenas dispara a notificação, pois o ViewModel já salvou no banco
                     NotificacaoVIPHelper.enviarAlertaVencimento(
                         context = applicationContext,
                         titulo = "Transação Salva ✅",
+                        textoBadge = "REGISTRADA",
                         mensagemCurta = "$valorFormatado registrado.",
                         detalhes = "A sua transação no valor de $valorFormatado envolvendo '$destino' foi guardada com sucesso no app.",
-                        notificacaoId = id
+                        notificacaoId = id,
+                        imagemDireita = bitmapSucesso
+
                     )
 
                     Log.d("BluMacaw_Worker", "Sucesso Imediato: Recibo disparado para a transação $id")

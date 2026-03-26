@@ -10,7 +10,20 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -21,7 +34,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.lifecycleScope
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -43,6 +61,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.meudinheiro.componentes.BotaGlassmorphic
+import com.meudinheiro.componentes.PremiumDialogCard
 
 class MainActivity : AppCompatActivity() {
 
@@ -126,31 +149,84 @@ fun ShowApp() {
     }
 
     if (showExitDialog) {
-        AlertDialog(
-            onDismissRequest = { showExitDialog = false },
-            title = { Text("Sair do aplicativo") },
-            text = { Text("Deseja realmente sair?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showExitDialog = false
-                        val act = context as? Activity
-                        if (act != null) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                                act.finishAndRemoveTask() // remove de Recentes
-                            } else {
-                                act.finishAffinity()
+        Dialog(onDismissRequest = { showExitDialog = false }) {
+            PremiumDialogCard {
+                // 🚀 ÍCONE DE "POWER" (Aviso visual de encerramento)
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(Color(0xFFFF4B4B).copy(alpha = 0.1f), CircleShape)
+                            .border(1.dp, Color(0xFFFF4B4B).copy(alpha = 0.3f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PowerSettingsNew, // Ícone de desligar
+                            contentDescription = "Desligar",
+                            tint = Color(0xFFFF4B4B),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                // 🚀 TEXTOS MAIS PROFISSIONAIS E IMERSIVOS
+                Text(
+                    text = "Encerrar Aplicativo",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text = "Tem certeza que deseja sair do Meu Dinheiro?",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                )
+
+                // 🚀 BOTÕES GLASSMORPHIC ALINHADOS COM O DESIGN
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    BotaGlassmorphic(
+                        texto = "Cancelar",
+                        corAcento = Color.White.copy(alpha = 0.6f),
+                        animateIdleJump = false, // Parado, sem pulo
+                        modifier = Modifier.weight(1f),
+                        onClick = { showExitDialog = false }
+                    )
+
+                    BotaGlassmorphic(
+                        texto = "Sair",
+                        corAcento = Color(0xFFFF4B4B), // Vermelho Alerta
+                        animateIdleJump = false, // Parado, sem pulo
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            showExitDialog = false
+                            val act = context as? Activity
+                            if (act != null) {
+                                // Funcionalidade de saída mantida e segura
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                    act.finishAndRemoveTask()
+                                } else {
+                                    act.finishAffinity()
+                                }
                             }
                         }
-                    }
-                ) { Text("Sair") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) { Text("Cancelar") }
+                    )
+                }
             }
-        )
+        }
     }
-
     when (stage) {
         AppStage.Splash -> {
             SplashScreen(
