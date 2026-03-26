@@ -93,6 +93,16 @@ class MainActivity : AppCompatActivity() {
             ShowApp()
         }
     }
+    override fun onResume() {
+        super.onResume()
+        // 🚀 Captura a ação vinda do Widget
+        if (intent?.action == "ACTION_QUICK_ADD") {
+            // Altere para a lógica de navegação do seu app (Ex: abrir Dialog ou navegar para tela)
+            //exibirFormularioDespesa = true
+            // Limpa a action para não reabrir ao girar a tela
+            intent.action = null
+        }
+    }
 
     private fun ativarNotificacoesDiarias() {
         // Lança uma coroutine atrelada ao ciclo de vida da Activity

@@ -400,39 +400,48 @@ class ContaSaldoViewModel(
     private fun atualizarInformacoesWidget(
         context: Context,
         saldo: Double,
-        metaNome: String,
-        metaId: String
+        metas: List<com.meudinheiro.data.Meta> // 🚀 Agora passamos a LISTA de metas
     ) {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putFloat("saldo_atual", saldo.toFloat())
-            putString("nome_meta", metaNome)
-            putString("id_meta", metaId)
-            apply()
+        val editor = prefs.edit()
+
+        editor.putFloat("saldo_atual", saldo.toFloat())
+
+        // 🚀 SALVANDO MÚLTIPLAS METAS (Padrão Novo)
+        val metasParaWidget = metas.take(3)
+        editor.putInt("quantidade_metas", metasParaWidget.size)
+
+        metasParaWidget.forEachIndexed { index, meta ->
+            editor.putString("meta_${index}_nome", meta.nome)
+            editor.putString("meta_${index}_id", meta.id.toString())
+            editor.putFloat("meta_${index}_valor_meta", (meta.valorObjetivo ?: 1.0).toFloat())
+            editor.putFloat("meta_${index}_valor_alcancado", (meta.valorGuardado ?: 0.0).toFloat())
         }
+
+        editor.apply()
+
+        // Manda o widget se redesenhar
         viewModelScope.launch { SaldoWidget().updateAll(context) }
     }
 
+    // E atualize a chamada dentro da função de sincronização:
     private fun carregarDadosIniciaisESincronizarWidget() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val resumo = repository.obterResumoGlobal()
                 val saldoTotal = resumo.entradas - resumo.saidas
-                val metaDestaque = repository.obterTodasAsMetasSync().firstOrNull()
+                val todasAsMetas = repository.obterTodasAsMetasSync() // Pega todas
 
                 atualizarInformacoesWidget(
                     context = getApplication(),
                     saldo = saldoTotal,
-                    metaNome = metaDestaque?.nome ?: "Nenhuma meta ativa",
-                    metaId = metaDestaque?.id?.toString() ?: ""
+                    metas = todasAsMetas // Passa a lista completa
                 )
             } catch (e: Exception) {
-                Log.e("WidgetSync", "Erro ao sincronizar dados: ${e.message}")
+                Log.e("WidgetSync", "Erro: ${e.message}")
             }
         }
-    }
-
-    fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
+    }    fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
         carregarSaldosGlobais()
     }
 
