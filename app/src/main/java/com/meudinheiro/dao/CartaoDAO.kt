@@ -31,7 +31,6 @@ interface CartaoDao {
     @Query("SELECT * FROM cartoes")
     suspend fun obterTodasStatic(): List<Cartao>
 
-
     // Busca um cartão específico para quando formos abater o limite na hora da compra
     @Query("SELECT * FROM cartoes WHERE id = :id LIMIT 1")
     suspend fun getCartaoPorId(id: Int): Cartao?

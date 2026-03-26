@@ -33,4 +33,7 @@ interface InvestimentoDao {
 
     @Query("DELETE FROM investimentos")
     suspend fun limparTudo()
+
+    @Query("SELECT * FROM investimentos")
+    suspend fun obterTodasStatic(): List<Investimento>
 }

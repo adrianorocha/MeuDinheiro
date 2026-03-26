@@ -479,7 +479,10 @@ class MainRepository(
             contas = contaSaldoDao.obterTodasStatic(),
             metas = metaDao.obterTodasStatic(),
             orcamentos = orcamentoDao.obterTodasStatic(),
-            cartoes = cartaoDao.obterTodasStatic()
+            cartoes = cartaoDao.obterTodasStatic(),
+            patrimonio = patrimonioDao?.obterTodasStatic(),
+            investimentos = investimentoDao.obterTodasStatic(),
+            transacao = transacaoDao.obterTodasStatic()
         )
         return Gson().toJson(backup)
     }
@@ -647,6 +650,18 @@ class MainRepository(
                 transacaoDao.inserirTodas(transacaoSeguras)
             }
 
+            val patrimonioSeguros = backupData.patrimonio?.map { patrimonio: PatrimonioHistorico ->
+                patrimonio.copy(
+                    id = 0,
+                    dataMillis = System.currentTimeMillis(),
+                    valorTotal = patrimonio.valorTotal ?: 0.0,
+                    mesReferencia = Calendar.getInstance().get(Calendar.MONTH).toString()
+                )
+            } ?: emptyList()
+            if (patrimonioSeguros.isNotEmpty()) {
+                patrimonioDao?.limparTudo()
+                patrimonioDao?.inserirTodas(patrimonioSeguros)
+            }
         }
     }
     // --- LÓGICA DE ORÇAMENTOS (BUDGETS) ---

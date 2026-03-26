@@ -30,4 +30,7 @@ interface PatrimonioDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(patrimoniohistorico: List<PatrimonioHistorico>)
+
+    @Query("SELECT * FROM patrimonio_historico")
+    suspend fun obterTodasStatic(): List<PatrimonioHistorico>
 }

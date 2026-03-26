@@ -20,4 +20,7 @@ interface TransacaoDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(transacao: List<Transacao>)
+
+    @Query("SELECT * FROM transacoes")
+    suspend fun obterTodasStatic(): List<Transacao>
 }
