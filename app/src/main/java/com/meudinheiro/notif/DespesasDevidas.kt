@@ -87,6 +87,7 @@ object DespesasDevidas {
         try {
             NotificacaoVIPHelper.enviarAlertaVencimento(
                 context = appContext,
+                textoBadge = "SUCESSO",
                 titulo = tituloVIP,
                 mensagemCurta = mensagemCurta,
                 detalhes = detalhesBuilder.toString(),

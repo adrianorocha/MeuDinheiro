@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.meudinheiro.funcoes.NotificacaoVIPHelper
+import com.meudinheiro.funcoes.formatarMoedaBR
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -53,11 +54,13 @@ class TransferenciaWorker(
                         repository.marcarAgendamentoComoExecutado(agendamento.id)
 
                         // Formatação Premium
-                        val valorFormatado = String.format("R$ %.2f", agendamento.valor).replace(".", ",")
+                        val valorFormatado = formatarMoedaBR(agendamento.valor,false)
+
 
                         // 4. Dispara o Feedback VIP no A56
                         NotificacaoVIPHelper.enviarAlertaVencimento(
                             context = applicationContext,
+                            textoBadge = "SUCESSO",
                             titulo = "Transferência Concluída 🔄",
                             mensagemCurta = "$valorFormatado enviado com sucesso.",
                             detalhes = "A sua transferência automática para a conta '${agendamento.contaDestino}' foi realizada pelo motor Blu Macaw. Valor processado: $valorFormatado.",
@@ -77,11 +80,13 @@ class TransferenciaWorker(
                     val valor = inputData.getDouble("VALOR", 0.0)
                     val destino = inputData.getString("DESTINO") ?: "Cofre"
 
-                    val valorFormatado = String.format("R$ %.2f", valor).replace(".", ",")
+                    val valorFormatado = formatarMoedaBR(valor,false)
+
 
                     // Apenas dispara a notificação, pois o ViewModel já salvou no banco
                     NotificacaoVIPHelper.enviarAlertaVencimento(
                         context = applicationContext,
+                        textoBadge = "REGISTRADO",
                         titulo = "Transação Salva ✅",
                         mensagemCurta = "$valorFormatado registrado.",
                         detalhes = "A sua transação no valor de $valorFormatado envolvendo '$destino' foi guardada com sucesso no app.",
