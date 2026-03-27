@@ -1,8 +1,14 @@
 package com.meudinheiro.componentes
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -31,28 +37,42 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.PieChartData
 import com.meudinheiro.funcoes.HorizontalBalanceBarSlim
-import com.meudinheiro.funcoes.PremiumPieChart
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.lembrarEstadoPerformance
 import com.meudinheiro.ui.theme.NeonCyan
 import com.meudinheiro.ui.theme.NeonRed
+
+// Cores locais da paleta Grid Power para o anel
+private val coresNeon = listOf(
+    Color(0xFF00E5FF), // Cyan
+    Color(0xFFB388FF), // Purple
+    Color(0xFFFFD54F), // Yellow
+    Color(0xFF69F0AE), // Green
+    Color(0xFFFF4B4B)  // Red
+)
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -62,7 +82,7 @@ fun ResumoGeralCard(
     despesaTotal: Double,
     metasTotal: Double,
     isPrivate: Boolean = false,
-    dadosGrafico: List<PieChartData>
+    dadosGrafico: List<PieChartData> // Mantemos o seu modelo de dados original
 ) {
     // --- LÓGICA DE DADOS ---
     val saldoDisponivel = receitaTotal - despesaTotal
@@ -104,10 +124,7 @@ fun ResumoGeralCard(
         animationSpec = tween(1200)
     )
 
-// --- ALERTA VISUAL (Pulso Vermelho) ---
-    // Lógica para o TrendIndicator
-
-    // Alerta Visual (Mantido)
+    // --- ALERTA VISUAL (Pulso Vermelho) ---
     val estaNoVermelho = despesaTotal > receitaTotal && receitaTotal > 0
     val infiniteTransition = rememberInfiniteTransition(label = "alerta")
     val economizou = despesaTotal < despesaMesAnterior
@@ -122,6 +139,25 @@ fun ResumoGeralCard(
         ),
         label = "corPulso"
     )
+
+    // --- 🚀 SENSORES PARA O MINI ANEL HOLOGRÁFICO ---
+    val context = LocalContext.current
+    val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    var roll by remember { mutableFloatStateOf(0f) }
+    var pitch by remember { mutableFloatStateOf(0f) }
+
+    DisposableEffect(Unit) {
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                roll = (event.values[0] * 3f).coerceIn(-20f, 20f)
+                pitch = ((event.values[1] - 5f) * 3f).coerceIn(-20f, 20f)
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_GAME)
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
 
     Card(
         modifier = Modifier
@@ -142,9 +178,9 @@ fun ResumoGeralCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-// =================================================
-// SEÇÃO 1: ESQUERDA - Indicador de Consumo (Donut)
-// =================================================
+            // =================================================
+            // SEÇÃO 1: ESQUERDA - Indicador de Consumo (Donut)
+            // =================================================
             Box(
                 modifier = Modifier
                     .size(80.dp) // Aumentamos um pouco o container para respirar
@@ -153,44 +189,41 @@ fun ResumoGeralCard(
             ) {
                 Canvas(modifier = Modifier.size(60.dp)) {
                     val espessuraBorda = 6.dp.toPx()
-
-                    // 💡 O PULO DO GATO: Definimos um tamanho ligeiramente menor que o Canvas
-                    // subtraindo a espessura da borda para que ela não sangre para fora.
                     val tamanhoAjustado = size.width - espessuraBorda
                     val deslocamento = espessuraBorda / 2
 
-                    // Fundo do trilho
                     drawArc(
                         color = Color.White.copy(alpha = 0.05f),
                         startAngle = 0f,
                         sweepAngle = 360f,
                         useCenter = false,
-                        topLeft = androidx.compose.ui.geometry.Offset(deslocamento, deslocamento),
-                        size = androidx.compose.ui.geometry.Size(tamanhoAjustado, tamanhoAjustado),
+                        topLeft = Offset(deslocamento, deslocamento),
+                        size = Size(tamanhoAjustado, tamanhoAjustado),
                         style = Stroke(width = espessuraBorda, cap = StrokeCap.Round)
                     )
 
-                    // Arco de despesas (O progresso)
                     drawArc(
                         brush = Brush.linearGradient(listOf(Color(0xFFFF8A80), Color(0xFFEF5350))),
                         startAngle = -90f,
                         sweepAngle = animSweep,
                         useCenter = false,
-                        topLeft = androidx.compose.ui.geometry.Offset(deslocamento, deslocamento),
-                        size = androidx.compose.ui.geometry.Size(tamanhoAjustado, tamanhoAjustado),
+                        topLeft = Offset(deslocamento, deslocamento),
+                        size = Size(tamanhoAjustado, tamanhoAjustado),
                         style = Stroke(width = espessuraBorda, cap = StrokeCap.Round)
                     )
                 }
 
-                val percent =
-                    if (receitaTotal > 0) ((despesaTotal / receitaTotal) * 100).toInt() else 0
+                val percent = if (receitaTotal > 0) ((despesaTotal / receitaTotal) * 100).toInt() else 0
                 Text(
                     text = "$percent%",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
             }
+
+            // =================================================
             // SEÇÃO 2: Dados (Centro)
+            // =================================================
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -208,104 +241,112 @@ fun ResumoGeralCard(
                     label = "animSaldo"
                 ) { valor ->
                     Text(
-                        // 💡 Note: Passamos 'false' no isPrivate para o Blur fazer o trabalho
                         text = formatarMoedaBR(valor, false),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = if (estaNoVermelho) Color(0xFFEF5350) else Color.White,
-                        modifier = Modifier.blur(animBlur) // 🚀 APLICA O BLUR AQUI
+                        modifier = Modifier.blur(animBlur)
                     )
                 }
 
                 Spacer(modifier = Modifier.height(3.dp))
 
-                // Barras com Blur aplicado individualmente para um efeito mais refinado
                 Column(modifier = Modifier.blur(animBlur)) {
                     HorizontalBalanceBarSlim(
-                        label = "Entradas",
-                        value = receitaTotal,
-                        progress = animBarReceita,
-                        color = Color(0xFF69F0AE),
-                        isPrivate = false,
-                        isLoading = !animationPlayed
+                        label = "Entradas", value = receitaTotal, progress = animBarReceita,
+                        color = Color(0xFF69F0AE), isPrivate = false, isLoading = !animationPlayed
                     )
                     HorizontalBalanceBarSlim(
-                        label = "Poupado",
-                        value = metasTotal,
-                        progress = animBarMetas,
-                        color = Color(0xFF00E676),
-                        isPrivate = false,
-                        isLoading = !animationPlayed
+                        label = "Poupado", value = metasTotal, progress = animBarMetas,
+                        color = Color(0xFF00E676), isPrivate = false, isLoading = !animationPlayed
                     )
                     HorizontalBalanceBarSlim(
-                        label = "Saídas",
-                        value = despesaTotal,
-                        progress = animBarDespesa,
-                        color = Color(0xFFEF5350),
-                        isPrivate = false,
-                        isLoading = !animationPlayed
+                        label = "Saídas", value = despesaTotal, progress = animBarDespesa,
+                        color = Color(0xFFEF5350), isPrivate = false, isLoading = !animationPlayed
                     )
                 }
 
                 Row(
-                    modifier = Modifier
-                        .padding(top = 6.dp)
-                        .blur(animBlur),
+                    modifier = Modifier.padding(top = 6.dp).blur(animBlur),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Tendência", fontSize = 10.sp, color = Color.White.copy(0.4f))
                     Spacer(Modifier.width(8.dp))
 
                     if (economizou) {
-                        // Tendência de Economia (Foguetes!)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("🚀🚀🚀", fontSize = 12.sp, modifier = Modifier.padding(end = 4.dp))
-                            Text(
-                                "Economia VIP",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NeonCyan
-                            )
+                            Text("Economia VIP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                         }
                     } else if (excessoGrave) {
-                        // Tendência de Excesso (Fogo!)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("🔥🔥🔥", fontSize = 12.sp, modifier = Modifier.padding(end = 4.dp))
-                            Text(
-                                "Alerta de Gasto",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NeonRed
-                            )
+                            Text("Alerta de Gasto", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NeonRed)
                         }
                     } else {
-                        // Estável
-                        Text(
-                            "Estável",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.White.copy(0.6f)
-                        )
+                        Text("Estável", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color.White.copy(0.6f))
                     }
                 }
             }
 
-            // SEÇÃO 3: Pizza (Direita)
+            // =================================================
+            // 🚀 SEÇÃO 3: Mini Anel Holográfico (Direita)
+            // =================================================
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .width(80.dp)
                     .padding(start = 8.dp)
                     .blur(animBlur)
+                    .graphicsLayer {
+                        // 🌟 Efeito Parallax no mini gráfico também!
+                        rotationX = pitch
+                        rotationY = roll
+                        cameraDistance = 12f * density
+                    }
             ) {
                 if (dadosGrafico.isNotEmpty()) {
-                    PremiumPieChart(dados = dadosGrafico, modifier = Modifier.size(70.dp))
+                    val totalGrafico = dadosGrafico.sumOf { it.valor.toDouble() }
+
+                    // Animação de Sweep do anel
+                    val ringSweep by animateFloatAsState(
+                        targetValue = if (animationPlayed) 1f else 0f,
+                        animationSpec = tween(1500, easing = FastOutSlowInEasing), label = "ring"
+                    )
+
+                    Canvas(modifier = Modifier.size(70.dp)) {
+                        val strokeFino = 8.dp.toPx()
+                        val strokeGlow = 16.dp.toPx()
+                        val raio = size.width / 2 - strokeGlow / 2
+                        var startAngle = -90f
+
+                        dadosGrafico.forEachIndexed { index, item ->
+                            val sweepAngle = (item.valor.toFloat() / totalGrafico.toFloat()) * 360f * ringSweep
+                            val cor = coresNeon[index % coresNeon.size]
+                            val gap = if (dadosGrafico.size > 1) 4f else 0f
+                            val actualSweep = (sweepAngle - gap).coerceAtLeast(1f)
+
+                            // 1. Glow (Brilho translúcido)
+                            drawArc(
+                                color = cor.copy(alpha = 0.2f),
+                                startAngle = startAngle + (gap / 2), sweepAngle = actualSweep,
+                                useCenter = false, style = Stroke(width = strokeGlow, cap = StrokeCap.Round),
+                                size = Size(raio * 2, raio * 2), topLeft = Offset(strokeGlow / 2, strokeGlow / 2)
+                            )
+                            // 2. Núcleo Sólido
+                            drawArc(
+                                color = cor,
+                                startAngle = startAngle + (gap / 2), sweepAngle = actualSweep,
+                                useCenter = false, style = Stroke(width = strokeFino, cap = StrokeCap.Round),
+                                size = Size(raio * 2, raio * 2), topLeft = Offset(strokeGlow / 2, strokeGlow / 2)
+                            )
+                            startAngle += sweepAngle
+                        }
+                    }
                 } else {
+                    // Estado Vazio (Círculo apagado)
                     Canvas(modifier = Modifier.size(65.dp)) {
-                        drawCircle(
-                            color = Color.White.copy(alpha = 0.05f),
-                            style = Stroke(width = 20f)
-                        )
+                        drawCircle(color = Color.White.copy(alpha = 0.05f), style = Stroke(width = 20f))
                     }
                 }
             }

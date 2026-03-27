@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import android.util.Log
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -43,12 +44,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.meudinheiro.R
+import com.meudinheiro.funcoes.Haptics
+import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.ui.theme.NeonCyan
 import com.meudinheiro.ui.theme.NeonGreen
 
@@ -59,15 +63,13 @@ fun ContaBancariaDialog(
     onAdicionar: (banco: String, agencia: String, contaCorrente: String, saldoInicial: Double) -> Unit,
     onCancelar: () -> Unit
 ) {
+    val context = LocalContext.current
     var agencia by rememberSaveable { mutableStateOf("") }
     var contaCorrente by rememberSaveable { mutableStateOf("") }
     var bancoSelecionado by rememberSaveable { mutableStateOf("") }
-    var saldoInicialStr by rememberSaveable { mutableStateOf("") } // Novo Estado
+    var saldoInicialStr by rememberSaveable { mutableStateOf("") }
     var expandido by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
-
-    // Identificação visual do banco
     val colorBank = remember(bancoSelecionado) {
         when {
             bancoSelecionado.contains("Nubank", true) -> Color(0xFF8A05BE)
@@ -89,60 +91,82 @@ fun ContaBancariaDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Nova Conta",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
+                    text = "NOVA CONTA //",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NeonCyan,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.Start)
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // --- PREVIEW DO CARTÃO COM SALDO ---
+                // --- PREVIEW DO CARTÃO (HOLOGRÁFICO LIGHT) ---
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(110.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Brush.horizontalGradient(listOf(animatedCardColor, animatedCardColor.copy(alpha = 0.5f))))
-                        .border(1.dp, Color.White.copy(0.2f), RoundedCornerShape(16.dp))
+                        .height(115.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(animatedCardColor, animatedCardColor.copy(alpha = 0.6f))
+                            )
+                        )
+                        .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(20.dp))
                         .padding(16.dp)
                 ) {
                     val textColor = if (colorBank == Color(0xFFF7F700)) Color.Black else Color.White
 
-                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Text(
-                                text = bancoSelecionado.ifEmpty { "Selecione um Banco" },
+                                text = bancoSelecionado.ifEmpty { "SELECIONE O BANCO" }.uppercase(),
                                 color = textColor,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 16.sp
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 14.sp
                             )
-                            // Tenta carregar o ícone pelo nome, se não achar, usa o chip
-                            val iconId = context.resources.getIdentifier(
-                                bancoSelecionado.lowercase().replace(" ", "_"), "drawable", context.packageName
-                            ).let { if (it != 0) it else R.drawable.sim_chip_2 }
-
-                            Image(
-                                painter = painterResource(iconId),
+                            Icon(
+                                painter = painterResource(id = R.drawable.sim_chip_2),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                contentScale = ContentScale.Fit
+                                tint = if (colorBank == Color(0xFFF7F700)) Color.Black.copy(0.5f) else Color.White.copy(
+                                    0.5f
+                                ),
+                                modifier = Modifier.size(24.dp)
                             )
                         }
 
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Column {
+                                Text(
+                                    text = "AGÊNCIA / CONTA",
+                                    color = textColor.copy(0.5f),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (agencia.isEmpty() && contaCorrente.isEmpty()) "0000 / 000000-0" else "$agencia / $contaCorrente",
+                                    color = textColor,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            // SALDO AO VIVO
                             Text(
-                                text = if(agencia.isEmpty() && contaCorrente.isEmpty()) "**** ****" else "Ag: $agencia / Cc: $contaCorrente",
-                                color = textColor.copy(0.8f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            // Saldo ao vivo no cartão
-                            Text(
-                                text = "R$ ${saldoInicialStr.ifEmpty { "0,00" }}",
+                                text = "${saldoInicialStr.ifEmpty { "0,00" }}",
                                 color = textColor,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace,
                                 fontSize = 18.sp
                             )
                         }
@@ -151,7 +175,7 @@ fun ContaBancariaDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // --- SELETOR DE BANCO ---
+                // --- FORMULÁRIO ---
                 Box(modifier = Modifier.fillMaxWidth()) {
                     PremiumTextField(
                         value = bancoSelecionado,
@@ -165,12 +189,24 @@ fun ContaBancariaDialog(
                     DropdownMenu(
                         expanded = expandido,
                         onDismissRequest = { expandido = false },
-                        modifier = Modifier.background(Color(0xFF1B263B)).border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(12.dp))
+                        modifier = Modifier
+                            .background(Color(0xFF1B263B))
+                            .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(12.dp))
                     ) {
                         bancos.forEach { nome ->
                             DropdownMenuItem(
-                                text = { Text(nome, color = Color.White) },
-                                onClick = { bancoSelecionado = nome; expandido = false }
+                                text = {
+                                    Text(
+                                        nome,
+                                        color = Color.White,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                },
+                                onClick = {
+                                    Haptics.vibrar(context, "clique")
+                                    bancoSelecionado = nome
+                                    expandido = false
+                                }
                             )
                         }
                     }
@@ -178,11 +214,15 @@ fun ContaBancariaDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // --- AGÊNCIA E CONTA ---
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     PremiumTextField(
                         value = agencia,
-                        onValueChange = { if (it.length <= 4) agencia = it },
+                        onValueChange = {
+                            if (it.all { char -> char.isDigit() } && it.length <= 4) agencia = it
+                        },
                         label = "Agência",
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -193,49 +233,81 @@ fun ContaBancariaDialog(
                         onValueChange = { if (it.length <= 12) contaCorrente = it },
                         label = "Conta",
                         modifier = Modifier.weight(1.2f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         onClick = {}
                     )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // --- SALDO INICIAL ---
                 PremiumTextField(
                     value = saldoInicialStr,
-                    onValueChange = { saldoInicialStr = it },
+                    onValueChange = { novoValor ->
+                        // 1. 🧹 LIMPEZA: Remove tudo que não for número (tira R$, pontos e vírgulas)
+                        val apenasNumeros = novoValor.replace(Regex("[^\\d]"), "")
+
+                        // 2. 🛡️ SEGURANÇA: Se estiver vazio, define como zero para não dar crash
+                        if (apenasNumeros.isEmpty()) {
+                            saldoInicialStr = "0,00"
+                            return@PremiumTextField
+                        }
+
+                        try {
+                            // 3. 💸 CÁLCULO: Transforma "125" em 1.25 (Double)
+                            val valorDouble = apenasNumeros.toDouble() / 100.0
+
+                            // 4. ✨ FORMATAÇÃO: Usa a sua função que já funciona bem
+                            // Se a sua formatarMoedaBR já coloca o "R$", remova o prefix abaixo.
+                            saldoInicialStr = formatarMoedaBR(valorDouble, false)
+
+                        } catch (e: Exception) {
+                            // Se algo der muito errado, o app não fecha, ele apenas ignora
+                            Log.e("MOEDA_ERROR", "Erro ao formatar: ${e.message}")
+                        }
+                    },
                     label = "Saldo Inicial",
-                    prefix = { Text("R$ ", color = NeonGreen, fontWeight = FontWeight.Bold) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    //prefix = { Text("R$ ", color = NeonGreen, fontWeight = FontWeight.Bold) },
+                    // Use NumberPassword para garantir que só apareça o teclado numérico sem ponto/vírgula
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     onClick = {}
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
 
                 // --- BOTÕES ---
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OutlinedButton(
-                        onClick = onCancelar,
-                        modifier = Modifier.weight(1f).height(50.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(0.2f)),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("Voltar", color = Color.White)
-                    }
-                    Button(
+// --- BOTÕES (Ajustado para o seu BotaGlassmorphic) ---
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+
+                    val podeSalvar = bancoSelecionado.isNotEmpty() && agencia.isNotEmpty()
+
+                    BotaGlassmorphic(
+                        texto = "CANCELAR",
+                        corAcento = Color.White.copy(0.6f),
+                        modifier = Modifier.weight(1f),
+                        onClick = onCancelar
+                    )
+
+                    BotaGlassmorphic(
+                        texto = "SALVAR",
+                        // Se não puder salvar, a cor fica cinza e apagada
+                        corAcento = if (podeSalvar) NeonCyan else Color.Gray.copy(0.3f),
+                        modifier = Modifier.weight(1f),
                         onClick = {
-                            val saldo = saldoInicialStr.replace(",", ".").toDoubleOrNull() ?: 0.0
-                            if (bancoSelecionado.isNotBlank() && agencia.isNotBlank()) {
+                            if (podeSalvar) {
+                                // 💡 TRATAMENTO SEGURO DO DOUBLE
+                                val saldoLimpo = saldoInicialStr.replace(",", ".")
+                                val saldo = saldoLimpo.toDoubleOrNull() ?: 0.0
+
+                                Haptics.vibrar(context, "sucesso")
                                 onAdicionar(bancoSelecionado, agencia, contaCorrente, saldo)
+                            } else {
+                                // Feedback de erro opcional se clicar sem preencher
+                                Haptics.vibrar(context, "erro")
                             }
-                        },
-                        enabled = bancoSelecionado.isNotEmpty() && agencia.isNotEmpty(),
-                        modifier = Modifier.weight(1f).height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, disabledContainerColor = Color.Gray.copy(0.3f)),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("Salvar", color = Color(0xFF1B263B), fontWeight = FontWeight.ExtraBold)
-                    }
+                        }
+                    )
                 }
             }
         }

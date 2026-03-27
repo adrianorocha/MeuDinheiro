@@ -304,11 +304,50 @@ class ContaSaldoViewModel(
         _contaSelecionadaId.postValue(contaId)
     }
 
+    // ==========================================
+    // 6. GESTÃO DE CONTAS E TRANSFERÊNCIAS (FIX FINAL)
+    // ==========================================
+// ==========================================
+    // 6. GESTÃO DE CONTAS E TRANSFERÊNCIAS
+    // ==========================================
     fun adicionarContaSaldo(contaSaldo: ContaSaldo) {
-        viewModelScope.launch(Dispatchers.IO) { repository.inserirContaSaldo(contaSaldo) }
-    }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 1. Salva a conta no banco de dados
+                repository.inserirContaSaldo(contaSaldo)
 
-    fun removerContaSaldo(id: Int) {
+                // 2. Tenta inserir o movimento inicial
+                if (contaSaldo.saldo > 0) {
+                    val movimento = Despesa(
+
+                        descricao = "Saldo Inicial",
+                        valor = contaSaldo.saldo,
+                        conta = contaSaldo.conta,
+                        categoria = "Outros",
+                        pic = "deposit",
+                        tipo = TipoDespesa.CREDITO,
+                        data = Date(),
+                        pago = true, // Nasce como não paga (pendente),
+                        mes = 0,
+                        ano = 0
+                        // Se a sua classe Despesa exigir cartaoId = null ou pic = null, mantenha-os aqui.
+                    )
+
+                    // 🚀 Usamos a SUA função que já sabe atualizar tudo (recalcular saldo, atualizar widgets, etc)
+                    adicionarDespesa(movimento)
+                    Log.d("BLU_MACAW_DEBUG", "Movimento de R$ ${contaSaldo.saldo} enviado para adicionarDespesa!")
+                } else {
+                    // Se o saldo for 0, só atualiza a interface normalmente
+                    repository.recalcularSaldoTotal(contaSaldo.banco)
+                    carregarSaldosGlobais()
+                }
+
+            } catch (e: Exception) {
+                // 🚨 SE OCORRER UM ERRO, ELE VAI GRITAR AQUI NO LOGCAT!
+                Log.e("BLU_MACAW_DEBUG", "FALHA CRÍTICA AO INSERIR: ${e.message}", e)
+            }
+        }
+    }    fun removerContaSaldo(id: Int) {
         viewModelScope.launch(Dispatchers.IO) { repository.excluirConta(id) }
     }
 
