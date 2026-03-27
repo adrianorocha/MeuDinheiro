@@ -1,23 +1,10 @@
 package com.meudinheiro.componentes
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -26,31 +13,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +39,14 @@ import com.meudinheiro.data.Meta
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.viewModel.MetaViewModel
 import kotlinx.coroutines.launch
+import com.meudinheiro.funcoes.Haptics // Nosso motor de vibração
+
+// Cores da Paleta VIP
+private val BgDark = Color(0xFF0D1B2A)
+private val BgLight = Color(0xFF1B263B)
+private val NeonCyan = Color(0xFF00E5FF)
+private val NeonGreen = Color(0xFF69F0AE)
+private val NeonYellow = Color(0xFFFFD54F)
 
 @Composable
 fun CofrinhosTab(
@@ -67,30 +55,26 @@ fun CofrinhosTab(
     snackbarHostState: SnackbarHostState,
     userName: String
 ) {
-    // Escuta o banco de dados em tempo real
+    val context = LocalContext.current
     val metas by viewModel.metas.collectAsState(initial = emptyList())
     val contasBancarias by viewModel.contas.observeAsState(emptyList())
     val scope = rememberCoroutineScope()
 
-    // Sistema de Confetes
     val confettiState = remember { ConfeteState() }
     var screenWidth by remember { mutableStateOf(0f) }
 
-    // Controles de Diálogos
     var showAddDialog by remember { mutableStateOf(false) }
     var metaParaAportar by remember { mutableStateOf<Meta?>(null) }
     var metaParaExcluir by remember { mutableStateOf<Meta?>(null) }
     var metaParaEditar by remember { mutableStateOf<Meta?>(null) }
 
-    // 1. Usamos o Box para criar as camadas (layers)
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Pegamos a largura para o confete saber onde é o centro
+            .background(Color.Transparent) // O fundo já vem do MainScreen
             .onGloballyPositioned { screenWidth = it.size.width.toFloat() }
     ) {
-
-        // CAMADA 0 (Fundo): A sua Grade de Metas
+        // --- 1. A GRADE DE TANQUES ---
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
@@ -98,14 +82,12 @@ fun CofrinhosTab(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. O Botão "Criar Meta"
             item {
                 AddMetaDashedCard(onClick = { showAddDialog = true })
             }
 
-            // 2. A Lista de Metas Reais
             items(metas, key = { it.id }) { meta ->
-                CofrinhoGridCard(
+                CofrinhoEnergyTankCard(
                     meta = meta,
                     isPrivate = isPrivate,
                     onAporteClick = { metaParaAportar = meta },
@@ -119,12 +101,11 @@ fun CofrinhosTab(
             }
         }
 
-        // CAMADA 1 (Topo): O componente de confetes
+        // --- 2. O CONFETE OVERLAY ---
         ConfettiOverlay(state = confettiState)
     }
 
     // --- DIÁLOGOS ---
-
     if (showAddDialog) {
         AddMetaDialog(
             onSalvar = { nome, objetivo -> viewModel.salvarMeta(nome, objetivo) },
@@ -132,40 +113,30 @@ fun CofrinhosTab(
         )
     }
 
-    // AQUI ESTÁ A LÓGICA DE APORTE CORRIGIDA (SEM DUPLICAÇÃO)
     metaParaAportar?.let { metal ->
         AporteMetaDialog(
             contasDisponiveis = contasBancarias,
             onDismiss = { metaParaAportar = null },
             onConfirmar = { contaId, valorAporte ->
+                // 🚀 TRATAMENTO SEGURO DA REGRA DE NEGÓCIO E VITÓRIA
+                val totalAposAporte = (metal.valorGuardado + valorAporte)
+                val objetivo = metal.valorObjetivo
 
-                // 1. Cálculo preciso para evitar problemas com Double no Kotlin
-                val totalAposAporte =
-                    "%.2f".format(metal.valorGuardado + valorAporte).replace(",", ".").toDouble()
-                val objetivo = "%.2f".format(metal.valorObjetivo).replace(",", ".").toDouble()
-                val valorGuardadoAtual =
-                    "%.2f".format(metal.valorGuardado).replace(",", ".").toDouble()
-
-                println("BLU MACAW DEBUG -> Guardado: $valorGuardadoAtual | Aporte: $valorAporte | Total: $totalAposAporte | Objetivo: $objetivo")
-
-                // 2. Condição de Vitória: Chegou no alvo e antes não tinha chegado
-                if (totalAposAporte >= objetivo && valorGuardadoAtual < objetivo) {
-
-                    // Disparo com coordenadas seguras
+                if (totalAposAporte >= objetivo && metal.valorGuardado < objetivo) {
+                    Haptics.vibrar(context, "sucesso")
                     val spawnX = if (screenWidth > 0) screenWidth / 2f else 500f
-                    val spawnY = 300f // Ajustado para não cair tão rápido
-
-                    confettiState.disparar(spawnX, spawnY)
+                    confettiState.disparar(spawnX, 300f)
 
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            message = "Parabéns, $userName! Meta '${metal.nome}' concluída! 🏆",
+                            message = "SISTEMA: Carga Concluída! Meta '${metal.nome}' atingida. ⚡",
                             duration = SnackbarDuration.Short
                         )
                     }
+                } else {
+                    Haptics.vibrar(context, "movimento") // Vibração leve para aporte normal
                 }
 
-                // 3. Grava no banco e fecha o diálogo
                 viewModel.realizarAporteReal(metal, contaId, valorAporte)
                 metaParaAportar = null
             }
@@ -195,8 +166,9 @@ fun CofrinhosTab(
         )
     }
 }
+
 // ============================================================================
-// OS CARDS DA GRADE
+// OS COMPONENTES GRID POWER
 // ============================================================================
 
 @Composable
@@ -204,191 +176,150 @@ fun AddMetaDashedCard(onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(110.dp) // Mesma altura para manter o alinhamento do grid
+            .height(200.dp) // Mais alto para parecer um "slot" vazio de tanque
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, Color(0xFF69F0AE).copy(alpha = 0.2f))
+        colors = CardDefaults.cardColors(containerColor = BgLight.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(2.dp, NeonCyan.copy(alpha = 0.2f))
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = null,
-                tint = Color(0xFF69F0AE).copy(alpha = 0.5f),
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "Nova Meta",
-                color = Color(0xFF69F0AE).copy(alpha = 0.5f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Icon(Icons.Default.Add, null, tint = NeonCyan, modifier = Modifier.size(32.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("NOVO TANQUE", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
     }
 }
 
 @Composable
-fun CofrinhoGridCard(
+fun CofrinhoEnergyTankCard(
     meta: Meta,
     isPrivate: Boolean,
     onAporteClick: () -> Unit,
     onMenuClick: (String) -> Unit
 ) {
     val progressoReal = (meta.valorGuardado / meta.valorObjetivo).toFloat().coerceIn(0f, 1f)
-    var animationPlayed by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
+    // Animação elástica ao carregar
     val animatedProgress by animateFloatAsState(
-        targetValue = if (animationPlayed) progressoReal else 0f,
+        targetValue = progressoReal,
         animationSpec = tween(1500, easing = FastOutSlowInEasing),
-        label = "EnergyBar"
+        label = "EnergyTank"
     )
 
-    LaunchedEffect(Unit) { animationPlayed = true }
-
-    // Paleta de Cores Neon Dinâmica
+    // A cor muda de acordo com o nível da bateria
     val currentColor = when {
-        animatedProgress >= 1f -> Color(0xFF69F0AE) // Verde
-        animatedProgress >= 0.6f -> Color(0xFFFFD54F) // Amarelo
-        else -> Color(0xFF00E5FF) // Ciano
+        animatedProgress >= 1f -> NeonGreen
+        animatedProgress >= 0.5f -> NeonYellow
+        else -> NeonCyan
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(130.dp), // Compacto, mas com presença
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B263B)),
+            .height(200.dp) // Altura suficiente para o líquido subir
+            .clickable { onAporteClick() }, // Clicar no card inteiro faz aporte
+        colors = CardDefaults.cardColors(containerColor = BgLight),
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        elevation = CardDefaults.cardElevation(8.dp)
+        border = BorderStroke(1.dp, Color.White.copy(0.05f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // CABEÇALHO: Nome e Menu
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = meta.nome,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
 
-                Box {
-                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(24.dp)) {
-                        Icon(
-                            Icons.Default.ArrowDropDown,
-                            contentDescription = null,
-                            tint = Color.White.copy(0.3f)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        modifier = Modifier.background(Color(0xFF1E2B3E))
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Editar", color = Color.White) },
-                            onClick = { showMenu = false; onMenuClick("edit") }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Excluir", color = Color(0xFFEF5350)) },
-                            onClick = { showMenu = false; onMenuClick("delete") }
-                        )
-                    }
-                }
-            }
-
-            // VALORES: Guardado vs Porcentagem
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Column {
-                    Text(
-                        text = if (isPrivate) "R$ •••••" else formatarMoedaBR(
-                            meta.valorGuardado,
-                            false
-                        ),
-                        color = currentColor,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 15.sp
-                    )
-                    Text(
-                        text = "de ${formatarMoedaBR(meta.valorObjetivo, false)}",
-                        color = Color.White.copy(0.4f),
-                        fontSize = 10.sp
-                    )
-                }
-                Text(
-                    text = "${(animatedProgress * 100).toInt()}%",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
-            }
-
-            // BARRA DE PROGRESSO NEON (O PONTO ALTO)
+            // 🚀 O LÍQUIDO DE ENERGIA (Fundo que sobe)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(10.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(0.05f))
+                    .fillMaxHeight(animatedProgress) // A altura é a % do progresso
+                    .align(Alignment.BottomCenter) // Preenche de baixo para cima
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(currentColor.copy(0.4f), currentColor.copy(0.1f))
+                        )
+                    )
             ) {
-                // Efeito de Brilho (Glow) atrás da barra
+                // Linha laser no topo do líquido
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(animatedProgress)
-                        .fillMaxHeight()
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(currentColor.copy(0.1f), currentColor.copy(0.4f))
-                            )
-                        )
-                )
-
-                // Barra de Energia Sólida com Gradiente
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(animatedProgress)
-                        .fillMaxHeight()
-                        .clip(CircleShape)
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(currentColor.copy(0.7f), currentColor)
-                            )
-                        )
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .background(currentColor)
                 )
             }
 
-            // Botão de Aporte Sutil
-            if (animatedProgress < 1f) {
-                Text(
-                    text = "+ Realizar Aporte",
-                    color = currentColor.copy(0.8f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .clickable { onAporteClick() }
-                )
+            // --- CONTEÚDO DO CARD (Por cima do líquido) ---
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Header (Título + Menu)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = meta.nome.uppercase(),
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
+                        letterSpacing = 0.5.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(top = 4.dp)
+                    )
+
+                    Box {
+                        IconButton(onClick = { showMenu = true }, modifier = Modifier.size(24.dp).offset(x = 8.dp, y = (-8).dp)) {
+                            Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.5f))
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(BgDark)
+                        ) {
+                            DropdownMenuItem(text = { Text("Editar", color = Color.White) }, onClick = { showMenu = false; onMenuClick("edit") })
+                            DropdownMenuItem(text = { Text("Excluir", color = RedColor) }, onClick = { showMenu = false; onMenuClick("delete") })
+                        }
+                    }
+                }
+
+                // Corpo Central (Porcentagem Gigante)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val isCheio = animatedProgress >= 1f
+
+                    if (isCheio) {
+                        Icon(Icons.Default.Bolt, contentDescription = null, tint = NeonGreen, modifier = Modifier.size(32.dp))
+                    } else {
+                        Text(
+                            text = "${(animatedProgress * 100).toInt()}%",
+                            color = currentColor,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 32.sp
+                        )
+                    }
+                }
+
+                // Rodapé (Valores)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val guardadoStr = if (isPrivate) "****" else formatarMoedaBR(meta.valorGuardado, false)
+                    val objetivoStr = if (isPrivate) "****" else formatarMoedaBR(meta.valorObjetivo, false)
+
+                    Text(text = guardadoStr, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(text = "ALVO: $objetivoStr", color = Color.White.copy(0.4f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
