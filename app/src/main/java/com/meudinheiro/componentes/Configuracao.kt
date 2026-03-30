@@ -28,8 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,23 +37,27 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -64,10 +68,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -94,6 +96,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meudinheiro.funcoes.PremiumSnackbar
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
 import com.meudinheiro.notif.DespesasDevidas
@@ -106,7 +109,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.meudinheiro.funcoes.PremiumSnackbar
 
 // --- CORES BLU MACAW ---
 private val NeonCyan = Color(0xFF00E5FF)
@@ -114,6 +116,7 @@ private val DeepSpaceBlue = Color(0xFF131E29)
 private val CardGlass = Color(0xFF1B263B).copy(alpha = 0.8f)
 private val NeonRed = Color(0xFFFF5252)
 private val SuccessGreen = Color(0xFF69F0AE)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Configuracao(
@@ -132,8 +135,10 @@ fun Configuracao(
 
     // --- VIEWMODELS & REPOSITORY ---
     val mainRepository = remember { MainRepository(context) }
-    val categoriaVm: CategoriaViewModel = viewModel(factory = CategoriaViewModelFactory(mainRepository))
-    val despesasVM: DespesasViewModel = viewModel(factory = DespesasViewModelFactory(mainRepository))
+    val categoriaVm: CategoriaViewModel =
+        viewModel(factory = CategoriaViewModelFactory(mainRepository))
+    val despesasVM: DespesasViewModel =
+        viewModel(factory = DespesasViewModelFactory(mainRepository))
 
     // --- DADOS (Flows) ---
     val enabled by userPrefs.notifEnabledFlow.collectAsState(initial = false)
@@ -150,7 +155,20 @@ fun Configuracao(
     var exibirAlertaExclusao by remember { mutableStateOf(false) }
 
     val nomesMeses = remember {
-        listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
+        listOf(
+            "Janeiro",
+            "Fevereiro",
+            "Março",
+            "Abril",
+            "Maio",
+            "Junho",
+            "Julho",
+            "Agosto",
+            "Setembro",
+            "Outubro",
+            "Novembro",
+            "Dezembro"
+        )
     }
 
     // --- LAUNCHERS (Backup e Restore) ---
@@ -191,10 +209,13 @@ fun Configuracao(
                 processingMessage = "Descriptografando Cofre..."
                 try {
                     val jsonLimpo = withContext(Dispatchers.IO) {
-                        val inputStream = context.contentResolver.openInputStream(safeUri) ?: throw Exception("Arquivo inacessível.")
-                        val conteudoCru = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        val inputStream = context.contentResolver.openInputStream(safeUri)
+                            ?: throw Exception("Arquivo inacessível.")
+                        val conteudoCru =
+                            inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                         if (conteudoCru.isBlank()) throw Exception("O cofre selecionado está vazio.")
-                        if (conteudoCru.startsWith("\uFEFF")) conteudoCru.substring(1).trim() else conteudoCru.trim()
+                        if (conteudoCru.startsWith("\uFEFF")) conteudoCru.substring(1)
+                            .trim() else conteudoCru.trim()
                     }
                     processingMessage = "Restaurando base de dados..."
                     mainRepository.restaurarBackupCompleto(jsonLimpo)
@@ -227,7 +248,10 @@ fun Configuracao(
 
     fun hasNotificationPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
         } else true
     }
 
@@ -247,9 +271,22 @@ fun Configuracao(
             },
             topBar = {
                 TopAppBar(
-                    title = { Text("Configurações", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                    title = {
+                        Text(
+                            "Configurações",
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                    },
                     navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Voltar", tint = TextWhite) }
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                "Voltar",
+                                tint = TextWhite
+                            )
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
@@ -274,13 +311,22 @@ fun Configuracao(
                                 else DespesasDevidas.verificarEExibir(context)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = DeepSpaceBlue),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NeonCyan,
+                            contentColor = DeepSpaceBlue
+                        ),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Icon(Icons.Default.NotificationsActive, null, Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("TESTAR ALERTA VIP AGORA", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                        Text(
+                            "TESTAR ALERTA VIP AGORA",
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.sp
+                        )
                     }
                 }
             }
@@ -291,7 +337,10 @@ fun Configuracao(
                     .padding(padding)
                     .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp) // Espaço extra para o BottomBar
+                contentPadding = PaddingValues(
+                    top = 16.dp,
+                    bottom = 100.dp
+                ) // Espaço extra para o BottomBar
             ) {
                 // SEÇÃO: ACESSO
                 item { SectionTitle("SEGURANÇA E ACESSO") }
@@ -302,7 +351,13 @@ fun Configuracao(
                             titulo = "Desbloqueio Biométrico",
                             descricao = if (biometriaEnabled) "Ativo" else "Apenas senha mestra",
                             checked = biometriaEnabled,
-                            onCheckedChange = { isChecked -> scope.launch { userPrefs.saveBiometriaEnabled(isChecked) } }
+                            onCheckedChange = { isChecked ->
+                                scope.launch {
+                                    userPrefs.saveBiometriaEnabled(
+                                        isChecked
+                                    )
+                                }
+                            }
                         )
                     }
                 }
@@ -320,15 +375,24 @@ fun Configuracao(
                                 scope.launch {
                                     userPrefs.saveNotifEnabled(isChecked)
                                     if (isChecked) {
-                                        if (!hasNotificationPermission()) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                        else AgendadorNotifDespesas.scheduleDaily(context, hour, minute)
+                                        if (!hasNotificationPermission()) permissionLauncher.launch(
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        )
+                                        else AgendadorNotifDespesas.scheduleDaily(
+                                            context,
+                                            hour,
+                                            minute
+                                        )
                                     } else AgendadorNotifDespesas.cancel(context)
                                 }
                             }
                         )
 
                         if (enabled) {
-                            HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 12.dp))
+                            HorizontalDivider(
+                                color = TextWhite.copy(0.05f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
 
                             PremiumStepperRow(
                                 title = "Antecedência (Dias)",
@@ -338,22 +402,50 @@ fun Configuracao(
                                 onPlus = { scope.launch { userPrefs.saveNotifDaysAhead(daysAhead + 1) } }
                             )
 
-                            HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 12.dp))
+                            HorizontalDivider(
+                                color = TextWhite.copy(0.05f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
 
                             PremiumTimeRowCompact(
                                 hour = hour, minute = minute,
-                                onHourChange = { h -> scope.launch { userPrefs.saveNotifHour(h); AgendadorNotifDespesas.scheduleDaily(context, h, minute) } },
-                                onMinuteChange = { m -> scope.launch { userPrefs.saveNotifMinute(m); AgendadorNotifDespesas.scheduleDaily(context, hour, m) } }
+                                onHourChange = { h ->
+                                    scope.launch {
+                                        userPrefs.saveNotifHour(h); AgendadorNotifDespesas.scheduleDaily(
+                                        context,
+                                        h,
+                                        minute
+                                    )
+                                    }
+                                },
+                                onMinuteChange = { m ->
+                                    scope.launch {
+                                        userPrefs.saveNotifMinute(m); AgendadorNotifDespesas.scheduleDaily(
+                                        context,
+                                        hour,
+                                        m
+                                    )
+                                    }
+                                }
                             )
 
-                            HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 12.dp))
+                            HorizontalDivider(
+                                color = TextWhite.copy(0.05f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
 
                             ConfiguracaoSwitchItem(
                                 icone = Icons.Default.FilterAlt,
                                 titulo = "Filtro Rígido",
                                 descricao = "Avisar apenas Faturas de Cartão",
                                 checked = onlyCredit,
-                                onCheckedChange = { v -> scope.launch { userPrefs.saveNotifOnlyCredit(v) } },
+                                onCheckedChange = { v ->
+                                    scope.launch {
+                                        userPrefs.saveNotifOnlyCredit(
+                                            v
+                                        )
+                                    }
+                                },
                                 padding = PaddingValues(0.dp)
                             )
                         }
@@ -370,7 +462,10 @@ fun Configuracao(
                             onClick = { exibirGerenciadorCategorias = true }
                         )
 
-                        HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(
+                            color = TextWhite.copy(0.05f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
 
                         ConfiguracaoAcaoItem(
                             icone = Icons.Default.PictureAsPdf,
@@ -383,7 +478,12 @@ fun Configuracao(
                                             processingMessage = "Compilando Relatório VIP..."
                                             delay(500)
                                             withContext(Dispatchers.IO) {
-                                                mainRepository.exportarExtratoPDF(context, nomesMeses.getOrElse(mesIndex) { "Mes" }, anoAtual, listaDespesas)
+                                                mainRepository.exportarExtratoPDF(
+                                                    context,
+                                                    nomesMeses.getOrElse(mesIndex) { "Mes" },
+                                                    anoAtual,
+                                                    listaDespesas
+                                                )
                                             }
                                         } catch (e: Exception) {
                                             snackbarHostState.showSnackbar("Erro: ${e.message}")
@@ -397,12 +497,22 @@ fun Configuracao(
                             }
                         )
 
-                        HorizontalDivider(color = TextWhite.copy(0.05f), modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(
+                            color = TextWhite.copy(0.05f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
 
-                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             OutlinedButton(
                                 onClick = { createBackupLauncher.launch("Cofre_BluMacaw_${System.currentTimeMillis()}.json") },
-                                modifier = Modifier.weight(1f).height(48.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
                                 border = BorderStroke(1.dp, TextWhite.copy(0.2f)),
                                 shape = RoundedCornerShape(12.dp)
@@ -413,7 +523,9 @@ fun Configuracao(
                             }
                             OutlinedButton(
                                 onClick = { restoreBackupLauncher.launch(arrayOf("application/json")) },
-                                modifier = Modifier.weight(1f).height(48.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite),
                                 border = BorderStroke(1.dp, TextWhite.copy(0.2f)),
                                 shape = RoundedCornerShape(12.dp)
@@ -434,21 +546,36 @@ fun Configuracao(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.WarningAmber, null, tint = NeonRed)
                                 Spacer(Modifier.width(12.dp))
-                                Text("Protocolo de Destruição", style = MaterialTheme.typography.titleMedium, color = NeonRed, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Protocolo de Destruição",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = NeonRed,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                             Spacer(Modifier.height(8.dp))
-                            Text("Apaga irreversivelmente todas as finanças, agendamentos e categorias deste dispositivo.", style = MaterialTheme.typography.bodySmall, color = TextWhite.copy(0.5f))
+                            Text(
+                                "Apaga irreversivelmente todas as finanças, agendamentos e categorias deste dispositivo.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextWhite.copy(0.5f)
+                            )
                             Spacer(Modifier.height(16.dp))
                             OutlinedButton(
                                 onClick = { exibirAlertaExclusao = true },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonRed),
                                 border = BorderStroke(1.dp, NeonRed.copy(0.5f)),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Default.DeleteForever, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("FORMATAR COFRE", fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                Text(
+                                    "FORMATAR COFRE",
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
                             }
                         }
                     }
@@ -458,7 +585,9 @@ fun Configuracao(
 
         // --- DIALOGS ---
         if (exibirGerenciadorCategorias) {
-            GerenciarCategoriasDialog(viewModel = categoriaVm, onDismiss = { exibirGerenciadorCategorias = false })
+            GerenciarCategoriasDialog(
+                viewModel = categoriaVm,
+                onDismiss = { exibirGerenciadorCategorias = false })
         }
         if (exibirAlertaExclusao) {
             DialogDestruicaoTotal(
@@ -494,7 +623,14 @@ fun Configuracao(
 
 @Composable
 private fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
-    Text(text, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = color, letterSpacing = 1.5.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+    Text(
+        text,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.ExtraBold,
+        color = color,
+        letterSpacing = 1.5.sp,
+        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+    )
 }
 
 @Composable
@@ -520,11 +656,23 @@ private fun ConfiguracaoSwitchItem(
     padding: PaddingValues = PaddingValues(16.dp)
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(padding),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(padding),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(40.dp).background(DeepSpaceBlue.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
-            Icon(icone, contentDescription = null, tint = if (checked) NeonCyan else TextWhite.copy(0.5f), modifier = Modifier.size(20.dp))
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(DeepSpaceBlue.copy(alpha = 0.5f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icone,
+                contentDescription = null,
+                tint = if (checked) NeonCyan else TextWhite.copy(0.5f),
+                modifier = Modifier.size(20.dp)
+            )
         }
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -553,22 +701,45 @@ private fun ConfiguracaoAcaoItem(
     onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(40.dp).background(DeepSpaceBlue.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(DeepSpaceBlue.copy(alpha = 0.5f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
             Icon(icone, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
         }
         Spacer(modifier = Modifier.width(16.dp))
-        Text(titulo, color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(
+            titulo,
+            color = TextWhite,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextWhite.copy(0.3f))
     }
 }
 
 @Composable
-private fun PremiumStepperRow(title: String, value: Int, min: Int, max: Int, onMinus: () -> Unit, onPlus: () -> Unit) {
+private fun PremiumStepperRow(
+    title: String,
+    value: Int,
+    min: Int,
+    max: Int,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -576,7 +747,12 @@ private fun PremiumStepperRow(title: String, value: Int, min: Int, max: Int, onM
         Row(verticalAlignment = Alignment.CenterVertically) {
             StepperButton(text = "-", onClick = onMinus, enabled = value > min)
             Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
-                Text("$value", color = TextWhite, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                Text(
+                    "$value",
+                    color = TextWhite,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp
+                )
             }
             StepperButton(text = "+", onClick = onPlus, enabled = value < max)
         }
@@ -584,30 +760,61 @@ private fun PremiumStepperRow(title: String, value: Int, min: Int, max: Int, onM
 }
 
 @Composable
-private fun PremiumTimeRowCompact(hour: Int, minute: Int, onHourChange: (Int) -> Unit, onMinuteChange: (Int) -> Unit) {
+private fun PremiumTimeRowCompact(
+    hour: Int,
+    minute: Int,
+    onHourChange: (Int) -> Unit,
+    onMinuteChange: (Int) -> Unit
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text("Horário de Disparo", color = TextWhite, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically) {
             TimePickerControlHorizontal(value = hour, range = 24, onChange = onHourChange)
-            Text(":", color = TextWhite.copy(0.5f), fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
-            TimePickerControlHorizontal(value = minute, range = 60, step = 5, onChange = onMinuteChange)
+            Text(
+                ":",
+                color = TextWhite.copy(0.5f),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 6.dp)
+            )
+            TimePickerControlHorizontal(
+                value = minute,
+                range = 60,
+                step = 5,
+                onChange = onMinuteChange
+            )
         }
     }
 }
 
 @Composable
-private fun TimePickerControlHorizontal(value: Int, range: Int, step: Int = 1, onChange: (Int) -> Unit) {
+private fun TimePickerControlHorizontal(
+    value: Int,
+    range: Int,
+    step: Int = 1,
+    onChange: (Int) -> Unit
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         StepperButton(text = "▼", onClick = { onChange((value - step + range) % range) })
         Box(
-            modifier = Modifier.padding(horizontal = 8.dp).clip(RoundedCornerShape(8.dp)).background(DeepSpaceBlue.copy(0.5f)).size(width = 44.dp, height = 36.dp),
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(DeepSpaceBlue.copy(0.5f))
+                .size(width = 44.dp, height = 36.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = String.format("%02d", value), color = NeonCyan, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            Text(
+                text = String.format("%02d", value),
+                color = NeonCyan,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 16.sp
+            )
         }
         StepperButton(text = "▲", onClick = { onChange((value + step) % range) })
     }
@@ -616,30 +823,87 @@ private fun TimePickerControlHorizontal(value: Int, range: Int, step: Int = 1, o
 @Composable
 private fun StepperButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
     Box(
-        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(if (enabled) TextWhite.copy(0.1f) else Color.Transparent).clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (enabled) TextWhite.copy(0.1f) else Color.Transparent)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
-    ) { Text(text, color = if (enabled) TextWhite else TextWhite.copy(0.2f), fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+    ) {
+        Text(
+            text,
+            color = if (enabled) TextWhite else TextWhite.copy(0.2f),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
 }
 
 @Composable
 private fun DialogDestruicaoTotal(onCancel: () -> Unit, onConfirm: () -> Unit) {
     Dialog(onDismissRequest = onCancel) {
         Box(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(CardGlass).border(1.dp, NeonRed.copy(0.3f), RoundedCornerShape(24.dp)).padding(24.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(CardGlass)
+                .border(1.dp, NeonRed.copy(0.3f), RoundedCornerShape(24.dp))
+                .padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(modifier = Modifier.size(72.dp).background(NeonRed.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = NeonRed, modifier = Modifier.size(36.dp))
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .background(NeonRed.copy(0.1f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = NeonRed,
+                        modifier = Modifier.size(36.dp)
+                    )
                 }
                 Spacer(Modifier.height(16.dp))
-                Text("Autorizar Destruição?", fontSize = 22.sp, color = TextWhite, fontWeight = FontWeight.Black)
+                Text(
+                    "Autorizar Destruição?",
+                    fontSize = 22.sp,
+                    color = TextWhite,
+                    fontWeight = FontWeight.Black
+                )
                 Spacer(Modifier.height(8.dp))
-                Text("Esta ação é irreversível. O banco de dados do Blu Macaw será aniquilado.", color = TextWhite.copy(0.6f), textAlign = TextAlign.Center, fontSize = 14.sp)
+                Text(
+                    "Esta ação é irreversível. O banco de dados do Blu Macaw será aniquilado.",
+                    color = TextWhite.copy(0.6f),
+                    textAlign = TextAlign.Center,
+                    fontSize = 14.sp
+                )
                 Spacer(Modifier.height(32.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onCancel, modifier = Modifier.weight(1f).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = TextWhite, contentColor = DeepSpaceBlue), shape = RoundedCornerShape(12.dp)) { Text("CANCELAR", fontWeight = FontWeight.Bold) }
-                    OutlinedButton(onClick = onConfirm, modifier = Modifier.weight(1f).height(50.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonRed), border = BorderStroke(1.dp, NeonRed.copy(0.5f)), shape = RoundedCornerShape(12.dp)) { Text("ANIMAQUILAR", fontWeight = FontWeight.Bold) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onCancel,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = TextWhite,
+                            contentColor = DeepSpaceBlue
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("CANCELAR", fontWeight = FontWeight.Bold) }
+                    OutlinedButton(
+                        onClick = onConfirm,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonRed),
+                        border = BorderStroke(1.dp, NeonRed.copy(0.5f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("ANIMAQUILAR", fontWeight = FontWeight.Bold) }
                 }
             }
         }
@@ -648,12 +912,29 @@ private fun DialogDestruicaoTotal(onCancel: () -> Unit, onConfirm: () -> Unit) {
 
 @Composable
 private fun DialogProcessamentoPremium(mensagem: String) {
-    Dialog(onDismissRequest = { }, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
-        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(CardGlass).border(1.dp, NeonCyan.copy(0.3f), RoundedCornerShape(20.dp)).padding(32.dp), contentAlignment = Alignment.Center) {
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(CardGlass)
+                .border(1.dp, NeonCyan.copy(0.3f), RoundedCornerShape(20.dp))
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = NeonCyan)
                 Spacer(Modifier.height(24.dp))
-                Text(mensagem, color = TextWhite, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, fontSize = 16.sp)
+                Text(
+                    mensagem,
+                    color = TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    fontSize = 16.sp
+                )
             }
         }
     }
@@ -667,56 +948,182 @@ fun GerenciarCategoriasDialog(
     onDismiss: () -> Unit
 ) {
     var novoNome by remember { mutableStateOf("") }
+    // 🚀 NOVO: Guarda qual ícone está selecionado no momento
+    var iconeSelecionado by remember { mutableStateOf("ic_default") }
+
     val categorias by viewModel.categorias.collectAsState()
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+    // 🚀 NOVO: Lista de ícones para o usuário escolher
+    val iconesOpcoes = remember {
+        listOf(
+            "ic_default" to Icons.Default.Category,
+            "ic_casa" to Icons.Default.Home,
+            "ic_carro" to Icons.Default.DirectionsCar,
+            "ic_comida" to Icons.Default.Restaurant,
+            "ic_saude" to Icons.Default.LocalHospital,
+            "ic_lazer" to Icons.Default.SportsEsports,
+            "ic_compras" to Icons.Default.ShoppingCart,
+            "ic_estudo" to Icons.Default.School
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp), contentAlignment = Alignment.Center) {
             Box(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(CardGlass).border(1.dp, TextWhite.copy(0.1f), RoundedCornerShape(24.dp))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(CardGlass)
+                    .border(1.dp, TextWhite.copy(0.1f), RoundedCornerShape(24.dp))
             ) {
-                Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
-                    Text("Minhas Categorias", fontSize = 20.sp, color = TextWhite, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth()) {
+                    Text(
+                        "Minhas Categorias",
+                        fontSize = 20.sp,
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text("Personalize seu cofre", fontSize = 14.sp, color = TextWhite.copy(0.5f))
 
                     Spacer(Modifier.height(24.dp))
 
+                    // LINHA DE NOME DA CATEGORIA E BOTÃO ADICIONAR
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = novoNome, onValueChange = { novoNome = it },
                             label = { Text("Nome da Categoria", color = TextWhite.copy(0.5f)) },
                             singleLine = true, modifier = Modifier.weight(1f),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NeonCyan, unfocusedBorderColor = TextWhite.copy(0.2f),
-                                focusedTextColor = TextWhite, unfocusedTextColor = TextWhite, cursorColor = NeonCyan
+                                focusedBorderColor = NeonCyan,
+                                unfocusedBorderColor = TextWhite.copy(0.2f),
+                                focusedTextColor = TextWhite,
+                                unfocusedTextColor = TextWhite,
+                                cursorColor = NeonCyan
                             )
                         )
                         Spacer(Modifier.width(12.dp))
                         Box(
-                            modifier = Modifier.size(50.dp).clip(RoundedCornerShape(12.dp)).background(NeonCyan).clickable {
-                                if (novoNome.isNotBlank()) { viewModel.adicionarCategoria(novoNome.trim(), "ic_default"); novoNome = "" }
-                            },
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(NeonCyan)
+                                .clickable {
+                                    if (novoNome.isNotBlank()) {
+                                        // 🚀 AGORA ELE SALVA O ÍCONE ESCOLHIDO!
+                                        viewModel.adicionarCategoria(
+                                            novoNome.trim(),
+                                            iconeSelecionado
+                                        )
+                                        novoNome = ""
+                                        iconeSelecionado = "ic_default" // Reseta a seleção
+                                    }
+                                },
                             contentAlignment = Alignment.Center
-                        ) { Icon(Icons.Default.Add, null, tint = DeepSpaceBlue, modifier = Modifier.size(28.dp)) }
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                null,
+                                tint = DeepSpaceBlue,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
                     }
 
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text("Selecione um Ícone:", fontSize = 12.sp, color = TextWhite.copy(0.6f))
+                    Spacer(Modifier.height(8.dp))
 
-                    LazyColumn(modifier = Modifier.weight(1f, fill = false).heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // 🚀 O CARROSSEL DE ÍCONES (LazyRow)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(iconesOpcoes) { (nomeIcone, vetor) ->
+                            val isSelecionado = iconeSelecionado == nomeIcone
+
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSelecionado) NeonCyan.copy(alpha = 0.15f) else TextWhite.copy(
+                                            0.05f
+                                        )
+                                    )
+                                    .border(
+                                        width = if (isSelecionado) 2.dp else 1.dp,
+                                        color = if (isSelecionado) NeonCyan else Color.Transparent,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { iconeSelecionado = nomeIcone },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = vetor,
+                                    contentDescription = nomeIcone,
+                                    tint = if (isSelecionado) NeonCyan else TextWhite.copy(0.5f),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(24.dp))
+
+                    // LISTA DAS CATEGORIAS SALVAS
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .heightIn(max = 200.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         items(categorias) { cat ->
                             Row(
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(TextWhite.copy(0.05f)).padding(horizontal = 16.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(TextWhite.copy(0.05f))
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                // 💡 (Opcional) Aqui você pode fazer o ícone da categoria aparecer na listagem depois,
+                                // buscando na lista de iconesOpcoes usando o cat.icon
                                 Text(cat.title, color = TextWhite, fontWeight = FontWeight.Medium)
-                                IconButton(onClick = { viewModel.excluirCategoria(cat) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.Delete, null, tint = NeonRed.copy(0.8f), modifier = Modifier.size(20.dp))
+                                IconButton(
+                                    onClick = { viewModel.excluirCategoria(cat) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        null,
+                                        tint = NeonRed.copy(0.8f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                         }
                     }
 
                     Spacer(Modifier.height(24.dp))
-                    Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = TextWhite, contentColor = DeepSpaceBlue), shape = RoundedCornerShape(14.dp)) { Text("CONCLUÍDO", fontWeight = FontWeight.Bold) }
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = TextWhite,
+                            contentColor = DeepSpaceBlue
+                        ),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("CONCLUÍDO", fontWeight = FontWeight.Bold) }
                 }
             }
         }

@@ -117,6 +117,15 @@ import java.util.Locale
 import kotlin.math.atan2
 import android.graphics.Canvas
 import androidx.core.content.ContextCompat
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.ui.graphics.vector.ImageVector
 
 @Composable
 fun lembrarEstadoPerformance(): Boolean {
@@ -1225,4 +1234,18 @@ fun converterVetorParaBitmap(context: Context, drawableId: Int, corTint: Int? = 
     drawable.setBounds(0, 0, canvas.width, canvas.height)
     drawable.draw(canvas)
     return bitmap
+}
+
+fun obterIconeCategoria(nomeIcone: String?): ImageVector {
+    return when (nomeIcone) {
+        "ic_casa" -> Icons.Default.Home
+        "ic_carro" -> Icons.Default.DirectionsCar
+        "ic_comida" -> Icons.Default.Restaurant
+        "ic_saude" -> Icons.Default.LocalHospital
+        "ic_lazer" -> Icons.Default.SportsEsports
+        "ic_compras" -> Icons.Default.ShoppingCart
+        "ic_estudo" -> Icons.Default.School
+        "ic_default" -> Icons.Default.Category
+        else -> Icons.Default.Category // Fallback de segurança se não achar nada
+    }
 }

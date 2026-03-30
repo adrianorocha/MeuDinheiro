@@ -3,7 +3,6 @@ package com.meudinheiro.viewModel
 import android.app.Application
 import android.content.Context
 import android.util.Log
-import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -27,6 +26,7 @@ import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.data.Meta
 import com.meudinheiro.data.PatrimonioHistorico
 import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
@@ -46,7 +46,6 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -70,6 +69,7 @@ class ContaSaldoViewModel(
 
     private val _uiEvent = MutableSharedFlow<String>()
     val uiEvent = _uiEvent.asSharedFlow()
+
     // ==========================================
     // 1. ESTADOS GLOBAIS DA UI
     // ==========================================
@@ -305,9 +305,6 @@ class ContaSaldoViewModel(
     }
 
     // ==========================================
-    // 6. GESTÃO DE CONTAS E TRANSFERÊNCIAS (FIX FINAL)
-    // ==========================================
-// ==========================================
     // 6. GESTÃO DE CONTAS E TRANSFERÊNCIAS
     // ==========================================
     fun adicionarContaSaldo(contaSaldo: ContaSaldo) {
@@ -335,7 +332,10 @@ class ContaSaldoViewModel(
 
                     // 🚀 Usamos a SUA função que já sabe atualizar tudo (recalcular saldo, atualizar widgets, etc)
                     adicionarDespesa(movimento)
-                    Log.d("BLU_MACAW_DEBUG", "Movimento de R$ ${contaSaldo.saldo} enviado para adicionarDespesa!")
+                    Log.d(
+                        "BLU_MACAW_DEBUG",
+                        "Movimento de R$ ${contaSaldo.saldo} enviado para adicionarDespesa!"
+                    )
                 } else {
                     // Se o saldo for 0, só atualiza a interface normalmente
                     repository.recalcularSaldoTotal(contaSaldo.banco)
@@ -347,7 +347,9 @@ class ContaSaldoViewModel(
                 Log.e("BLU_MACAW_DEBUG", "FALHA CRÍTICA AO INSERIR: ${e.message}", e)
             }
         }
-    }    fun removerContaSaldo(id: Int) {
+    }
+
+    fun removerContaSaldo(id: Int) {
         viewModelScope.launch(Dispatchers.IO) { repository.excluirConta(id) }
     }
 
@@ -383,6 +385,7 @@ class ContaSaldoViewModel(
             }
         }
     }
+
     fun agendarTransferencia(
         origem: String,
         destino: String,
@@ -433,13 +436,14 @@ class ContaSaldoViewModel(
             }
         }
     }
+
     // ==========================================
     // 7. WIDGETS
     // ==========================================
     private fun atualizarInformacoesWidget(
         context: Context,
         saldo: Double,
-        metas: List<com.meudinheiro.data.Meta> // 🚀 Agora passamos a LISTA de metas
+        metas: List<Meta> // 🚀 Agora passamos a LISTA de metas
     ) {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         val editor = prefs.edit()
@@ -480,7 +484,9 @@ class ContaSaldoViewModel(
                 Log.e("WidgetSync", "Erro: ${e.message}")
             }
         }
-    }    fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
+    }
+
+    fun carregarResumoFinanceiro(mes: Int? = null, ano: Int? = null) {
         carregarSaldosGlobais()
     }
 
