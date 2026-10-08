@@ -21,6 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -79,8 +82,12 @@ fun PagarFaturaSheet(
     saldoConta: Double?,
     faturaInicial: Financas.FaturaRef,
     onDismiss: () -> Unit,
-    onPagar: (List<Long>, Double) -> Unit
+    onPagar: (List<Long>, Double) -> Unit,
+    jaPagaInicial: Boolean = false,
+    onMarcarComoPaga: (List<Long>, Double) -> Unit = { _, _ -> }
 ) {
+    var jaPaga by remember { mutableStateOf(jaPagaInicial) }
+    var confirmarJaPaga by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cartao = remember(principal) { principal.paraCartao() }
     val faturas = remember(despesasDoGrupo, cartao) { Financas.faturasEmAberto(cartao, despesasDoGrupo, idsDoGrupo) }
@@ -186,6 +193,21 @@ fun PagarFaturaSheet(
             }
 
             HorizontalDivider(color = Color.White.copy(0.1f), modifier = Modifier.padding(vertical = 8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { jaPaga = !jaPaga },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Switch(
+                    checked = jaPaga, onCheckedChange = { jaPaga = it },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Ciano, checkedThumbColor = Fundo)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Esta fatura já foi paga (apenas marcar como paga, sem debitar da conta)",
+                    color = Color.White.copy(0.85f), fontSize = 12.sp, modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Selecionado", color = Color.White.copy(0.6f), fontSize = 12.sp)
                 Text(formatarMoedaBR(liquido, false), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -194,7 +216,12 @@ fun PagarFaturaSheet(
                 Text("Limite restaurado", color = Color.White.copy(0.6f), fontSize = 12.sp)
                 Text(formatarMoedaBR(maxOf(liquido, 0.0), false), color = Ciano, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            if (saldoApos != null) {
+            if (jaPaga) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Saldo da conta", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                    Text("não será alterado", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            } else if (saldoApos != null) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Saldo da conta após", color = Color.White.copy(0.6f), fontSize = 12.sp)
                     Text(formatarMoedaBR(saldoApos, false), color = if (saldoApos < 0) Vermelho else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -209,14 +236,45 @@ fun PagarFaturaSheet(
             }
             Spacer(Modifier.height(10.dp))
             Button(
-                onClick = { onPagar(selecionados.toList(), liquido) },
-                enabled = liquidoC > 0,
+                onClick = {
+                    if (jaPaga) confirmarJaPaga = true else onPagar(selecionados.toList(), liquido)
+                },
+                enabled = if (jaPaga) selecionados.isNotEmpty() else liquidoC > 0,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Ciano, disabledContainerColor = Color.White.copy(0.1f))
             ) {
-                Text("Pagar ${formatarMoedaBR(maxOf(liquido, 0.0), false)}", color = Fundo, fontWeight = FontWeight.Bold)
+                Text(
+                    if (jaPaga) "Marcar ${formatarMoedaBR(liquido, false)} como paga"
+                    else "Pagar ${formatarMoedaBR(maxOf(liquido, 0.0), false)}",
+                    color = Fundo, fontWeight = FontWeight.Bold
+                )
             }
         }
+    }
+
+    if (confirmarJaPaga) {
+        AlertDialog(
+            onDismissRequest = { confirmarJaPaga = false },
+            containerColor = Fundo,
+            title = { Text("Marcar como paga?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Os ${selecionados.size} itens selecionados (${formatarMoedaBR(liquido, false)}) serão marcados como pagos. " +
+                        "O limite do cartão será liberado. O saldo da conta NÃO será alterado e nenhum pagamento será registrado. " +
+                        "Use isto só se a fatura já foi paga por fora.",
+                    color = Color.White.copy(0.8f), fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmarJaPaga = false
+                    onMarcarComoPaga(selecionados.toList(), liquido)
+                }) { Text("Marcar como paga", color = Ciano, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmarJaPaga = false }) { Text("Cancelar", color = Color.White.copy(0.7f)) }
+            }
+        )
     }
 }
 

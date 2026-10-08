@@ -126,6 +126,23 @@ class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
         }
     }
 
+    /** Fatura já paga por fora: só marca os itens como pagos (libera limite), sem debitar a conta. */
+    fun marcarItensComoPagos(cartao: CartaoComConta, itemIds: List<Long>, liquido: Double) {
+        if (pagandoId == cartao.id) return
+        pagandoId = cartao.id
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val n = repository.marcarItensComoPagos(cartao.id, itemIds)
+                val msg = if (n == 1) "1 item marcado como pago" else "$n itens marcados como pagos"
+                _uiEvent.tryEmit("Fatura | $msg (R$ %.2f). Saldo da conta inalterado. | Sucesso".format(liquido))
+            } catch (e: Exception) {
+                avisarErro("Fatura", e)
+            } finally {
+                pagandoId = null
+            }
+        }
+    }
+
     /** Pagamento seletivo de itens em aberto (qualquer fatura do grupo). */
     fun pagarItens(cartao: CartaoComConta, itemIds: List<Long>) {
         if (pagandoId == cartao.id) return

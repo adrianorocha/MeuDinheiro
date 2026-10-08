@@ -347,6 +347,52 @@ class MainRepositoryTest {
         assertEquals(950.0, saldo("111"), 0.0)
     }
 
+    @Test fun `marcar itens como pagos libera limite sem mexer no saldo nem criar lancamento`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val cartaoId = novoCartao("111", limite = 1000.0, fecha = 25, vence = 5)
+        repo.registrarLancamento(lanc(100.0, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 10, 10)))
+        repo.registrarLancamento(lanc(50.0, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 10, 12)))
+        repo.registrarLancamento(lanc(20.0, "111", tipo = TipoDespesa.CREDITO, cartaoId = cartaoId, pago = false, data = ms(2026, 10, 14)))
+        val (a, b, estorno) = todas().filter { it.cartaoId == cartaoId }.sortedBy { it.dataMs }
+        val antes = todas().size
+        val saldoAntes = saldo("111")
+        assertEquals(1000.0 - 100.0 - 50.0 + 20.0, limite(cartaoId), 0.0)
+
+        // parcial: a + estorno (líquido 80)
+        assertEquals(2, repo.marcarItensComoPagos(cartaoId, listOf(a.id, estorno.id)))
+        assertEquals(saldoAntes, saldo("111"), 0.0)
+        assertEquals(antes, todas().size)
+        assertTrue(todas().none { it.natureza == Natureza.PAGAMENTO_FATURA })
+        assertEquals(1000.0 - 50.0, limite(cartaoId), 0.0)
+
+        // validações
+        exige<RegraFinanceiraException> { runBlocking { repo.marcarItensComoPagos(cartaoId, listOf(a.id)) } } // já pago
+        exige<RegraFinanceiraException> { runBlocking { repo.marcarItensComoPagos(cartaoId, listOf(999999L)) } }
+        exige<RegraFinanceiraException> { runBlocking { repo.marcarItensComoPagos(cartaoId, emptyList()) } }
+
+        // o restante ainda pode ser pago normalmente (debita)
+        assertEquals(50.0, repo.pagarItens(cartaoId, listOf(b.id)), 0.0)
+        assertEquals(saldoAntes - 50.0, saldo("111"), 0.0)
+        assertEquals(1000.0, limite(cartaoId), 0.0)
+        exige<RegraFinanceiraException> { runBlocking { repo.pagarFatura(cartaoId, Financas.FaturaRef(10, 2026)) } }
+    }
+
+    @Test fun `marcar fatura inteira como paga impede pagarFatura e aceita liquido negativo`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val cartaoId = novoCartao("111", limite = 1000.0, fecha = 25, vence = 5)
+        repo.registrarLancamento(lanc(30.0, "111", tipo = TipoDespesa.CREDITO, cartaoId = cartaoId, pago = false, data = ms(2026, 10, 10)))
+        repo.registrarLancamento(lanc(200.0, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 11, 10)))
+        val (est, nov) = todas().filter { it.cartaoId == cartaoId }.sortedBy { it.dataMs }
+        // só estorno (líquido <= 0) é aceito aqui
+        repo.marcarItensComoPagos(cartaoId, listOf(est.id))
+        assertEquals(500.0, saldo("111"), 0.0)
+        repo.marcarItensComoPagos(cartaoId, listOf(nov.id))
+        assertEquals(500.0, saldo("111"), 0.0)
+        assertEquals(1000.0, limite(cartaoId), 0.0)
+        val msg = capturar<RegraFinanceiraException> { runBlocking { repo.pagarFatura(cartaoId, Financas.FaturaRef(10, 2026)) } }
+        assertEquals("Esta fatura não possui valor pendente.", msg.message)
+    }
+
     @Test fun `pagamento de fatura nao pode ser excluido`() = runBlocking {
         repo.salvarConta(conta("111", 1000.0))
         val cartaoId = novoCartao("111")

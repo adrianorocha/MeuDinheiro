@@ -30,6 +30,7 @@ import {
   marcarPago,
   pagarFatura,
   pagarItensFatura,
+  marcarItensFaturaComoPagos,
   type PagamentoItensFatura,
   processarDespesasFixas,
   removerItem,
@@ -104,6 +105,7 @@ export const acoes = {
   excluirCartao: (id: number, forcar = false) => exec()((ds) => excluirCartao(ds, id, { forcar })),
   pagarFatura: (cartaoId: number, mes: number, ano: number) => exec()((ds, ctx) => pagarFatura(ds, cartaoId, mes, ano, ctx)),
   pagarItensFatura: (input: PagamentoItensFatura) => exec()((ds, ctx) => pagarItensFatura(ds, input, ctx)),
+  marcarItensFaturaComoPagos: (input: PagamentoItensFatura) => exec()((ds) => marcarItensFaturaComoPagos(ds, input)),
 
   // orçamentos (um por categoria)
   salvarOrcamento: (categoria: string, valorLimite: number) =>

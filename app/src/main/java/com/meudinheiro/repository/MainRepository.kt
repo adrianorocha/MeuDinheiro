@@ -781,6 +781,27 @@ class MainRepository(
         valor
     }
 
+    /**
+     * Fatura já paga por fora: só quita (marca como pagos) os [itemIds] em aberto do grupo do cartão, liberando
+     * o limite. NÃO cria PAGAMENTO_FATURA e NÃO altera o saldo de nenhuma conta. Aceita líquido <= 0.
+     * Retorna a quantidade de itens marcados.
+     */
+    suspend fun marcarItensComoPagos(cartaoId: Int, itemIds: List<Long>): Int = db.withTransaction {
+        val escolhido = cartaoDao.getCartaoPorId(cartaoId) ?: throw RegraFinanceiraException("Cartão não encontrado.")
+        val cartao = cartaoDao.getCartaoPorId(escolhido.idDoGrupo) ?: throw RegraFinanceiraException("Cartão físico não encontrado.")
+        val ids = cartaoDao.obterGrupo(cartao.id).map { it.id }.toSet()
+        val unicos = itemIds.distinct()
+        if (unicos.isEmpty()) throw RegraFinanceiraException("Selecione ao menos um item.")
+        val porId = despesaDao.obterDosCartoes(ids.toList()).associateBy { it.id }
+        val itens = unicos.map { porId[it] ?: throw RegraFinanceiraException("Item não pertence a este cartão.") }
+        if (itens.any { it.pago }) throw RegraFinanceiraException("Há itens já pagos na seleção.")
+
+        despesaDao.marcarComoPagas(itens.map { it.id })
+        recalcularCartao(cartao.id)
+        atualizarSnapshotPatrimonial()
+        itens.size
+    }
+
     /** "Dar baixa" numa pendência: conta comum → marca paga; compra de cartão → paga a fatura inteira dela. */
     suspend fun baixarPendencia(item: Despesa) {
         val cartaoId = item.cartaoId

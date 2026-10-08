@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarPlus, CheckSquare, ListChecks, Wallet } from "lucide-react";
+import { CalendarPlus, CheckSquare, CircleCheck, ListChecks, Wallet } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -23,6 +23,8 @@ interface Props {
   conta?: Conta;
   /** fatura exibida na página (itens dela vêm marcados ao abrir) */
   periodo: MesAno;
+  /** abre já com "fatura já paga por fora" ligado (R46) */
+  jaPagaInicial?: boolean;
 }
 
 function CaixaGrupo({ marcado, parcial, rotulo, onChange }: { marcado: boolean; parcial: boolean; rotulo: string; onChange: (v: boolean) => void }) {
@@ -36,13 +38,13 @@ function CaixaGrupo({ marcado, parcial, rotulo, onChange }: { marcado: boolean; 
 /** R44 - pagamento seletivo da fatura: todos os itens do mês, itens escolhidos ou antecipação de parcelas futuras. */
 export function PagarFaturaModal(props: Props) {
   return (
-    <Modal aberto={props.aberto} onFechar={props.onFechar} titulo="Pagar fatura">
+    <Modal aberto={props.aberto} onFechar={props.onFechar} titulo={props.jaPagaInicial ? "Marcar fatura como paga" : "Pagar fatura"}>
       {props.aberto && <Conteudo {...props} />}
     </Modal>
   );
 }
 
-function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props) {
+function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo, jaPagaInicial = false }: Props) {
   const avisar = useStore((s) => s.avisar);
   const faturas = useMemo(() => faturasEmAberto(cartao, cartoes, despesas), [cartao, cartoes, despesas]);
   const chavePeriodo = `${periodo.ano}-${String(periodo.mes).padStart(2, "0")}`;
@@ -51,6 +53,11 @@ function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props
   const [sel, setSel] = useState<Set<number>>(() => new Set(idsDaFatura(chavePeriodo)));
   const [atalho, setAtalho] = useState<"mes" | "itens" | "futuras">("mes");
   const [confirmando, setConfirmando] = useState(false);
+  const [jaPaga, setJaPaga] = useState(jaPagaInicial);
+  const confirmarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (confirmando) confirmarRef.current?.focus();
+  }, [confirmando]);
   const [erro, setErro] = useState<string | null>(null);
 
   const itensSel = useMemo(() => faturas.flatMap((f) => f.itens).filter((d) => sel.has(d.id)), [faturas, sel]);
@@ -78,6 +85,17 @@ function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props
     setAtalho("itens");
     setConfirmando(false);
   };
+
+  function marcarPagos() {
+    const r = acoes.marcarItensFaturaComoPagos({ cartaoId: cartao.id, itemIds: [...sel] });
+    if (!r.ok) {
+      setErro(r.erro);
+      setConfirmando(false);
+      return;
+    }
+    avisar("sucesso", `${r.itens.length} ${r.itens.length === 1 ? "item marcado como pago" : "itens marcados como pagos"} (${formatBRL(r.liquido)}). Saldo da conta inalterado.`);
+    onFechar();
+  }
 
   function pagar() {
     const r = acoes.pagarItensFatura({ cartaoId: cartao.id, itemIds: [...sel] });
@@ -114,6 +132,25 @@ function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props
 
   return (
     <div className="flex flex-col gap-4">
+      <label className={`flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm ${jaPaga ? "border-primary bg-primary-soft" : "border-line"}`}>
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 accent-[var(--primary)]"
+          checked={jaPaga}
+          onChange={(e) => {
+            setJaPaga(e.target.checked);
+            setConfirmando(false);
+            setErro(null);
+          }}
+        />
+        <span>
+          <span className="flex items-center gap-1 font-medium">
+            <CircleCheck size={16} aria-hidden /> Esta fatura já foi paga (apenas marcar como paga, sem debitar da conta)
+          </span>
+          <span className="text-xs text-muted">Libera o limite do cartão sem registrar pagamento nem mexer no saldo.</span>
+        </span>
+      </label>
+
       <div role="group" aria-label="Atalhos de pagamento" className="grid gap-2 sm:grid-cols-3">
         {atalhos.map((a) => (
           <button
@@ -195,10 +232,16 @@ function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props
           <div className="flex justify-between gap-2">
             <dt className="text-muted">Limite restaurado</dt>
             <dd className="font-medium text-pos">
-              <Money valor={Math.max(0, liquido)} />
+              <Money valor={jaPaga ? liquido : Math.max(0, liquido)} />
             </dd>
           </div>
-          {conta && saldoDepois !== null && (
+          {jaPaga && (
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted">Saldo da conta</dt>
+              <dd className="font-medium">não será alterado</dd>
+            </div>
+          )}
+          {!jaPaga && conta && saldoDepois !== null && (
             <div className="flex justify-between gap-2">
               <dt className="text-muted">
                 Saldo da conta {conta.banco} após o pagamento
@@ -209,12 +252,12 @@ function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props
             </div>
           )}
         </dl>
-        {negativo && (
+        {!jaPaga && negativo && (
           <p role="status" className="mt-2 text-xs text-warn">
             Atenção: a conta ficará com saldo negativo após este pagamento. Você ainda pode pagar.
           </p>
         )}
-        {itensSel.length > 0 && liquido <= 0 && (
+        {!jaPaga && itensSel.length > 0 && liquido <= 0 && (
           <p role="status" className="mt-2 text-xs text-warn">
             Não há valor a pagar nos itens selecionados.
           </p>
@@ -223,7 +266,20 @@ function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props
 
       {erro && <ErroBox>{erro}</ErroBox>}
 
-      {confirmando ? (
+      {confirmando && jaPaga ? (
+        <div ref={confirmarRef} tabIndex={-1} className="rounded-xl border border-primary/50 bg-primary-soft p-3 outline-none" role="group" aria-label="Confirmar marcação como paga">
+          <p className="text-sm">
+            Os {itensSel.length} {itensSel.length === 1 ? "item selecionado" : "itens selecionados"} (<strong>{formatBRL(liquido)}</strong>) serão marcados como pagos. O limite do cartão será liberado. O saldo da conta
+            NÃO será alterado e nenhum pagamento será registrado. Use isto só se a fatura já foi paga por fora.
+          </p>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button onClick={() => setConfirmando(false)}>Cancelar</Button>
+            <Button variante="primary" onClick={marcarPagos}>
+              Marcar como paga
+            </Button>
+          </div>
+        </div>
+      ) : confirmando ? (
         <div className="rounded-xl border border-primary/50 bg-primary-soft p-3" role="group" aria-label="Confirmar pagamento">
           <p className="text-sm">
             Confirmar o pagamento de <strong>{formatBRL(liquido)}</strong> ({itensSel.length} {itensSel.length === 1 ? "item" : "itens"}) do cartão {cartao.nome}
@@ -239,8 +295,8 @@ function Conteudo({ onFechar, cartao, cartoes, despesas, conta, periodo }: Props
       ) : (
         <div className="flex justify-end gap-2">
           <Button onClick={onFechar}>Cancelar</Button>
-          <Button variante="primary" disabled={itensSel.length === 0 || liquido <= 0} onClick={() => setConfirmando(true)}>
-            Pagar {formatBRL(Math.max(0, liquido))}
+          <Button variante="primary" disabled={itensSel.length === 0 || (!jaPaga && liquido <= 0)} onClick={() => setConfirmando(true)}>
+            {jaPaga ? `Marcar ${formatBRL(liquido)} como paga` : `Pagar ${formatBRL(Math.max(0, liquido))}`}
           </Button>
         </div>
       )}

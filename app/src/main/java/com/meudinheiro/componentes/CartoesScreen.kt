@@ -160,6 +160,7 @@ fun CartoesScreen(
 
     var processandoPagamento by remember { mutableStateOf(false) }
     var exibirConfirmacao by remember { mutableStateOf(false) }
+    var abrirJaPaga by remember { mutableStateOf(false) }
     val exigirBioPagamento by remember { com.meudinheiro.funcoes.UserPreferences(context).biometriaLancarFlow }.collectAsState(initial = true)
     var showBottomSheet by remember { mutableStateOf(false) }
     var cartaoEmEdicao by remember { mutableStateOf<CartaoComConta?>(null) }
@@ -364,6 +365,14 @@ fun CartoesScreen(
                                 onPagar = {
                                     if (!fatura.jaPaga && !fatura.carregando) {
                                         Haptics.vibrar(context, "clique")
+                                        abrirJaPaga = false
+                                        exibirConfirmacao = true
+                                    }
+                                },
+                                onJaPaga = {
+                                    if (!fatura.jaPaga && !fatura.carregando) {
+                                        Haptics.vibrar(context, "clique")
+                                        abrirJaPaga = true
                                         exibirConfirmacao = true
                                     }
                                 },
@@ -530,6 +539,17 @@ fun CartoesScreen(
                             Financas.mesDe(fatura.dataReferencia.time), Financas.anoDe(fatura.dataReferencia.time)
                         ),
                         onDismiss = { exibirConfirmacao = false },
+                        jaPagaInicial = abrirJaPaga,
+                        onMarcarComoPaga = { ids, valor ->
+                            autenticarParaLancar(
+                                context, exigirBioPagamento, "Confirmar baixa",
+                                "Autentique para marcar ${formatarMoedaBR(valor, false)} como pago (sem debitar)"
+                            ) {
+                                exibirConfirmacao = false
+                                viewModel.marcarItensComoPagos(focado, ids, valor)
+                                Haptics.vibrar(context, "sucesso")
+                            }
+                        },
                         onPagar = { ids, valor ->
                             autenticarParaLancar(
                                 context, exigirBioPagamento, "Confirmar pagamento",
@@ -829,7 +849,7 @@ fun SelectorDeMes(mesNome: String, total: Double, diaFechamento: Int, mesOffset:
 }
 
 @Composable
-fun AcoesCartao(cartao: CartaoComConta, onDelete: () -> Unit, onEditar: () -> Unit = {}, onPagar: () -> Unit, onFatura: () -> Unit, faturaPaga: Boolean) {
+fun AcoesCartao(cartao: CartaoComConta, onDelete: () -> Unit, onEditar: () -> Unit = {}, onPagar: () -> Unit, onFatura: () -> Unit, faturaPaga: Boolean, onJaPaga: (() -> Unit)? = null) {
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         BotaoAcaoRapida(Icons.Rounded.Receipt, "FATURA", NeonCyan, onClick = onFatura)
         BotaoAcaoRapida(
@@ -837,6 +857,7 @@ fun AcoesCartao(cartao: CartaoComConta, onDelete: () -> Unit, onEditar: () -> Un
             if (faturaPaga) "PAGA" else "PAGAR",
             if (faturaPaga) Color.Gray else Color.White,
             { if (!faturaPaga) onPagar() })
+        if (onJaPaga != null && !faturaPaga) BotaoAcaoRapida(Icons.Rounded.CheckCircle, "JÁ PAGA", Color(0xFF69F0AE), onClick = onJaPaga)
         BotaoAcaoRapida(Icons.Rounded.Edit, "EDITAR", NeonPurple, onClick = onEditar)
         BotaoAcaoRapida(Icons.Rounded.DeleteSweep, "EXCLUIR", Color(0xFFFF5252), onClick = onDelete)
     }

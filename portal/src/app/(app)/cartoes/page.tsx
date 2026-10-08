@@ -165,6 +165,7 @@ export default function CartoesPage() {
   const [formCartao, setFormCartao] = useState<{ editar: Cartao | null } | null>(null);
   const [excluir, setExcluir] = useState<Cartao | null>(null);
   const [pagar, setPagar] = useState(false);
+  const [jaPaga, setJaPaga] = useState(false);
   const [compra, setCompra] = useState(false);
   /** Filtro da lista de lançamentos: null = todos os cartões do grupo. */
   const [filtroId, setFiltroId] = useState<number | null>(null);
@@ -399,8 +400,11 @@ export default function CartoesPage() {
               </dl>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 {resumo.paga ? <Badge tom="pos">Fatura paga</Badge> : resumo.itens.length === 0 ? <Badge>Sem compras</Badge> : <Badge tom="warn">Em aberto</Badge>}
-                <Button variante="primary" disabled={comprometimentoCartao(selecionado, ds.cartoes, ds.despesas, agora).emAbertoTotal <= 0} onClick={() => setPagar(true)}>
+                <Button variante="primary" disabled={comprometimentoCartao(selecionado, ds.cartoes, ds.despesas, agora).emAbertoTotal <= 0} onClick={() => { setJaPaga(false); setPagar(true); }}>
                   Pagar fatura
+                </Button>
+                <Button icone={<CircleCheck size={14} aria-hidden />} disabled={comprometimentoCartao(selecionado, ds.cartoes, ds.despesas, agora).emAbertoTotal <= 0} onClick={() => { setJaPaga(true); setPagar(true); }}>
+                  Já foi paga
                 </Button>
                 {conta && <span className="text-xs text-muted">Débito na conta {conta.banco} · {conta.conta}</span>}
               </div>
@@ -453,7 +457,7 @@ export default function CartoesPage() {
         {formCartao && <CartaoForm editar={formCartao.editar} onFechar={() => setFormCartao(null)} />}
       </Modal>
       {selecionado && periodo && (
-        <PagarFaturaModal aberto={pagar} onFechar={() => setPagar(false)} cartao={selecionado} cartoes={ds.cartoes} despesas={ds.despesas} conta={conta} periodo={periodo} />
+        <PagarFaturaModal aberto={pagar} onFechar={() => setPagar(false)} cartao={selecionado} cartoes={ds.cartoes} despesas={ds.despesas} conta={conta} periodo={periodo} jaPagaInicial={jaPaga} />
       )}
       <Confirmar
         aberto={excluir !== null}

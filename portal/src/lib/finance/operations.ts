@@ -794,6 +794,36 @@ export function pagarItensFatura(ds: Dataset, input: PagamentoItensFatura, ctx: 
   return finaliza({ ...ds, despesas: [...despesas, pagamento] }, { pagamento, itens });
 }
 
+/**
+ * R46 - fatura já paga por fora: só marca os itens em aberto como pagos (libera o limite).
+ * NÃO cria PAGAMENTO_FATURA e NÃO altera o saldo de nenhuma conta. Aceita qualquer líquido (inclusive ≤ 0).
+ */
+export function marcarItensFaturaComoPagos(
+  ds: Dataset,
+  input: PagamentoItensFatura,
+): Op<{ itens: Despesa[]; liquido: number }> {
+  const escolhido = ds.cartoes.find((c) => c.id === input.cartaoId);
+  if (!escolhido) return erro("Cartão não encontrado.");
+  const grupo = cartoesDoGrupo(escolhido, ds.cartoes);
+  const idsGrupo = new Set(grupo.map((c) => c.id));
+  const selecionados = new Set(input.itemIds);
+  if (selecionados.size === 0) return erro("Selecione ao menos um item para marcar como pago.");
+  const porId = new Map(ds.despesas.map((d) => [d.id, d]));
+  const itens: Despesa[] = [];
+  for (const id of selecionados) {
+    const d = porId.get(id);
+    if (!d) return erro("Algum item selecionado não existe mais.");
+    const cid = cartaoIdDe(d);
+    if (cid === null || !idsGrupo.has(cid)) return erro("Algum item selecionado não pertence a este cartão.");
+    if (d.pago) return erro("Algum item selecionado já está pago.");
+    itens.push(d);
+  }
+  let cents = 0;
+  for (const d of itens) cents += d.tipo === "DEBITO" ? toCents(d.valor) : -toCents(d.valor);
+  const despesas = ds.despesas.map((d) => (selecionados.has(d.id) ? { ...d, pago: true } : d));
+  return finaliza({ ...ds, despesas }, { itens: itens.map((d) => ({ ...d, pago: true })), liquido: fromCents(cents) });
+}
+
 /** Paga a fatura única do grupo (R18); aceita o id de qualquer cartão do grupo. */
 export function pagarFatura(ds: Dataset, cartaoId: number, mes: number, ano: number, ctx: Ctx): Op<{ pagamento: Despesa }> {
   const escolhido = ds.cartoes.find((c) => c.id === cartaoId);
