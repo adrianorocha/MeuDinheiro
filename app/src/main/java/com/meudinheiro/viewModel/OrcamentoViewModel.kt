@@ -3,7 +3,7 @@ package com.meudinheiro.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.data.OrcamentoProgresso
-import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.domain.Financas
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,48 +17,29 @@ import java.util.Calendar
 
 class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
 
-    // 1. Pegamos o mês atual para filtrar as despesas do orçamento
-    private val calendar = Calendar.getInstance()
-    private val mesAtual = calendar.get(Calendar.MONTH) // 0 a 11
-    private val anoAtual = calendar.get(Calendar.YEAR)
-
-    // 2. Fluxo de Orçamentos (Vem do Banco)
     private val orcamentosFlow = repository.obterOrcamentosFlow()
 
-    // 3. Fluxo de Despesas (Vem do Banco e filtramos o mês atual aqui)
-    private val despesasDoMesFlow = repository.todasDespesasFlow
-        .map { lista ->
-            lista.filter { despesa ->
-                val calDespesa = Calendar.getInstance()
-                calDespesa.time = despesa.data
-
-                calDespesa.get(Calendar.MONTH) == mesAtual &&
-                        calDespesa.get(Calendar.YEAR) == anoAtual &&
-                        despesa.tipo == TipoDespesa.DEBITO
-            }
-        }
-
-    // 4. COMBINE: Cruza os dois fluxos
+    /**
+     * R13 — gasto do mês corrente por categoria (despesas NORMAIS, inclusive compras no cartão, menos
+     * estornos). O mês é resolvido a cada emissão, então a tela vira sozinha na virada do mês.
+     */
     val orcamentosComProgresso: StateFlow<List<OrcamentoProgresso>> = combine(
         orcamentosFlow,
-        despesasDoMesFlow
-    ) { listaOrcamentos, listaDespesas ->
+        repository.todasDespesasFlow
+    ) { listaOrcamentos, despesas ->
+        val agora = System.currentTimeMillis()
+        val mes = Financas.mesDe(agora)
+        val ano = Financas.anoDe(agora)
+        val inicio = Financas.inicioDoMes(mes, ano)
+        val fim = Financas.fimDoMes(mes, ano)
 
         listaOrcamentos.map { orcamento ->
-            // Para cada orçamento, somamos as despesas daquela categoria
-            val gastoTotal = listaDespesas
-                .filter { it.categoria == orcamento.categoria }
-                .sumOf { it.valor }
-
-            val porcentagem = if (orcamento.valorLimite > 0) {
-                (gastoTotal / orcamento.valorLimite).toFloat()
-            } else 0f
-
+            val p = Financas.progressoOrcamento(orcamento.categoria, orcamento.valorLimite, despesas, inicio, fim)
             OrcamentoProgresso(
                 categoria = orcamento.categoria,
-                limite = orcamento.valorLimite,
-                gastoAtual = gastoTotal,
-                porcentagem = porcentagem
+                limite = p.limite,
+                gastoAtual = p.gasto,
+                porcentagem = p.percentual.toFloat()
             )
         }
     }.stateIn(

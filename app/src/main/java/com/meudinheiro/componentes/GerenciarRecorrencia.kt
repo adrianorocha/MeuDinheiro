@@ -1,5 +1,7 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -65,6 +67,9 @@ fun GerenciarRecorrenciaDialog(
     onDismiss: () -> Unit
 ) {
     val recorrencias by viewModel.recorrencias.collectAsState()
+    val (nomesContas, nomesCartoes) = viewModel.origensRecorrencia.collectAsState().value
+    val contas by viewModel.contasParaRecorrencia.collectAsState()
+    val cartoes by viewModel.cartoesParaRecorrencia.collectAsState()
 
     // Carrega os dados ao abrir o dialog
     LaunchedEffect(Unit) {
@@ -128,6 +133,11 @@ fun GerenciarRecorrenciaDialog(
                         items(recorrencias) { item ->
                             RecorrenciaItem(
                                 item = item,
+                                origem = item.cartaoId?.let { "💳 " + (nomesCartoes[it] ?: "cartão") }
+                                    ?: ("🏦 " + (nomesContas[item.conta] ?: item.conta)),
+                                contas = contas,
+                                cartoes = cartoes,
+                                onAlterarOrigem = { conta, cartaoId -> viewModel.alterarOrigemRecorrencia(item.id, conta, cartaoId) },
                                 onCancelar = { viewModel.cancelarRecorrencia(item.id) }
                             )
                         }
@@ -141,9 +151,42 @@ fun GerenciarRecorrenciaDialog(
 @Composable
 private fun RecorrenciaItem(
     item: DespesaFixa,
+    origem: String,
+    contas: List<com.meudinheiro.data.ContaSaldo>,
+    cartoes: List<com.meudinheiro.data.Cartao>,
+    onAlterarOrigem: (conta: String?, cartaoId: Int?) -> Unit,
     onCancelar: () -> Unit
 ) {
     var showConfirm by remember { mutableStateOf(false) }
+    var showOrigem by remember { mutableStateOf(false) }
+
+    if (showOrigem) {
+        AlertDialog(
+            onDismissRequest = { showOrigem = false },
+            containerColor = DialogBg,
+            title = { Text("Pagar com…", color = TextWhite) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Conta bancária (débito)", color = TextWhite.copy(0.5f), style = MaterialTheme.typography.labelSmall)
+                    contas.forEach { c ->
+                        TextButton(onClick = { showOrigem = false; onAlterarOrigem(c.conta, null) }) {
+                            Text((if (item.cartaoId == null && item.conta == c.conta) "✓ " else "") + "🏦 ${c.banco} · ${c.conta}", color = TextWhite)
+                        }
+                    }
+                    Text("Cartão (fatura) — físico ou virtual", color = TextWhite.copy(0.5f), style = MaterialTheme.typography.labelSmall)
+                    cartoes.forEach { c ->
+                        TextButton(onClick = { showOrigem = false; onAlterarOrigem(null, c.id) }) {
+                            Text(
+                                (if (item.cartaoId == c.id) "✓ " else "") + "💳 ${c.nome} ••${c.finalCartao}" + if (c.cartaoPrincipalId != null) " (virtual)" else "",
+                                color = TextWhite
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showOrigem = false }) { Text("Fechar", color = TextWhite) } }
+        )
+    }
     val context = LocalContext.current
 
     // Tenta pegar o ícone
@@ -224,6 +267,12 @@ private fun RecorrenciaItem(
                         color = TextWhite.copy(alpha = 0.6f)
                     )
                 }
+                Text(
+                    text = "$origem  ·  alterar",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF00E5FF),
+                    modifier = Modifier.clickable { showOrigem = true }.padding(top = 2.dp)
+                )
             }
 
             // Valor e Delete

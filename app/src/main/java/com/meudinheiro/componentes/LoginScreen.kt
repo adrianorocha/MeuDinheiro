@@ -136,8 +136,12 @@ fun LoginScreen(
         val biometricPrompt = BiometricPrompt(activity, executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    recoveredPassword = savedPass
-                    recoveryStep = 1
+                    // A senha agora é guardada como hash (irrecuperável): a identidade confirmada pela
+                    // biometria libera o acesso e a senha pode ser redefinida em Perfil.
+                    showRecoveryDialog = false
+                    recoveryStep = 0
+                    mostrarMensagem("Identidade confirmada. Redefina sua senha em Perfil.")
+                    onLoginSuccess()
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     mostrarMensagem("Falha: $errString")
@@ -214,8 +218,14 @@ fun LoginScreen(
                         when {
                             !hasUser -> mostrarMensagem("Atenção: Nenhum usuário cadastrado.")
                             username.isBlank() || password.isBlank() -> mostrarMensagem("Preencha todos os campos!")
-                            username.trim() != savedUser.trim() || password != savedPass -> mostrarMensagem("Erro: Usuário ou senha inválidos.")
-                            else -> onLoginSuccess()
+                            else -> scope.launch {
+                                val senhaOk = userPrefs.verificarSenha(password)
+                                if (username.trim() != savedUser.trim() || !senhaOk) {
+                                    mostrarMensagem("Erro: Usuário ou senha inválidos.")
+                                } else {
+                                    onLoginSuccess()
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -325,7 +335,7 @@ fun DialogRecuperacao(
         text = {
             Column {
                 if (step == 0) {
-                    Text("Para sua segurança, autentique-se com a biometria para visualizar sua senha salva.", color = Color.White.copy(0.8f))
+                    Text("Por segurança sua senha é guardada criptografada e não pode ser exibida. Confirme sua identidade com a biometria para entrar e redefinir a senha em Perfil.", color = Color.White.copy(0.8f))
                 } else {
                     Text("Sua senha atual é:", color = Color.White.copy(0.6f))
                     Spacer(Modifier.height(8.dp))

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -55,7 +56,6 @@ import com.meudinheiro.componentes.SplashScreen
 import com.meudinheiro.componentes.SystemBootSplashScreen // 🚀 IMPORT NOVO
 import com.meudinheiro.componentes.BotaGlassmorphic
 import com.meudinheiro.componentes.PremiumDialogCard
-import com.meudinheiro.funcoes.NotificacaoVIPHelper
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.AgendadorNotifDespesas
 import com.meudinheiro.notif.BackupReminderWorker
@@ -76,8 +76,7 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
 
         // 1. Configuração de Canais de Notificação
-        NotificacaoVIPHelper.criarCanalDeNotificacao(this)
-        criarCanalNotificacao(this)
+        com.meudinheiro.notif.Notificacoes.criarCanais(this)
 
         // 2. Agendamento de Workers e Lembretes
         val tarefaPeriodica = PeriodicWorkRequestBuilder<TransferenciaWorker>(12, TimeUnit.HOURS)
@@ -91,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         agendarLembreteBackupSemanal(this)
+        lifecycleScope.launch(Dispatchers.IO) { runCatching { com.meudinheiro.worker.BackupAutomatico.sincronizarAgendamento(applicationContext) } }
 
         // 3. Ativa o verificador diário (Coroutine atrelada à Activity)
         ativarNotificacoesDiarias()
@@ -101,12 +101,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        tratarAcaoDoIntent()
+    }
+
     override fun onResume() {
         super.onResume()
-        // Captura a ação vinda do Widget
-        if (intent?.action == "ACTION_QUICK_ADD") {
-            // Limpa a action para não reabrir ao girar a tela
-            intent.action = null
+        tratarAcaoDoIntent()
+    }
+
+    /** Ação vinda do widget ou do atalho do launcher ("Nova despesa"); consumida uma única vez. */
+    private fun tratarAcaoDoIntent() {
+        if (intent?.action == AtalhosApp.ACAO_NOVA_DESPESA) {
+            AtalhosApp.pedirNovaDespesa()
+            intent.action = null // não reabre ao girar a tela
         }
     }
 
@@ -319,18 +329,4 @@ fun agendarLembreteBackupSemanal(context: Context) {
         ExistingPeriodicWorkPolicy.KEEP,
         request
     )
-}
-
-private fun criarCanalNotificacao(context: Context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = NotificationChannel(
-            "backup_channel",
-            "Lembretes de Backup",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply { description = "Notificações para manter seus dados seguros" }
-
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
-    }
 }

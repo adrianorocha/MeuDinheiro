@@ -3,6 +3,7 @@ package com.meudinheiro.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.data.DespesasDomain
+import com.meudinheiro.domain.Financas
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -121,29 +122,20 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
 
     fun removerDespesaComRestituicao(id: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.excluirDespesaComRestituicao(id)
-            // Não precisa recarregar nada manualmente, o Flow (obterDespesas) avisa o combine automaticamente
+            // O Flow de despesas reemite sozinho; saldo/limite são recalculados na mesma transação.
+            runCatching { repository.excluirLancamento(id.toLong()) }
         }
     }
 
+    /** Total de despesas (R5) de um mês 1–12. */
     fun getTotalPorMesEAno(mes: Int, ano: Int): Flow<Double> {
         return repository.getTotalDespesasPorPeriodo(mes, ano)
     }
 
+    /** [mesAtual] é 0–11 (Calendar.MONTH), como o restante desta ViewModel. */
     fun getDespesaMesAnterior(mesAtual: Int, anoAtual: Int): Flow<Double> {
-        // Lógica para retroceder o mês
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.YEAR, anoAtual)
-            set(Calendar.MONTH, mesAtual - 1)
-            add(Calendar.MONTH, -1)
-        }
-
-        val mesAnterior = calendar.get(Calendar.MONTH) + 1
-        val anoAnterior = calendar.get(Calendar.YEAR)
-
-        // O erro do 'it' acontece se você não usar as chaves {} corretamente no map
-        return repository.getTotalDespesasPorPeriodo(mesAnterior, anoAnterior)
-            .map { valor -> valor ?: 0.0 } // Use 'valor ->' em vez de 'it' para ser mais claro
+        val anterior = Financas.FaturaRef(mesAtual + 1, anoAtual).anterior()
+        return repository.getTotalDespesasPorPeriodo(anterior.mes, anterior.ano)
     }
 
     fun setMes(mes: Int) {

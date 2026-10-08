@@ -1,5 +1,6 @@
 package com.meudinheiro.componentes
 
+import androidx.compose.foundation.horizontalScroll
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -350,6 +351,8 @@ private fun DepositDialog(
 ) {
     var valor by rememberSaveable { mutableStateOf("") }
     val dataMillis = remember { mutableStateOf(System.currentTimeMillis()) }
+    val depositoContext = LocalContext.current
+    val exigirBioDeposito by remember { com.meudinheiro.funcoes.UserPreferences(depositoContext).biometriaLancarFlow }.collectAsState(initial = true)
     var mostrarCalendario by remember { mutableStateOf(false) }
 
     if (mostrarCalendario) {
@@ -429,16 +432,18 @@ private fun DepositDialog(
                                 pic = "deposit",
                                 conta = contaSelecionada,
                                 tipo = TipoDespesa.CREDITO,
-                                pago = true,
+                                pago = dataMillis.value <= System.currentTimeMillis(), // depósito futuro só entra no saldo na data
                                 mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                                 ano = Calendar.getInstance().get(Calendar.YEAR)
                             )
-                            viewModel.adicionarDespesa(dep)
-                            parentScope.launch {
-                                delay(200)
-                                viewModel.carregarResumoFinanceiro()
+                            autenticarParaLancar(depositoContext, exigirBioDeposito, "Confirmar depósito", "Autentique para lançar o depósito") {
+                                viewModel.adicionarDespesa(dep)
+                                parentScope.launch {
+                                    delay(200)
+                                    viewModel.carregarResumoFinanceiro()
+                                }
+                                onDismiss()
                             }
-                            onDismiss()
                         }
                     }
                 )
@@ -459,7 +464,8 @@ fun AddDespesaDialog(
     viewModel: ContaSaldoViewModel,
     cartoesViewModel: CartoesViewModel,
     parentScope: CoroutineScope,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    historico: List<Despesa> = emptyList()
 ) {
     val currentContext = LocalContext.current
     val scrollState = rememberScrollState()
@@ -472,14 +478,28 @@ fun AddDespesaDialog(
     var categoriaSelecionada by remember { mutableStateOf(categorias.firstOrNull()) }
     var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
     var descricao by rememberSaveable { mutableStateOf("") }
-    var valorTexto by rememberSaveable { mutableStateOf(if (valorInicial > 0) valorInicial.toString() else "") }
+    var valorTexto by rememberSaveable { mutableStateOf(if (valorInicial > 0) Math.round(valorInicial * 100).toString() else "") }
     var numeroParcelas by rememberSaveable { mutableStateOf("2") }
     var moedaSelecionada by remember { mutableStateOf("BRL") }
     var cotacaoTexto by remember { mutableStateOf("1.00") }
 
     val mostrarCalendario = remember { mutableStateOf(false) }
     val dataMillis = remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
+    val exigirBio by remember { com.meudinheiro.funcoes.UserPreferences(currentContext).biometriaLancarFlow }.collectAsState(initial = true)
     var erros by remember { mutableStateOf(mapOf<String, String>()) }
+
+    // R21: lançamentos recentes (1 toque para repetir) e categoria sugerida pelo histórico.
+    val recentes = remember(historico) {
+        historico.filter { it.natureza == com.meudinheiro.domain.Natureza.NORMAL && it.tipo == TipoDespesa.DEBITO }
+            .sortedByDescending { it.dataMs }
+            .distinctBy { com.meudinheiro.domain.Texto.normalizar(it.descricao.replace(Regex("\\(\\d+/\\d+\\)"), "")) }
+            .take(6)
+    }
+    val categoriaSugerida = remember(descricao, historico, categorias) {
+        if (descricao.trim().length < 3) null
+        else com.meudinheiro.domain.Analises.sugerirCategoria(descricao, historico)
+            ?.let { s -> categorias.firstOrNull { it.equals(s, ignoreCase = true) } }
+    }
 
     var observacao by remember { mutableStateOf(if (codigoBarras.isNotEmpty()) "Boleto: $codigoBarras" else "") }
 
@@ -556,6 +576,25 @@ fun AddDespesaDialog(
 
                             FrequenciaSelector(frequencia) { frequencia = it }
 
+                            if (recentes.isNotEmpty() && descricao.isBlank() && valorTexto.isBlank()) {
+                                Text("Recentes", color = Color.White.copy(0.5f), fontSize = 11.sp)
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    recentes.forEach { r ->
+                                        androidx.compose.material3.AssistChip(
+                                            onClick = {
+                                                descricao = r.descricao.replace(Regex("\\s*\\(\\d+/\\d+\\)"), "").trim()
+                                                valorTexto = Math.round(r.valor * 100).toString()
+                                                categorias.firstOrNull { it.equals(r.categoria, ignoreCase = true) }?.let { categoriaSelecionada = it }
+                                            },
+                                            label = { Text(r.descricao.take(16), fontSize = 12.sp) }
+                                        )
+                                    }
+                                }
+                            }
+
                             ValueSection(
                                 moeda = moedaSelecionada,
                                 valor = valorTexto,
@@ -578,6 +617,13 @@ fun AddDespesaDialog(
                                     it,
                                     color = Color(0xFFFF8A80),
                                     fontSize = 10.sp
+                                )
+                            }
+
+                            if (categoriaSugerida != null && !categoriaSugerida.equals(categoriaSelecionada, ignoreCase = true)) {
+                                androidx.compose.material3.AssistChip(
+                                    onClick = { categoriaSelecionada = categoriaSugerida },
+                                    label = { Text("Sugestão: $categoriaSugerida — usar", fontSize = 12.sp) }
                                 )
                             }
 
@@ -633,12 +679,16 @@ fun AddDespesaDialog(
                                             pic = getPicCategoria(categoriaSelecionada!!),
                                             conta = contaAtual,
                                             tipo = TipoDespesa.DEBITO,
-                                            pago = (formaPagamento == "CONTA"),
+                                            pago = (formaPagamento == "CONTA" && dataMillis.value!! <= System.currentTimeMillis()),
+                                            valorOriginal = vOriginal,
+                                            moedaOriginal = moedaSelecionada,
+                                            cotacaoNaData = vCotacao,
                                             mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                                             ano = Calendar.getInstance().get(Calendar.YEAR),
                                             cartaoId = idDoCartaoParaSalvar
                                         )
 
+                                        autenticarParaLancar(currentContext, exigirBio, "Confirmar lançamento", "Autentique para lançar esta despesa") {
                                         parentScope.launch {
                                             when (frequencia) {
                                                 Frequencia.UNICA -> viewModel.adicionarDespesa(desp)
@@ -656,13 +706,6 @@ fun AddDespesaDialog(
                                                 )
                                             }
 
-                                            if (formaPagamento == "CARTAO" && idDoCartaoParaSalvar != null) {
-                                                cartoesViewModel.abaterLimite(
-                                                    idDoCartaoParaSalvar,
-                                                    vFinalBRL
-                                                )
-                                            }
-
                                             mostrarSucesso = true
                                             delay(100)
                                             compartilharComprovante(
@@ -672,6 +715,7 @@ fun AddDespesaDialog(
                                                 contaAtual
                                             )
                                             onDismiss()
+                                        }
                                         }
                                     }
                                 }

@@ -9,5 +9,7 @@ data class Meta(
     val nome: String,
     val valorObjetivo: Double,
     val valorGuardado: Double,
-    val icone: String = "ic_savings" // Podemos usar para ícones diferentes
+    val icone: String = "ic_savings", // Podemos usar para ícones diferentes
+    /** Prazo da meta (epoch ms) — habilita "quanto aportar por mês" (R27). */
+    val dataAlvo: Long? = null
 )

@@ -22,7 +22,7 @@ class PagarBoletoReceiver : BroadcastReceiver() {
             // 1. A MÁGICA PARA FECHAR A NOTIFICAÇÃO
             // Como usamos o ID do boleto para criar a notificação, usamos ele para cancelar
             val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.cancel(idBoleto)
+            manager.cancel(com.meudinheiro.notif.Notificacoes.TAG, idBoleto)
 
             CoroutineScope(Dispatchers.IO).launch {
                 try {

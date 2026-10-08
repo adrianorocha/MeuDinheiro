@@ -4,8 +4,11 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.meudinheiro.funcoes.NotificacaoVIPHelper
+import com.meudinheiro.notif.Aviso
+import com.meudinheiro.notif.Notificacoes
+import com.meudinheiro.notif.TipoAviso
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.repository.ResultadoAgendamento
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -43,31 +46,36 @@ class TransferenciaWorker(
                     Log.d("BluMacaw_Worker", "Rotina Diária: Processando ${agendamentos.size} agendamento(s).")
 
                     agendamentos.forEach { agendamento ->
-                        // 2. Executa a movimentação no cofre
-                        repository.transferirEntreContas(
-                            origem = agendamento.contaOrigem,
-                            destino = agendamento.contaDestino,
-                            valor = agendamento.valor
-                        )
+                        val valorFormatado = formatarMoedaBR(agendamento.valor, false)
 
-                        // 3. Carimba como "Resolvido" para não duplicar envios
-                        repository.marcarAgendamentoComoExecutado(agendamento.id)
+                        // 2. Executa a transferência de verdade (R9): só é marcada como executada se
+                        //    houve saldo; antes era carimbada como "resolvida" mesmo quando falhava.
+                        when (val resultado = repository.executarAgendamento(agendamento)) {
+                            is ResultadoAgendamento.Executado -> {
+                                Notificacoes.mostrar(
+                                    applicationContext,
+                                    Aviso(
+                                        tipo = TipoAviso.SUCESSO, titulo = "Transferência concluída",
+                                        resumo = "$valorFormatado enviado para a conta ${agendamento.contaDestino}.",
+                                        id = 300_000 + agendamento.id, textoPublico = "Transferência concluída"
+                                    )
+                                )
+                                Log.d("BluMacaw_Worker", "Sucesso Diário: $valorFormatado de ${agendamento.contaOrigem} para ${agendamento.contaDestino}")
+                            }
 
-                        // Formatação Premium
-                        val valorFormatado = formatarMoedaBR(agendamento.valor,false)
-
-
-                        // 4. Dispara o Feedback VIP no A56
-                        NotificacaoVIPHelper.enviarAlertaVencimento(
-                            context = applicationContext,
-                            textoBadge = "SUCESSO",
-                            titulo = "Transferência Concluída 🔄",
-                            mensagemCurta = "$valorFormatado enviado com sucesso.",
-                            detalhes = "A sua transferência automática para a conta '${agendamento.contaDestino}' foi realizada pelo motor Blu Macaw. Valor processado: $valorFormatado.",
-                            notificacaoId = agendamento.id
-                        )
-
-                        Log.d("BluMacaw_Worker", "Sucesso Diário: $valorFormatado de ${agendamento.contaOrigem} para ${agendamento.contaDestino}")
+                            is ResultadoAgendamento.Falhou -> {
+                                Notificacoes.mostrar(
+                                    applicationContext,
+                                    Aviso(
+                                        tipo = TipoAviso.FALHA, titulo = "Transferência não realizada",
+                                        resumo = "$valorFormatado não foi transferido.",
+                                        linhas = listOf("${resultado.motivo} O agendamento continua pendente e será tentado novamente."),
+                                        id = 300_000 + agendamento.id, textoPublico = "Transferência não realizada"
+                                    )
+                                )
+                                Log.w("BluMacaw_Worker", "Agendamento ${agendamento.id} não executado: ${resultado.motivo}")
+                            }
+                        }
                     }
                 }
 
@@ -84,13 +92,13 @@ class TransferenciaWorker(
 
 
                     // Apenas dispara a notificação, pois o ViewModel já salvou no banco
-                    NotificacaoVIPHelper.enviarAlertaVencimento(
-                        context = applicationContext,
-                        textoBadge = "REGISTRADO",
-                        titulo = "Transação Salva ✅",
-                        mensagemCurta = "$valorFormatado registrado.",
-                        detalhes = "A sua transação no valor de $valorFormatado envolvendo '$destino' foi guardada com sucesso no app.",
-                        notificacaoId = id
+                    Notificacoes.mostrar(
+                        applicationContext,
+                        Aviso(
+                            tipo = TipoAviso.SUCESSO, titulo = "Transação salva",
+                            resumo = "$valorFormatado registrado em $destino.", id = 400_000 + id,
+                            textoPublico = "Transação salva"
+                        )
                     )
 
                     Log.d("BluMacaw_Worker", "Sucesso Imediato: Recibo disparado para a transação $id")

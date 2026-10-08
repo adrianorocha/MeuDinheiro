@@ -211,9 +211,11 @@ fun PendenciasScreen(
                             item = item,
                             onBaixar = {
                                 scope.launch {
-                                    repository.atualizarStatusPago(item.id.toLong(), true)
-                                    repository.recalcularSaldoTotal(item.conta)
-                                    contaVM.carregarResumoFinanceiro()
+                                    try {
+                                        withContext(Dispatchers.IO) { repository.baixarPendencia(item) }
+                                    } catch (e: com.meudinheiro.repository.RegraFinanceiraException) {
+                                        android.widget.Toast.makeText(context, e.message, android.widget.Toast.LENGTH_LONG).show()
+                                    }
                                     carregarDados()
                                 }
                             }

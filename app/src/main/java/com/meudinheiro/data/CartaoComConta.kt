@@ -11,5 +11,9 @@ data class CartaoComConta(
     val diaVencimento: Int,
     val contaId: Int,
     val nomeConta: String, // 📍 O nome do banco que virá pelo JOIN
-    val numeroConta: String
-)
+    val numeroConta: String,
+    val cartaoPrincipalId: Int? = null
+) {
+    val ehVirtual: Boolean get() = cartaoPrincipalId != null
+    val idDoGrupo: Int get() = cartaoPrincipalId ?: id
+}

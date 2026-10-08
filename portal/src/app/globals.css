@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+/* Tokens de cor (claro). Escuro: prefers-color-scheme + override manual por data-theme. */
+:root {
+  color-scheme: light;
+  --bg: #f3f7f7;
+  --surface: #ffffff;
+  --surface-2: #eaf1f1;
+  --line: #d3dfdf;
+  --fg: #0f1f1f;
+  --muted: #4d6265;
+  --primary: #0f766e;
+  --primary-hover: #0b5f58;
+  --primary-fg: #ffffff;
+  --primary-soft: #d6efec;
+  --accent: #0e7490;
+  --pos: #15803d;
+  --neg: #b91c1c;
+  --warn: #a15207;
+  --pos-soft: #dcf5e4;
+  --neg-soft: #fbe1e1;
+  --warn-soft: #fcefd2;
+  --ring: #0e7490;
+  --c1: #0f766e;
+  --c2: #0e7490;
+  --c3: #6366f1;
+  --c4: #d97706;
+  --c5: #be185d;
+  --c6: #65a30d;
+  --c7: #7c3aed;
+  --c8: #64748b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0a1415;
+    --surface: #101d1f;
+    --surface-2: #17292b;
+    --line: #26393b;
+    --fg: #e5f1f0;
+    --muted: #9ab3b6;
+    --primary: #2dd4bf;
+    --primary-hover: #5eead4;
+    --primary-fg: #04201d;
+    --primary-soft: #12363a;
+    --accent: #38bdf8;
+    --pos: #4ade80;
+    --neg: #f87171;
+    --warn: #fbbf24;
+    --pos-soft: #12301d;
+    --neg-soft: #3a1717;
+    --warn-soft: #382a0c;
+    --ring: #38bdf8;
+    --c1: #2dd4bf;
+    --c2: #38bdf8;
+    --c3: #a5b4fc;
+    --c4: #fbbf24;
+    --c5: #f472b6;
+    --c6: #a3e635;
+    --c7: #c4b5fd;
+    --c8: #94a3b8;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a1415;
+  --surface: #101d1f;
+  --surface-2: #17292b;
+  --line: #26393b;
+  --fg: #e5f1f0;
+  --muted: #9ab3b6;
+  --primary: #2dd4bf;
+  --primary-hover: #5eead4;
+  --primary-fg: #04201d;
+  --primary-soft: #12363a;
+  --accent: #38bdf8;
+  --pos: #4ade80;
+  --neg: #f87171;
+  --warn: #fbbf24;
+  --pos-soft: #12301d;
+  --neg-soft: #3a1717;
+  --warn-soft: #382a0c;
+  --ring: #38bdf8;
+  --c1: #2dd4bf;
+  --c2: #38bdf8;
+  --c3: #a5b4fc;
+  --c4: #fbbf24;
+  --c5: #f472b6;
+  --c6: #a3e635;
+  --c7: #c4b5fd;
+  --c8: #94a3b8;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --color-warn: var(--warn);
+  --color-pos-soft: var(--pos-soft);
+  --color-neg-soft: var(--neg-soft);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+dialog.modal {
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--fg);
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+}
+
+dialog.modal::backdrop {
+  background: rgb(5 15 16 / 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

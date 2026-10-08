@@ -96,6 +96,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.domain.Financas
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.Haptics // Nosso motor de vibração
 import com.meudinheiro.viewModel.CartoesViewModel
@@ -163,26 +164,22 @@ fun CartoesScreen(
         derivedStateOf {
             val cartao = listaCartoes.getOrNull(paginaAtual)
             if (cartao == null) null else {
-                val diaF = if (cartao.diaVencimento > 7) cartao.diaVencimento - 7 else 25
-                val cal = Calendar.getInstance().apply { add(Calendar.MONTH, mesFaturaOffset) }
-                val mAlvo = cal.get(Calendar.MONTH)
-                val aAlvo = cal.get(Calendar.YEAR)
-
-                val filtradas = despesasDoCartaoAtual.filter { d ->
-                    val (m, a) = calcularFaturaDaDespesa(d.data, diaF)
-                    m == mAlvo && a == aAlvo
-                }.sortedByDescending { it.data }
-
-                val pendentes = filtradas.filter { !it.pago }
-
+                // R6: usa o fechamento REAL do cartão (antes era "vencimento − 7", ignorando o cadastro).
+                val aberta = Financas.faturaDaCompra(System.currentTimeMillis(), cartao.diaFechamento)
+                val ref = aberta.deslocar(mesFaturaOffset)
+                // R18: fatura única do grupo (físico + virtuais).
+                val idsGrupo = listaCartoes.filter { it.idDoGrupo == cartao.idDoGrupo }.map { it.id }.toSet()
+                val resumo = Financas.resumoFatura(
+                    idsGrupo, cartao.diaFechamento, cartao.diaVencimento, despesasDoCartaoAtual, ref
+                )
                 EstadoFatura(
-                    lista = filtradas,
-                    total = filtradas.sumOf { it.valor },
-                    totalPendente = pendentes.sumOf { it.valor },
-                    jaPaga = filtradas.isNotEmpty() && pendentes.isEmpty(),
-                    mesNome = mesesNomes[mAlvo],
-                    diaFechamento = diaF,
-                    dataReferencia = cal.time
+                    lista = resumo.itens,
+                    total = resumo.total,
+                    totalPendente = resumo.pendente,
+                    jaPaga = resumo.paga,
+                    mesNome = mesesNomes[ref.mes - 1],
+                    diaFechamento = Financas.diaDeFechamento(cartao.diaFechamento, ref),
+                    dataReferencia = Date(Financas.inicioDoMes(ref.mes, ref.ano))
                 )
             }
         }
@@ -342,7 +339,7 @@ fun CartoesScreen(
                             onClick = {
                                 exibirConfirmacao = false
                                 processandoPagamento = true
-                                viewModel.pagarFatura(listaCartoes[paginaAtual], fatura.totalPendente, fatura.dataReferencia)
+                                viewModel.pagarFatura(listaCartoes[paginaAtual], fatura.dataReferencia)
                                 Haptics.vibrar(context, "sucesso")
                             }
                         ) { Text("Confirmar", color = DeepSpaceBlue, fontWeight = FontWeight.Bold) }
@@ -354,7 +351,11 @@ fun CartoesScreen(
             }
 
             if (showBottomSheet) {
-                FormularioCartaoBottomSheet(listaContas, { showBottomSheet = false }) { novo ->
+                FormularioCartaoBottomSheet(
+                    contasDisponiveis = listaContas,
+                    cartoesFisicos = listaCartoes.filter { !it.ehVirtual },
+                    onDismiss = { showBottomSheet = false }
+                ) { novo ->
                     viewModel.salvarCartao(novo)
                 }
             }
@@ -465,7 +466,7 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp
                             )
-                            Text(cartao.tipo, color = corBorda, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text(if (cartao.ehVirtual) "VIRTUAL · ${cartao.tipo}" else cartao.tipo, color = corBorda, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                         }
                         Text("🏦 ${cartao.nomeConta}", color = Color.White.copy(0.5f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     }
@@ -572,22 +573,6 @@ fun EstadoVazioCartoes() {
         Text("SISTEMA OFFLINE", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         Text("Adicione seus cartões para habilitar o monitoramento holográfico de faturas.", color = Color.White.copy(0.5f), fontSize = 12.sp, textAlign = TextAlign.Center, fontFamily = FontFamily.Monospace)
     }
-}
-
-fun calcularFaturaDaDespesa(dataCompra: Date, diaFechamento: Int?): Pair<Int, Int> {
-    val cal = Calendar.getInstance().apply { time = dataCompra }
-    val dia = cal.get(Calendar.DAY_OF_MONTH)
-    var mes = cal.get(Calendar.MONTH)
-    var ano = cal.get(Calendar.YEAR)
-
-    if (dia > diaFechamento!!) {
-        mes += 1
-        if (mes > 11) {
-            mes = 0
-            ano += 1
-        }
-    }
-    return Pair(mes, ano)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.PriorityHigh
@@ -74,6 +75,7 @@ fun HeaderSection(
     hasUnreadNotifications: Boolean = false,
     notificationCount: Int = 0,
     onNotificationsClick: () -> Unit = {},
+    onToolsClick: (() -> Unit)? = null,
     receitaTotal: Double = 0.0,
     despesaTotal: Double = 0.0,
     isPrivateMode: Boolean = false,
@@ -147,6 +149,23 @@ fun HeaderSection(
                     }
 
                     Spacer(Modifier.width(8.dp))
+
+                    if (onToolsClick != null) {
+                        PremiumIconButton(
+                            contentDescription = "Ferramentas",
+                            showBadge = false,
+                            badgeCount = 0,
+                            onClick = onToolsClick
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Rounded.Apps,
+                                contentDescription = null,
+                                tint = TextWhite,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
 
                     if (showNotifications) {
                         PremiumIconButton(

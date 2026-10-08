@@ -147,12 +147,15 @@ fun Configuracao(
     val minute by userPrefs.notifMinuteFlow.collectAsState(initial = 0)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
     val biometriaEnabled by userPrefs.biometriaEnabledFlow.collectAsState(initial = true)
+    val biometriaLancar by userPrefs.biometriaLancarFlow.collectAsState(initial = true)
 
     val listaDespesas by despesasVM.despesasFiltradas.collectAsState()
     val mesIndex by despesasVM.mesSelecionado.collectAsState()
     val anoAtual by despesasVM.anoSelecionado.collectAsState()
 
     var exibirAlertaExclusao by remember { mutableStateOf(false) }
+    val modoArmazenamentoAtual by (context.applicationContext as com.meudinheiro.MyApplication).storageManager.modo
+        .collectAsState(initial = com.meudinheiro.storage.StorageMode.LOCAL)
 
     val nomesMeses = remember {
         listOf(
@@ -359,6 +362,13 @@ fun Configuracao(
                                 }
                             }
                         )
+                        ConfiguracaoSwitchItem(
+                            icone = Icons.Default.Fingerprint,
+                            titulo = "Biometria para lançar",
+                            descricao = if (biometriaLancar) "Pede digital/PIN ao lançar no app e no widget" else "Lança sem pedir confirmação",
+                            checked = biometriaLancar,
+                            onCheckedChange = { isChecked -> scope.launch { userPrefs.saveBiometriaLancar(isChecked) } }
+                        )
                     }
                 }
 
@@ -449,6 +459,17 @@ fun Configuracao(
                                 padding = PaddingValues(0.dp)
                             )
                         }
+                    }
+                }
+
+                // SEÇÃO: ONDE OS DADOS SÃO GRAVADOS (celular × Firebase)
+                item { SectionTitle("ARMAZENAMENTO DE DADOS", NeonCyan) }
+                item {
+                    PremiumConfigCard {
+                        ArmazenamentoCard(
+                            storage = (context.applicationContext as com.meudinheiro.MyApplication).storageManager,
+                            onMensagem = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+                        )
                     }
                 }
 
@@ -591,6 +612,7 @@ fun Configuracao(
         }
         if (exibirAlertaExclusao) {
             DialogDestruicaoTotal(
+                nuvemAtiva = modoArmazenamentoAtual == com.meudinheiro.storage.StorageMode.FIREBASE,
                 onCancel = { exibirAlertaExclusao = false },
                 onConfirm = {
                     exibirAlertaExclusao = false
@@ -622,7 +644,7 @@ fun Configuracao(
 // --- SUB-COMPONENTES VISUAIS BLU MACAW ---
 
 @Composable
-private fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
+internal fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
     Text(
         text,
         fontSize = 12.sp,
@@ -634,7 +656,7 @@ private fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
 }
 
 @Composable
-private fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
+internal fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -840,7 +862,7 @@ private fun StepperButton(text: String, onClick: () -> Unit, enabled: Boolean = 
 }
 
 @Composable
-private fun DialogDestruicaoTotal(onCancel: () -> Unit, onConfirm: () -> Unit) {
+private fun DialogDestruicaoTotal(nuvemAtiva: Boolean, onCancel: () -> Unit, onConfirm: () -> Unit) {
     Dialog(onDismissRequest = onCancel) {
         Box(
             modifier = Modifier
@@ -874,7 +896,11 @@ private fun DialogDestruicaoTotal(onCancel: () -> Unit, onConfirm: () -> Unit) {
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Esta ação é irreversível. O banco de dados do Blu Macaw será aniquilado.",
+                    if (nuvemAtiva) {
+                        "Esta ação é irreversível. Com a nuvem (Firebase) ativa, os dados também serão APAGADOS DA NUVEM e do portal web."
+                    } else {
+                        "Esta ação é irreversível. O banco de dados do Blu Macaw será aniquilado."
+                    },
                     color = TextWhite.copy(0.6f),
                     textAlign = TextAlign.Center,
                     fontSize = 14.sp

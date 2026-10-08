@@ -8,8 +8,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.meudinheiro.storage.StorageMode
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -53,14 +56,69 @@ class UserPreferences(private val context: Context) {
             longPreferencesKey("notif_last_day") // evita repetir no mesmo dia
         private val KEY_NOTIF_ONLY_PENDING = booleanPreferencesKey("notif_only_pending")
         private val PRIVATE_MODE_KEY = booleanPreferencesKey("private_mode")
+        private val BIOMETRIA_LANCAR = booleanPreferencesKey("biometria_lancar")
 
         private val BIOMETRIA_ENABLED = booleanPreferencesKey("biometria_enabled")
+        private val KEY_STORAGE_MODE = stringPreferencesKey("storage_mode")
+        private val KEY_LAST_CLOUD_UID = stringPreferencesKey("last_cloud_uid")
+        private val KEY_CLOUD_ROOT_UID = stringPreferencesKey("cloud_root_uid")
+        private val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup")
+        private val KEY_ALERTAS_ORCAMENTO = stringSetPreferencesKey("alertas_orcamento")
+    }
+
+    // ---- armazenamento de dados (local × Firebase) ----
+    val storageModeFlow: Flow<StorageMode> = context.dataStore.data
+        .map { prefs -> StorageMode.deNome(prefs[KEY_STORAGE_MODE]) }
+
+    suspend fun saveStorageMode(modo: StorageMode) {
+        context.dataStore.edit { it[KEY_STORAGE_MODE] = modo.name }
+    }
+
+    /** R32 — uid cujo dados estão em uso (vazio = os do próprio usuário). */
+    val cloudRootUidFlow: Flow<String> = context.dataStore.data.map { it[KEY_CLOUD_ROOT_UID].orEmpty() }
+
+    suspend fun saveCloudRootUid(uid: String) {
+        context.dataStore.edit { it[KEY_CLOUD_ROOT_UID] = uid }
+    }
+
+    // ---- backup automático (R33)
+    val autoBackupEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_AUTO_BACKUP] ?: true }
+
+    suspend fun saveAutoBackupEnabled(v: Boolean) {
+        context.dataStore.edit { it[KEY_AUTO_BACKUP] = v }
+    }
+
+    // ---- alertas de orçamento já enviados (R22): chaves `categoria|AAAA-MM|limiar`
+    suspend fun alertasOrcamentoEnviados(): Set<String> = context.dataStore.data.first()[KEY_ALERTAS_ORCAMENTO].orEmpty()
+
+    suspend fun marcarAlertasOrcamento(chaves: Set<String>) {
+        context.dataStore.edit { prefs ->
+            // mantém só os do mês corrente e do anterior para o conjunto não crescer sem limite
+            prefs[KEY_ALERTAS_ORCAMENTO] = (prefs[KEY_ALERTAS_ORCAMENTO].orEmpty() + chaves).toList().takeLast(400).toSet()
+        }
+    }
+
+    suspend fun lastCloudUid(): String = context.dataStore.data.first()[KEY_LAST_CLOUD_UID].orEmpty()
+
+    suspend fun saveLastCloudUid(uid: String) {
+        context.dataStore.edit { it[KEY_LAST_CLOUD_UID] = uid }
+    }
+
+    // ---- senha (nunca em texto puro) ----
+    /** Confere a senha digitada; senhas antigas (texto puro) são aceitas uma vez e já regravadas como hash. */
+    suspend fun verificarSenha(digitada: String): Boolean {
+        val armazenada = context.dataStore.data.first()[KEY_USER_PASS].orEmpty()
+        val ok = SenhaHasher.conferir(digitada, armazenada)
+        if (ok && !SenhaHasher.ehHash(armazenada)) saveUserPass(digitada)
+        return ok
     }
 
     // 2) flows que usam o context da instância
     val biometriaEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[BIOMETRIA_ENABLED] ?: true
     }
+    /** Pede biometria (ou PIN do aparelho) antes de gravar um lançamento — no app e no widget. Padrão: ligado. */
+    val biometriaLancarFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIA_LANCAR] ?: true }
     val userNameFlow: Flow<String> = context.dataStore.data
         .map { prefs -> prefs[KEY_USER_NAME].orEmpty() }
 
@@ -133,8 +191,9 @@ class UserPreferences(private val context: Context) {
     }
 
     suspend fun saveUserPass(pass: String) {
+        val armazenar = if (SenhaHasher.ehHash(pass)) pass else SenhaHasher.gerar(pass)
         context.dataStore.edit { prefs ->
-            prefs[KEY_USER_PASS] = pass
+            prefs[KEY_USER_PASS] = armazenar
         }
     }
 
@@ -179,6 +238,10 @@ class UserPreferences(private val context: Context) {
             val current = preferences[PRIVATE_MODE_KEY] ?: false
             preferences[PRIVATE_MODE_KEY] = !current
         }
+    }
+
+    suspend fun saveBiometriaLancar(enabled: Boolean) {
+        context.dataStore.edit { it[BIOMETRIA_LANCAR] = enabled }
     }
 
     suspend fun saveBiometriaEnabled(enabled: Boolean) {

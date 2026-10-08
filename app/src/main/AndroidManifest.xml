@@ -6,6 +6,8 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -52,6 +54,14 @@
             android:name=".notif.ReceptorAvisosDiarios"
             android:exported="false" />
         <activity
+            android:name=".componentes.LancamentoRapidoActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize|stateVisible"
+            android:theme="@style/Theme.MeuDinheiro.Painel" />
+        <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize"
             android:exported="true"
@@ -62,6 +72,7 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter android:label="Abrir Meta">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

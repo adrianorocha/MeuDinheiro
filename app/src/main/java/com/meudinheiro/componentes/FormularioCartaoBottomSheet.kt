@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.Cartao
+import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.ContaSaldo
 
 // Cores
@@ -60,6 +61,7 @@ private val CardGlass = Color(0xFF1B263B)
 @Composable
 fun FormularioCartaoBottomSheet(
     contasDisponiveis: List<ContaSaldo>, // A lista de contas correntes cadastradas
+    cartoesFisicos: List<CartaoComConta> = emptyList(), // cartões físicos que podem ter virtuais (R18)
     onDismiss: () -> Unit,
     onSalvar: (Cartao) -> Unit
 ) {
@@ -78,6 +80,11 @@ fun FormularioCartaoBottomSheet(
     var contaVinculadaId by remember { mutableStateOf<Int?>(contasDisponiveis.firstOrNull()?.id) }
     var menuContasExpandido by remember { mutableStateOf(false) }
 
+    // Cartão virtual: compartilha limite, conta e fatura com um cartão físico.
+    var virtual by remember { mutableStateOf(false) }
+    var principalId by remember { mutableStateOf<Int?>(cartoesFisicos.firstOrNull()?.id) }
+    var menuPrincipalExpandido by remember { mutableStateOf(false) }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -93,7 +100,7 @@ fun FormularioCartaoBottomSheet(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Novo Cartão",
+                text = if (virtual) "Novo Cartão Virtual" else "Novo Cartão",
                 color = Color.White,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
@@ -121,8 +128,84 @@ fun FormularioCartaoBottomSheet(
                 }
             }
 
+            if (cartoesFisicos.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(0.05f))
+                        .padding(4.dp)
+                ) {
+                    listOf(false to "FÍSICO", true to "VIRTUAL").forEach { (ehVirtual, rotulo) ->
+                        val sel = virtual == ehVirtual
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (sel) NeonPurple else Color.Transparent)
+                                .clickable { virtual = ehVirtual }
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(rotulo, color = if (sel) Color.White else Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
+            if (virtual) {
+                ExposedDropdownMenuBox(
+                    expanded = menuPrincipalExpandido,
+                    onExpandedChange = { menuPrincipalExpandido = it }
+                ) {
+                    val principal = cartoesFisicos.find { it.id == principalId }
+                    OutlinedTextField(
+                        value = principal?.let { "${it.nomeCartao} •••• ${it.finalCartao}" } ?: "Selecione o cartão físico",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Cartão físico (limite compartilhado)", color = Color.White.copy(0.7f)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuPrincipalExpandido) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NeonPurple,
+                            unfocusedBorderColor = Color.White.copy(0.2f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = CardGlass,
+                            unfocusedContainerColor = CardGlass
+                        )
+                    )
+                    ExposedDropdownMenu(
+                        expanded = menuPrincipalExpandido,
+                        onDismissRequest = { menuPrincipalExpandido = false },
+                        modifier = Modifier.background(CardGlass)
+                    ) {
+                        cartoesFisicos.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text("💳 ${c.nomeCartao} •••• ${c.finalCartao}", color = Color.White) },
+                                onClick = {
+                                    principalId = c.id
+                                    menuPrincipalExpandido = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "O cartão virtual usa o mesmo limite, a mesma conta e a mesma fatura do cartão físico. " +
+                        "As compras feitas nele consomem o limite do físico e aparecem na fatura dele.",
+                    color = Color.White.copy(0.55f),
+                    fontSize = 12.sp
+                )
+            }
+
+            if (!virtual) {
             // SELETOR DE TIPO (CRÉDITO / DÉBITO)
             Row(
                 modifier = Modifier
@@ -229,12 +312,32 @@ fun FormularioCartaoBottomSheet(
                 }
             }
 
+            } // fim: dados do cartão físico
+
             Spacer(modifier = Modifier.height(32.dp))
 
             // BOTÃO SALVAR
             Button(
                 onClick = {
                     // 1. Validação Simples
+                    if (virtual) {
+                        val principal = cartoesFisicos.find { it.id == principalId }
+                        if (nome.isBlank() || finalCartao.length < 4 || principal == null) {
+                            Toast.makeText(context, "Preencha o nome, os 4 últimos dígitos e escolha o cartão físico.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        // Conta, limite, datas e tipo são herdados do físico pelo repositório (R18).
+                        onSalvar(
+                            Cartao(
+                                nome = nome, finalCartao = finalCartao, tipo = principal.tipo,
+                                limiteDisponivel = principal.limiteTotal, limiteTotal = principal.limiteTotal,
+                                diaFechamento = principal.diaFechamento, diaVencimento = principal.diaVencimento,
+                                contaId = principal.contaId, cartaoPrincipalId = principal.id
+                            )
+                        )
+                        onDismiss()
+                        return@Button
+                    }
                     if (nome.isBlank() || finalCartao.length < 4 || contaVinculadaId == null) {
                         Toast.makeText(context, "Preencha o nome, os 4 últimos dígitos e vincule uma conta.", Toast.LENGTH_SHORT).show()
                         return@Button
@@ -264,10 +367,10 @@ fun FormularioCartaoBottomSheet(
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = if (tipoSelecionado == "CRÉDITO") NeonCyan else NeonPurple)
+                colors = ButtonDefaults.buttonColors(containerColor = if (virtual || tipoSelecionado != "CRÉDITO") NeonPurple else NeonCyan)
             ) {
                 Text(
-                    text = "ADICIONAR CARTÃO",
+                    text = if (virtual) "ADICIONAR CARTÃO VIRTUAL" else "ADICIONAR CARTÃO",
                     color = DeepSpaceBlue,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold

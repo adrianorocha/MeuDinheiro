@@ -14,5 +14,7 @@ data class DespesaFixa(
     val pic: String,
     val tipo: TipoDespesa,
     val diaVencimento: Int, // Dia do mês (1 a 31) que deve ser lançada
-    val ultimaDataLancamento: Date? = null // Para saber se já lançamos neste mês
+    val ultimaDataLancamento: Date? = null, // Para saber se já lançamos neste mês
+    /** Origem do pagamento: preenchido = cada ocorrência é uma compra neste cartão (físico ou virtual); nulo = débito na [conta]. */
+    val cartaoId: Int? = null
 )

@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() {
+      return request.auth != null;
+    }
+
+    function emailDoUsuario() {
+      return request.auth.token.email.lower();
+    }
+
+    // R32: o dono concede acesso criando users/{dono}/membros/{membroUid}.
+    function ehMembro(dono) {
+      return logado() && exists(/databases/$(database)/documents/users/$(dono)/membros/$(request.auth.uid));
+    }
+
+    // Lista de membros: só o dono altera; o dono e o próprio membro leem.
+    match /users/{uid}/membros/{membroUid} {
+      allow read: if logado() && (request.auth.uid == uid || request.auth.uid == membroUid);
+      allow write: if logado() && request.auth.uid == uid;
+    }
+
+    // Dados do usuário: o dono e os membros leem/escrevem tudo, exceto `membros`
+    // (tratada acima; a regra ampla não a alcança).
+    match /users/{uid}/{colecao}/{documento=**} {
+      allow read, write: if logado()
+        && colecao != 'membros'
+        && (request.auth.uid == uid || ehMembro(uid));
+    }
+
+    // Descoberta por e-mail (sem busca de usuários): cada um grava o próprio perfil.
+    match /perfis/{email} {
+      allow read: if logado();
+      allow create, update: if logado()
+        && email == emailDoUsuario()
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if false;
+
+      // Convites criados pelo dono; o convidado e o dono leem/removem.
+      match /convites/{donoUid} {
+        allow read: if logado() && (emailDoUsuario() == email || request.auth.uid == donoUid);
+        allow create, update: if logado()
+          && request.auth.uid == donoUid
+          && request.resource.data.donoUid == request.auth.uid;
+        allow delete: if logado() && (request.auth.uid == donoUid || emailDoUsuario() == email);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

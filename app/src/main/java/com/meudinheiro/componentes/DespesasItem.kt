@@ -58,19 +58,22 @@ fun DespesasItem(
     isPrivate: Boolean = false,
     onRemover: (DespesasDomain) -> Unit,
     onTogglePago: ((DespesasDomain) -> Unit)? = null,
+    onDuplicar: ((DespesasDomain) -> Unit)? = null,
+    onRepetir: ((DespesasDomain, Int, Int, com.meudinheiro.domain.Analises.UnidadeRepeticao) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     nomeCartao: String? = null
 ) {
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
+    var showRepetir by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // ==========================================
     // 🔒 TRAVA DE SEGURANÇA DO LASER (Swipe)
     // ==========================================
     val podePagarPorSwipe = onTogglePago != null &&
-            item.tipo == TipoDespesa.DEBITO &&
-            !item.pago
+            !item.pago &&
+            (item.cartaoId == null || item.cartaoId == 0) // compra no cartão é quitada pela fatura
 
     // ==========================================
     // 🚀 O MOTOR LASER-CUT (SWIPE)
@@ -136,7 +139,9 @@ fun DespesasItem(
     // ==========================================
     if (showDialog) {
         val mensagemAviso = remember(item) {
-            if (item.tipo == TipoDespesa.DEBITO) {
+            if (item.cartaoId != null && item.cartaoId != 0) {
+                "O limite do cartão será recalculado sem esta compra."
+            } else if (item.tipo == TipoDespesa.DEBITO) {
                 if (item.pago) "O valor será restituído ao saldo." else "O saldo não será afetado (não estava pago)."
             } else {
                 if (item.pago) "O valor será deduzido do saldo." else "O saldo não será afetado."
@@ -165,8 +170,20 @@ fun DespesasItem(
                         Text("Ver Comprovante", color = NeonCyan, fontWeight = FontWeight.Bold)
                     }
 
+                    if (item.natureza == com.meudinheiro.domain.Natureza.NORMAL && (onDuplicar != null || onRepetir != null)) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            if (onDuplicar != null) OutlinedButton(
+                                onClick = { showDialog = false; onDuplicar(item) }, modifier = Modifier.weight(1f)
+                            ) { Text("Duplicar", color = NeonCyan) }
+                            if (onRepetir != null) OutlinedButton(
+                                onClick = { showDialog = false; showRepetir = true }, modifier = Modifier.weight(1f)
+                            ) { Text("Repetir…", color = NeonCyan) }
+                        }
+                    }
+
                     Spacer(Modifier.height(16.dp))
-                    Text(mensagemAviso, color = Color.White.copy(0.6f), fontSize = 13.sp)
+                    Text(mensagemAviso + " Ele fica 30 dias na Lixeira, onde pode ser restaurado.", color = Color.White.copy(0.6f), fontSize = 13.sp)
                 }
             },
             confirmButton = {
@@ -178,6 +195,14 @@ fun DespesasItem(
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) { Text("Cancelar", color = Color.White) }
             }
+        )
+    }
+
+    if (showRepetir && onRepetir != null) {
+        RepetirDialog(
+            descricao = item.descricao,
+            onDismiss = { showRepetir = false },
+            onConfirmar = { n, intervalo, unidade -> showRepetir = false; onRepetir(item, n, intervalo, unidade) }
         )
     }
 }

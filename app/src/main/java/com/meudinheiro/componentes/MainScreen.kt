@@ -102,6 +102,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import com.meudinheiro.ui.theme.*
+import com.meudinheiro.domain.Analises
+import com.meudinheiro.domain.Financas
+import kotlinx.coroutines.flow.first
 
 // --- Cores Globais Premium ---
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -138,7 +141,7 @@ fun MainScreen(
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
     val investimentoVM: InvestimentoViewModel = viewModel(factory = InvestimentoViewModelFactory(db.investimentoDao()))
-    val transacaoVM: TransacaoViewModel = viewModel(factory = TransacaoViewModelFactory(db.transacaoDao()))
+    val transacaoVM: TransacaoViewModel = viewModel(factory = TransacaoViewModelFactory(db.despesaDao(), db.contaSaldoDao()))
 
     // ==========================================
     // 2. ESTADOS DE PREFERÊNCIAS E USUÁRIO
@@ -188,6 +191,15 @@ fun MainScreen(
     var showPrevisaoDialog by remember { mutableStateOf(false) }
 
     var showScanner by remember { mutableStateOf(false) }
+    var showFerramentas by remember { mutableStateOf(false) }
+
+    // Atalho do launcher "Nova despesa": abre direto o formulário de lançamento.
+    LaunchedEffect(com.meudinheiro.AtalhosApp.novaDespesaPedida) {
+        if (com.meudinheiro.AtalhosApp.novaDespesaPedida) {
+            showAddDespesaDialog = true
+            com.meudinheiro.AtalhosApp.consumir()
+        }
+    }
     var valorEscaneado by remember { mutableStateOf<Double?>(null) }
     var codigoEscaneado by remember { mutableStateOf("") }
 
@@ -207,7 +219,27 @@ fun MainScreen(
     val agendados by contaVM.agendamentosFiltrados.collectAsState()
     val listaMetasReal by metaVM.metas.collectAsState(initial = emptyList())
     val historicoPatrimonio by contaVM.historicoPatrimonial.collectAsState(initial = emptyList())
-    val contasAVencer by contaVM.contasAVencer.collectAsState()
+    val previsao by contaVM.previsao.collectAsState()
+    val todasDespesas by repository.todasDespesasFlow.collectAsState(initial = emptyList())
+
+
+    // Categorias padrão + as criadas pelo usuário (antes só as padrão apareciam nos formulários).
+    val categoriasCustom by remember { repository.obterCategoriasCustom() }.collectAsState(initial = emptyList())
+    val categoriasDisponiveis = remember(categoriasCustom) {
+        (repository.categorias + categoriasCustom).map { it.title }.distinctBy { it.trim().lowercase() }.sorted()
+    }
+
+    // Chip do cabeçalho: onde os dados estão sendo gravados e o estado da sincronização.
+    val storageManager = remember { (application as com.meudinheiro.MyApplication).storageManager }
+    val modoArmazenamento by storageManager.modo.collectAsState(initial = com.meudinheiro.storage.StorageMode.LOCAL)
+    val statusSync by storageManager.status.collectAsState()
+    val chipArmazenamento = when {
+        modoArmazenamento != com.meudinheiro.storage.StorageMode.FIREBASE -> "Salvo no celular" to HeaderChipStyle.NEUTRAL
+        statusSync is com.meudinheiro.storage.SyncStatus.Sincronizado -> "Nuvem sincronizada" to HeaderChipStyle.SUCCESS
+        statusSync is com.meudinheiro.storage.SyncStatus.Conectando -> "Sincronizando…" to HeaderChipStyle.PRIMARY
+        statusSync is com.meudinheiro.storage.SyncStatus.AguardandoLogin -> "Nuvem: sem login" to HeaderChipStyle.NEUTRAL
+        else -> "Nuvem: atenção" to HeaderChipStyle.NEUTRAL
+    }
 
     val mesAtual by despVM.mesSelecionado.collectAsState()
     val anoAtual by despVM.anoSelecionado.collectAsState()
@@ -215,6 +247,33 @@ fun MainScreen(
     val saidasMesAnterior by despVM.getDespesaMesAnterior(mesAtual, anoAtual).collectAsState(initial = 0.0)
 
     val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
+
+    // R22 — alerta de orçamento (80% / 100%), uma única vez por categoria/mês/limiar.
+    LaunchedEffect(orcamentosComProgresso) {
+        if (orcamentosComProgresso.isEmpty()) return@LaunchedEffect
+        val agora = System.currentTimeMillis()
+        val mesChave = "%04d-%02d".format(Financas.anoDe(agora), Financas.mesDe(agora))
+        val novos = Analises.alertasOrcamento(
+            orcamentosComProgresso.map { it.categoria to it.porcentagem.toDouble() }, mesChave, userPrefs.alertasOrcamentoEnviados()
+        )
+        if (novos.isEmpty()) return@LaunchedEffect
+        userPrefs.marcarAlertasOrcamento(novos.flatMap { Analises.chavesParaMarcar(it) }.toSet())
+        val notificar = userPrefs.notifEnabledFlow.first()
+        novos.forEach { a ->
+            val msg = if (a.limiar == 100) "O orçamento de ${a.categoria} foi ultrapassado." else "Você já usou 80% do orçamento de ${a.categoria}."
+            snackbarHostState.showSnackbar("Orçamento | $msg | Erro")
+            if (notificar) {
+                com.meudinheiro.notif.Notificacoes.mostrar(
+                    context,
+                    com.meudinheiro.notif.Aviso(
+                        tipo = if (a.limiar == 100) com.meudinheiro.notif.TipoAviso.ORCAMENTO_ESTOURADO else com.meudinheiro.notif.TipoAviso.ORCAMENTO,
+                        titulo = "Orçamento de ${a.categoria}", resumo = msg, id = a.chave.hashCode(),
+                        textoPublico = "Aviso de orçamento"
+                    )
+                )
+            }
+        }
+    }
     val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
     val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
 
@@ -335,12 +394,13 @@ fun MainScreen(
                         nome = nome,
                         fotoUri = fotoSalva.takeIf { it.isNotBlank() },
                         onProfileClick = { emCadastro = true },
-                        chipText = "Sincronizado",
-                        chipStyle = HeaderChipStyle.SUCCESS,
+                        chipText = chipArmazenamento.first,
+                        chipStyle = chipArmazenamento.second,
                         showNotifications = true,
                         hasUnreadNotifications = (notifCount > 0),
                         notificationCount = notifCount,
                         onNotificationsClick = onOpenPendencias,
+                        onToolsClick = { showFerramentas = true },
                         receitaTotal = dashboardState.receitaGlobal,
                         despesaTotal = dashboardState.despesaGlobal,
                         isPrivateMode = isPrivate,
@@ -519,7 +579,7 @@ fun MainScreen(
 
                                         item {
                                             ActionButtonRow(
-                                                categorias = repository.categorias.map { it.title },
+                                                categorias = categoriasDisponiveis,
                                                 getPicCategoria = { repository.getPicCategoria(it) },
                                                 contaSelecionada = contaSelecionadaId.orEmpty(),
                                                 viewModel = contaVM,
@@ -591,7 +651,9 @@ fun MainScreen(
                                                 item = item,
                                                 isPrivate = isPrivate,
                                                 onRemover = { despesa -> contaVM.removerDespesa(despesa) },
-                                                onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) }
+                                                onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) },
+                                                onDuplicar = { contaVM.duplicarDespesa(it) },
+                                                onRepetir = { item, n, intervalo, unidade -> contaVM.repetirDespesa(item, n, intervalo, unidade) }
                                             )
                                         }
                                     }
@@ -655,8 +717,7 @@ fun MainScreen(
         // ==========================================
         if (showPrevisaoDialog) {
             PrevisaoFechamentoDialog(
-                saldoAtual = 0.0,
-                contasAVencer = contasAVencer,
+                previsao = previsao,
                 isPrivate = isPrivate,
                 onDismiss = { showPrevisaoDialog = false }
             )
@@ -734,11 +795,12 @@ fun MainScreen(
             AddDespesaDialog(
                 valorInicial = valorEscaneado ?: 0.0,
                 codigoBarras = if (codigoEscaneado.isNotEmpty()) "Boleto: $codigoEscaneado" else "",
-                categorias = repository.categorias.map { it.title },
+                categorias = categoriasDisponiveis,
                 cartoesDisponiveis = listaCartoes,
                 contaSelecionada = contaSelecionadaId.orEmpty(),
                 getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
                 viewModel = contaVM,
+                historico = todasDespesas,
                 cartoesViewModel = cartaoVM,
                 parentScope = parentScope,
                 onDismiss = {
@@ -769,7 +831,7 @@ fun MainScreen(
 
         if (showAddOrcamentoDialog) {
             AddOrcamentoDialog(
-                categoriasDisponiveis = repository.categorias.map { it.title },
+                categoriasDisponiveis = categoriasDisponiveis,
                 onSalvar = { categoria, valor -> orcamentoVM.salvarOrcamento(categoria, valor) },
                 onDismiss = { showAddOrcamentoDialog = false }
             )
@@ -779,7 +841,7 @@ fun MainScreen(
             DepositoRapidoDialog(
                 meta = meta,
                 onConfirmar = { valor ->
-                    metaVM.depositarNaMeta(meta.id.toLong(), valor)
+                    metaVM.depositarNaMeta(meta.id.toLong(), contaSelecionadaId.orEmpty(), valor)
                     corCelebracao = meta.corDestaque
                     mostrarCelebracao = true
                     metaSelecionadaParaDeposito = null
@@ -796,10 +858,19 @@ fun MainScreen(
             )
         }
 
+        if (showFerramentas) {
+            FerramentasScreen(
+                repository = repository,
+                userPrefs = userPrefs,
+                isPrivate = isPrivate,
+                onBack = { showFerramentas = false }
+            )
+        }
+
         if (showExtratoScreen) {
             ExtratoScreen(
                 despesasVM = despVM,
-                categorias = repository.categorias.map { it.title },
+                categorias = categoriasDisponiveis,
                 isPrivate = isPrivate,
                 onBack = { showExtratoScreen = false }
             )

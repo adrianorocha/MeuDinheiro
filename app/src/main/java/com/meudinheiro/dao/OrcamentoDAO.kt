@@ -33,4 +33,7 @@ interface OrcamentoDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(orcamentos: List<Orcamento>)
+
+    @Query("DELETE FROM orcamentos WHERE id IN (:ids)")
+    suspend fun excluirPorIds(ids: List<Int>)
 }
