@@ -169,7 +169,7 @@ object FirestoreMapper {
         "id" to c.id, "nome" to c.nome, "finalCartao" to c.finalCartao, "tipo" to c.tipo,
         "limiteDisponivel" to c.limiteDisponivel, "limiteTotal" to c.limiteTotal,
         "diaFechamento" to c.diaFechamento, "diaVencimento" to c.diaVencimento, "contaId" to c.contaId,
-        "cartaoPrincipalId" to c.cartaoPrincipalId
+        "cartaoPrincipalId" to c.cartaoPrincipalId, "limiteProprio" to c.limiteProprio?.takeIf { it > 0.0 }
     )
 
     fun cartaoFromDoc(d: Doc) = Cartao(
@@ -177,7 +177,8 @@ object FirestoreMapper {
         limiteDisponivel = d.double("limiteDisponivel"), limiteTotal = d.double("limiteTotal"),
         diaFechamento = d.int("diaFechamento", 1).coerceIn(1, 31),
         diaVencimento = d.int("diaVencimento", 1).coerceIn(1, 31), contaId = d.int("contaId"),
-        cartaoPrincipalId = d.intOuNulo("cartaoPrincipalId")?.takeIf { it != 0 }
+        cartaoPrincipalId = d.intOuNulo("cartaoPrincipalId")?.takeIf { it != 0 },
+        limiteProprio = (d["limiteProprio"] as? Number)?.toDouble()?.takeIf { it > 0.0 && it.isFinite() }
     )
 
     fun toDoc(t: TransferenciaAgendada): Doc = mapOf(

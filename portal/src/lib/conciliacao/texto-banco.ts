@@ -71,6 +71,41 @@ export function detectarParcela(descricao: string): { i: number; n: number } | n
   return i >= 1 && n >= i ? { i, n } : null;
 }
 
+const DIA_MS = 86_400_000;
+
+/**
+ * R44 - parcela i/n do extrato de CARTÃO: formas explícitas ("(2/5)", "PARC 2/5") ou o marcador "i/n"
+ * solto no texto ("COMPRA 03/10"), este só quando NÃO parece a data da transação (dd/mm a ≤ 10 dias da data do extrato)
+ * e com i ≤ n, n ≥ 2.
+ */
+export function detectarParcelaExtrato(descricao: string, dataMs: number): { i: number; n: number } | null {
+  const explicita = detectarParcela(descricao);
+  if (explicita) return explicita.n >= 2 ? explicita : null;
+  const re = /(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/]|:)/g;
+  let achado: { i: number; n: number } | null = null;
+  for (const m of descricao.matchAll(re)) {
+    const i = Number(m[1]);
+    const n = Number(m[2]);
+    if (!(i >= 1 && n >= 2 && i <= n)) continue;
+    if (n <= 12 && i <= 31) {
+      const ano = new Date(dataMs).getFullYear();
+      const pareceData = [ano - 1, ano, ano + 1].some((a) => Math.abs(new Date(a, n - 1, i, 12).getTime() - dataMs) <= 10 * DIA_MS);
+      if (pareceData) continue;
+    }
+    achado = { i, n };
+  }
+  return achado;
+}
+
+/** Remove marcadores de parcela ("(2/5)", "Parc 2/5") de uma descrição já limpa. */
+export function semMarcadorParcela(descricao: string): string {
+  return descricao
+    .replace(/\(\s*\d{1,2}\s*\/\s*\d{1,2}\s*\)|\bparc(?:ela)?\.?\s*\d{1,2}\s*(?:\/|de)\s*\d{1,2}\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-–:.,/]+|[\s\-–:.,/]+$/g, "")
+    .trim();
+}
+
 function fnv(s: string, seed: number): number {
   let h = seed >>> 0;
   for (let i = 0; i < s.length; i++) {

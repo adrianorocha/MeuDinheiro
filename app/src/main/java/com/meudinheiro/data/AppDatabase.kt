@@ -103,13 +103,20 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/** 6 → 7: R41 — limite próprio opcional por cartão (teto dentro do limite compartilhado do grupo). */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE cartoes ADD COLUMN limiteProprio REAL")
+    }
+}
+
 @Database(
     entities = [
         Despesa::class, ContaSaldo::class, DespesaFixa::class, Categoria::class, Orcamento::class,
         Meta::class, Investimento::class, Transacao::class, TransferenciaAgendada::class,
         PatrimonioHistorico::class, Cartao::class, SyncMeta::class, Lixeira::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -141,7 +148,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DB_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // Só em downgrade (APK antigo sobre banco novo). Upgrades NUNCA apagam dados.
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()

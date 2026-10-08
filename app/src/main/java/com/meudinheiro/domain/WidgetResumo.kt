@@ -115,7 +115,7 @@ data class WidgetResumo(
         fun atalhos(historico: List<Despesa>, agora: Long): List<AtalhoWidget> {
             val desde = agora - DIAS_ATALHO * DIA_MS
             return historico
-                .filter { it.natureza == Natureza.NORMAL && it.tipo == TipoDespesa.DEBITO && it.data.time in desde..agora && it.grupoId == null }
+                .filter { it.natureza == Natureza.NORMAL && it.tipo == TipoDespesa.DEBITO && it.data.time in desde..agora && !Financas.ehGrupoDeLancamentos(it.grupoId) }
                 .groupBy { Triple(Texto.normalizar(it.descricao), Dinheiro.centavos(it.valor), it.cartaoId ?: it.conta) }
                 .filterValues { it.size >= 2 }
                 .values

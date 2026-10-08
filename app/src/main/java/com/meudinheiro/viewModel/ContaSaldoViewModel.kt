@@ -180,20 +180,20 @@ class ContaSaldoViewModel(
     // ==========================================
     // 5. LANÇAMENTOS (CRUD)
     // ==========================================
-    fun adicionarDespesa(despesa: Despesa) {
+    fun adicionarDespesa(despesa: Despesa, modalidade: Financas.Modalidade? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.registrarLancamento(despesa)
+                repository.registrarLancamento(despesa, modalidade)
             } catch (e: Exception) {
                 avisarErro("Lançamento", e)
             }
         }
     }
 
-    fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long) {
+    fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long, modalidade: Financas.Modalidade? = null, parcelaAtual: Int = 1) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.registrarParcelado(despesa.copy(data = Date(dataSelecionada)), numeroParcelas)
+                repository.registrarParcelado(despesa.copy(data = Date(dataSelecionada)), numeroParcelas, modalidade, parcelaAtual)
             } catch (e: Exception) {
                 avisarErro("Compra parcelada", e)
             }
@@ -244,6 +244,22 @@ class ContaSaldoViewModel(
                 _uiEvent.tryEmit("Repetir | $criados lançamentos criados em aberto. | Sucesso")
             } catch (e: Exception) {
                 avisarErro("Repetir", e)
+            }
+        }
+    }
+
+    /** R42 - iguala o saldo da conta ao do banco (lançamento AJUSTE). */
+    fun ajustarSaldoConta(conta: String, saldoReal: Double, observacao: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ajuste = repository.ajustarSaldoConta(conta, saldoReal, observacao)
+                _uiEvent.tryEmit(
+                    if (ajuste == null) "Saldo já confere com o banco: nenhum ajuste necessário."
+                    else "Saldo ajustado: " + (if (ajuste.tipo == com.meudinheiro.data.TipoDespesa.CREDITO) "+" else "-") +
+                        com.meudinheiro.funcoes.formatarMoedaBR(ajuste.valor, false) + ". Exclua o lançamento para desfazer."
+                )
+            } catch (e: Exception) {
+                avisarErro("Ajuste de saldo", e)
             }
         }
     }

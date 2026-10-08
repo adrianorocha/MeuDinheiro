@@ -9,7 +9,7 @@ import { Money } from "@/components/ui/Money";
 import { Badge } from "@/components/ui/Misc";
 import { IconButton } from "@/components/ui/Button";
 import { PicBadge } from "@/components/ui/PicIcon";
-import { cartaoIdDe, estaAtrasada } from "@/lib/finance/calc";
+import { cartaoDeDebito, cartaoIdDe, ehGrupoParcelas, estaAtrasada } from "@/lib/finance/calc";
 import type { Despesa } from "@/lib/finance/types";
 import { formatData } from "@/lib/format";
 import { useAgora, useDataset } from "@/lib/hooks";
@@ -104,7 +104,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
     setExcluindo(null);
   }
 
-  const ehParcela = (d: Despesa) => Boolean(d.grupoId?.startsWith("parc:"));
+  const ehParcela = (d: Despesa) => ehGrupoParcelas(d);
 
   return (
     <>
@@ -128,6 +128,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                   {rotuloNat && <Badge tom="primary">{rotuloNat}</Badge>}
                   {d.conciliadoEm != null && <Badge tom="pos">✓ conciliado</Badge>}
                   {cartaoIdDe(d) !== null && <Badge>Fatura</Badge>}
+                  {cartaoDeDebito(d) !== null && <Badge>Débito no cartão</Badge>}
                   {!d.pago && <Badge tom={atrasada ? "neg" : "warn"}>{atrasada ? "Atrasada" : "Pendente"}</Badge>}
                 </div>
               </div>

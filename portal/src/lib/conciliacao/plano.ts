@@ -1,12 +1,13 @@
-import { cartaoIdDe, recalcularTudo } from "../finance/calc";
+import { cartaoIdDe, cartoesDoGrupo, recalcularTudo } from "../finance/calc";
 import { novoIdLong } from "../finance/ids";
-import { mesAnoDe } from "../finance/dates";
+import { mesAnoDe, somaMeses } from "../finance/dates";
 import { montaDespesa } from "../finance/operations";
 import { sugerirCategoria } from "../finance/analises";
-import { round2 } from "../finance/money";
+import { round2, toCents } from "../finance/money";
+import { limparDescricao } from "../finance/texto";
 import type { Dataset, Despesa, Result } from "../finance/types";
 import { lancamentosDoDestino } from "./matching";
-import { detectarParcela, limparDescricaoBanco } from "./texto-banco";
+import { detectarParcela, detectarParcelaExtrato, limparDescricaoBanco, semMarcadorParcela } from "./texto-banco";
 import type { Destino, ItemMatch, ResultadoMatching, TransacaoBanco } from "./tipos";
 
 /** Opções de mescla (R38), independentes entre si. */
@@ -19,7 +20,7 @@ export interface Mescla {
 
 export type AcaoPlano =
   | { tipo: "CONCILIAR"; transacao: TransacaoBanco; lancamentoId: number; mescla: Mescla }
-  | { tipo: "CRIAR"; transacao: TransacaoBanco; categoria: string };
+  | { tipo: "CRIAR"; transacao: TransacaoBanco; categoria: string; /** R44 - em cartão, cria também as parcelas i+1..n (em aberto) */ parcelasRestantes?: boolean };
 
 export interface Plano {
   destino: Destino;
@@ -47,8 +48,13 @@ export function acaoConciliar(item: ItemMatch, destino: Destino, lancamentoId: n
   return { tipo: "CONCILIAR", transacao: item.transacao, lancamentoId, mescla: mesclaPadrao({ tipo }, destino) };
 }
 
-export function acaoCriar(item: ItemMatch, ds: Pick<Dataset, "despesas">, categoria?: string): AcaoPlano {
-  return { tipo: "CRIAR", transacao: item.transacao, categoria: categoria ?? categoriaSugerida(ds, item.transacao.descricao) };
+export function acaoCriar(item: ItemMatch, ds: Pick<Dataset, "despesas">, categoria?: string, parcelasRestantes?: boolean): AcaoPlano {
+  return {
+    tipo: "CRIAR",
+    transacao: item.transacao,
+    categoria: categoria ?? categoriaSugerida(ds, item.transacao.descricao),
+    ...(parcelasRestantes ? { parcelasRestantes: true } : {}),
+  };
 }
 
 /** Plano padrão: concilia os AUTOMATICOS e (opcional) os SUGERIDOS; cria os SO_NO_EXTRATO se pedido. */
@@ -56,13 +62,13 @@ export function montarPlano(
   resultado: ResultadoMatching,
   ds: Pick<Dataset, "despesas">,
   destino: Destino,
-  opcoes: { sugeridos?: boolean; criar?: boolean } = {},
+  opcoes: { sugeridos?: boolean; criar?: boolean; parcelasRestantes?: boolean } = {},
 ): Plano {
   const acoes: AcaoPlano[] = [];
   for (const it of resultado.itens) {
     if (it.lancamentoId !== undefined && (it.classe === "AUTOMATICO" || (opcoes.sugeridos && it.classe === "SUGERIDO"))) {
       acoes.push(acaoConciliar(it, destino, it.lancamentoId));
-    } else if (opcoes.criar && it.classe === "SO_NO_EXTRATO") acoes.push(acaoCriar(it, ds));
+    } else if (opcoes.criar && it.classe === "SO_NO_EXTRATO") acoes.push(acaoCriar(it, ds, undefined, opcoes.parcelasRestantes));
   }
   return { destino, acoes };
 }
@@ -73,6 +79,8 @@ export interface ResumoAplicacao {
   valoresAlterados: number;
   datasAlteradas: number;
   pagosMarcados: number;
+  /** R44 - parcelas futuras (i+1..n) criadas além da parcela do extrato */
+  parcelasRestantes: number;
 }
 
 type Op<T extends object> = Result<{ ds: Dataset } & T>;
@@ -103,7 +111,10 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
   const alterados = new Map<number, Despesa>();
   const criados: Despesa[] = [];
   const usadosIds = new Set(ds.despesas.map((d) => d.id));
-  const resumo: ResumoAplicacao = { conciliados: 0, criados: 0, valoresAlterados: 0, datasAlteradas: 0, pagosMarcados: 0 };
+  const resumo: ResumoAplicacao = { conciliados: 0, criados: 0, valoresAlterados: 0, datasAlteradas: 0, pagosMarcados: 0, parcelasRestantes: 0 };
+  const extras: Despesa[] = [];
+  const cartaoObj = cartaoDestino !== null ? ds.cartoes.find((c) => c.id === cartaoDestino) : undefined;
+  const idsCartoesDestino = new Set(cartaoObj ? cartoesDoGrupo(cartaoObj, ds.cartoes).map((c) => c.id) : []);
 
   for (const a of plano.acoes) {
     const t = a.transacao;
@@ -140,10 +151,58 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
       if (!a.categoria.trim()) return { ok: false, erro: "Informe a categoria dos lançamentos a criar." };
       const id = novoIdLong(usadosIds, agora);
       usadosIds.add(id);
+      const parcela = a.parcelasRestantes && cartaoDestino !== null && t.valor < 0 ? detectarParcelaExtrato(t.descricao, t.data) : null;
+      const expandir = parcela !== null && parcela.i < parcela.n;
+      const baseDesc = expandir ? semMarcadorParcela(limparDescricaoBanco(t.descricao)) || "Compra parcelada" : "";
+      let grupoParcelas: string | null = null;
+      if (expandir && parcela) {
+        const valorParc = round2(Math.abs(t.valor));
+        const chaveBase = limparDescricao(baseDesc);
+        const mesmoPlano = [...ds.despesas, ...criados, ...extras];
+        const jaExiste = (data: number) => {
+          const { mes, ano } = mesAnoDe(data);
+          return mesmoPlano.find(
+            (d) =>
+              cartaoIdDe(d) !== null &&
+              idsCartoesDestino.has(cartaoIdDe(d) as number) &&
+              toCents(d.valor) === toCents(valorParc) &&
+              d.mes === mes &&
+              d.ano === ano &&
+              limparDescricao(semMarcadorParcela(d.descricao)) === chaveBase,
+          );
+        };
+        const existentes = mesmoPlano.filter((d) => d.grupoId?.startsWith("parc:") && limparDescricao(semMarcadorParcela(d.descricao)) === chaveBase && cartaoIdDe(d) !== null && idsCartoesDestino.has(cartaoIdDe(d) as number));
+        grupoParcelas = existentes[0]?.grupoId ?? `parc:imp-${t.fitid}`;
+        for (let j = parcela.i + 1; j <= parcela.n; j++) {
+          const dataJ = somaMeses(t.data, j - parcela.i);
+          if (jaExiste(dataJ)) continue;
+          const idJ = novoIdLong(usadosIds, agora);
+          usadosIds.add(idJ);
+          extras.push(
+            montaDespesa(
+              {
+                descricao: `${baseDesc} (${j}/${parcela.n})`,
+                valor: valorParc,
+                data: dataJ,
+                categoria: a.categoria.trim(),
+                conta: contaDestino,
+                tipo: "DEBITO",
+                cartaoId: cartaoDestino,
+                pago: false,
+                grupoId: grupoParcelas,
+                autor: AUTOR_IMPORTACAO,
+              },
+              idJ,
+            ),
+          );
+          resumo.parcelasRestantes++;
+        }
+      }
       criados.push(
         montaDespesa(
           {
-            descricao: limparDescricaoBanco(t.descricao),
+            descricao: expandir && parcela ? `${baseDesc} (${parcela.i}/${parcela.n})` : limparDescricaoBanco(t.descricao),
+            grupoId: grupoParcelas,
             valor: Math.abs(t.valor),
             data: t.data,
             categoria: a.categoria.trim(),
@@ -164,9 +223,10 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
 
   const inverso: PlanoInverso = {
     restaurar: [...alterados.keys()].map((id) => doDestino.get(id) as Despesa),
-    remover: criados.map((d) => d.id),
+    // as parcelas restantes (R44) vão depois das criadas pelo extrato: o índice i de `remover` segue a i-ésima ação CRIAR
+    remover: [...criados.map((d) => d.id), ...extras.map((d) => d.id)],
   };
-  const despesas = [...ds.despesas.map((d) => alterados.get(d.id) ?? d), ...criados];
+  const despesas = [...ds.despesas.map((d) => alterados.get(d.id) ?? d), ...criados, ...extras];
   return { ok: true, ds: recalcularTudo({ ...ds, despesas }), inverso, resumo };
 }
 

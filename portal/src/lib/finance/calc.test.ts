@@ -12,6 +12,7 @@ import {
   recalcularTudo,
   resumoFatura,
   saldoConta,
+  saldoDoCartao,
   saudeFinanceira,
   vencimentoFatura,
 } from "./calc";
@@ -257,5 +258,42 @@ describe("recalcularTudo", () => {
     expect(r.contas[1]).toBe(ds.contas[1]);
     expect(r.cartoes[0].limiteDisponivel).toBe(960);
     expect(recalcularTudo(r)).toBe(r);
+  });
+});
+
+describe("R41 saldoDoCartao", () => {
+  const fis = cartao({ id: 10, limiteTotal: 1000 });
+  const vir = cartao({ id: 11, cartaoPrincipalId: 10, limiteTotal: 1000 });
+  const cs = [fis, vir];
+  const ds = [
+    desp({ cartaoId: 10, valor: 300, pago: false }),
+    desp({ cartaoId: 11, valor: 200, pago: false }),
+    desp({ cartaoId: 11, valor: 50, tipo: "CREDITO", pago: false }),
+    desp({ cartaoId: 11, valor: 999, pago: true }),
+  ];
+
+  it("usado separado por cartão, sem teto próprio usa o disponível do grupo", () => {
+    const f = saldoDoCartao(fis, cs, ds);
+    const v = saldoDoCartao(vir, cs, ds);
+    expect(f.usado).toBe(300);
+    expect(v.usado).toBe(150);
+    expect(f.limiteProprio).toBeNull();
+    expect(f.disponivel).toBe(550);
+    expect(v.disponivelGrupo).toBe(550);
+    expect(f.razao).toBeCloseTo(0.3);
+  });
+
+  it("com teto próprio: razão sobre o teto e disponível limitado", () => {
+    const v = saldoDoCartao({ ...vir, limiteProprio: 400 }, cs, ds);
+    expect(v.disponivel).toBe(250);
+    expect(v.razao).toBeCloseTo(150 / 400);
+  });
+
+  it("min com o disponível do grupo e usado nunca negativo", () => {
+    const gasto = [...ds, desp({ cartaoId: 10, valor: 400, pago: false })];
+    const v = saldoDoCartao({ ...vir, limiteProprio: 900 }, cs, gasto);
+    expect(v.disponivel).toBe(150);
+    const so = saldoDoCartao(vir, cs, [desp({ cartaoId: 11, valor: 10, tipo: "CREDITO", pago: false })]);
+    expect(so.usado).toBe(0);
   });
 });

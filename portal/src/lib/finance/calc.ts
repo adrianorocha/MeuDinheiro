@@ -63,6 +63,29 @@ export function limiteGrupo(cartao: Cartao, cartoes: readonly Cartao[], despesas
   return fromCents(toCents(grupo[0].limiteTotal) - usado);
 }
 
+export interface SaldoCartao {
+  usado: number;
+  limiteProprio: number | null;
+  disponivel: number;
+  disponivelGrupo: number;
+  razao: number;
+}
+
+/** R41 - uso/saldo PRÓPRIO do cartão dentro do limite compartilhado do grupo. */
+export function saldoDoCartao(cartao: Cartao, cartoes: readonly Cartao[], despesas: readonly Despesa[]): SaldoCartao {
+  let usadoC = 0;
+  for (const d of despesas) {
+    if (cartaoIdDe(d) === cartao.id && !d.pago) usadoC -= assinadoCents(d);
+  }
+  usadoC = Math.max(0, usadoC);
+  const principal = principalDe(cartao, cartoes);
+  const disponivelGrupo = limiteGrupo(cartao, cartoes, despesas);
+  const proprio = cartao.limiteProprio && cartao.limiteProprio > 0 ? cartao.limiteProprio : null;
+  const disponivel = proprio != null ? Math.min(fromCents(toCents(proprio) - usadoC), disponivelGrupo) : disponivelGrupo;
+  const base = toCents(proprio ?? principal.limiteTotal);
+  return { usado: fromCents(usadoC), limiteProprio: proprio, disponivel, disponivelGrupo, razao: base > 0 ? usadoC / base : 0 };
+}
+
 // ---------------------------------------------------------------- R5
 
 export interface Kpis {
@@ -244,6 +267,116 @@ export function faturasPendentes(cartoes: readonly Cartao[], despesas: readonly 
   return out.sort((a, b) => a.vencimento - b.vencimento);
 }
 
+// ---------------------------------------------------------------- R44
+
+export interface LiberacaoFatura extends MesAno {
+  /** Limite que volta ao pagar esta fatura (DEBITO - CREDITO em aberto, em R$). */
+  valor: number;
+  vencimento: number;
+}
+
+export interface ComprometimentoCartao {
+  /** Em aberto no ciclo (fatura) corrente. */
+  faturaAtual: number;
+  /** Em aberto de faturas já anteriores ao ciclo corrente (vencidas/atrasadas). */
+  anteriores: number;
+  /** Em aberto de ciclos posteriores ao corrente (parcelas futuras). */
+  parcelasFuturas: number;
+  /** Total em aberto do grupo (= limite usado, R4/R18). */
+  emAbertoTotal: number;
+  limiteTotal: number;
+  disponivel: number;
+  /** Quanto de limite volta ao pagar cada fatura em aberto (valor > 0), em ordem cronológica. */
+  liberacaoPorFatura: LiberacaoFatura[];
+}
+
+/** R44 - como o limite do grupo está comprometido: fatura atual × parcelas futuras × disponível. Puro. */
+export function comprometimentoCartao(
+  cartao: Cartao,
+  cartoes: readonly Cartao[],
+  despesas: readonly Despesa[],
+  agora: number,
+): ComprometimentoCartao {
+  const grupo = cartoesDoGrupo(cartao, cartoes);
+  const principal = grupo[0];
+  const ids = new Set(grupo.map((c) => c.id));
+  const ciclo = faturaDaCompra(principal, agora);
+  const chaveCiclo = ciclo.ano * 12 + ciclo.mes;
+  const porFatura = new Map<number, { mes: number; ano: number; cents: number }>();
+  let atual = 0;
+  let anteriores = 0;
+  let futuras = 0;
+  for (const d of despesas) {
+    const cid = cartaoIdDe(d);
+    if (cid === null || !ids.has(cid) || d.pago) continue;
+    const f = faturaDaCompra(principal, d.data);
+    const chave = f.ano * 12 + f.mes;
+    const c = -assinadoCents(d);
+    if (chave === chaveCiclo) atual += c;
+    else if (chave < chaveCiclo) anteriores += c;
+    else futuras += c;
+    const g = porFatura.get(chave) ?? { mes: f.mes, ano: f.ano, cents: 0 };
+    g.cents += c;
+    porFatura.set(chave, g);
+  }
+  const liberacaoPorFatura = [...porFatura.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .filter(([, g]) => g.cents > 0)
+    .map(([, g]) => ({ mes: g.mes, ano: g.ano, valor: fromCents(g.cents), vencimento: vencimentoFatura(principal, g.mes, g.ano) }));
+  return {
+    faturaAtual: fromCents(atual),
+    anteriores: fromCents(anteriores),
+    parcelasFuturas: fromCents(futuras),
+    emAbertoTotal: fromCents(atual + anteriores + futuras),
+    limiteTotal: principal.limiteTotal,
+    disponivel: limiteGrupo(cartao, cartoes, despesas),
+    liberacaoPorFatura,
+  };
+}
+
+export interface FaturaAberta extends MesAno {
+  chave: string;
+  vencimento: number;
+  itens: Despesa[];
+  /** DEBITO - CREDITO dos itens em aberto (R$). */
+  subtotal: number;
+}
+
+/** R44 - itens em aberto do grupo agrupados por fatura (cronológico), para pagamento seletivo. */
+export function faturasEmAberto(cartao: Cartao, cartoes: readonly Cartao[], despesas: readonly Despesa[]): FaturaAberta[] {
+  const grupo = cartoesDoGrupo(cartao, cartoes);
+  const principal = grupo[0];
+  const ids = new Set(grupo.map((c) => c.id));
+  const mapa = new Map<number, { mes: number; ano: number; itens: Despesa[]; cents: number }>();
+  for (const d of despesas) {
+    const cid = cartaoIdDe(d);
+    if (cid === null || !ids.has(cid) || d.pago) continue;
+    const f = faturaDaCompra(principal, d.data);
+    const k = f.ano * 12 + f.mes;
+    const g = mapa.get(k) ?? { mes: f.mes, ano: f.ano, itens: [], cents: 0 };
+    g.itens.push(d);
+    g.cents -= assinadoCents(d);
+    mapa.set(k, g);
+  }
+  return [...mapa.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, g]) => ({
+      mes: g.mes,
+      ano: g.ano,
+      chave: `${g.ano}-${String(g.mes).padStart(2, "0")}`,
+      vencimento: vencimentoFatura(principal, g.mes, g.ano),
+      itens: g.itens.sort((a, b) => a.data - b.data || a.id - b.id),
+      subtotal: fromCents(g.cents),
+    }));
+}
+
+/** R44 - valor líquido (DEBITO - CREDITO) de um conjunto de itens, em R$. */
+export function liquidoItens(itens: readonly Despesa[]): number {
+  let c = 0;
+  for (const d of itens) c -= assinadoCents(d);
+  return fromCents(c);
+}
+
 // ---------------------------------------------------------------- R13
 
 export function normalizaNome(s: string): string {
@@ -417,4 +550,58 @@ export function recalcularTudo(ds: Dataset): Dataset {
     return { ...c, limiteDisponivel };
   });
   return mudou ? { ...ds, contas, cartoes } : ds;
+}
+
+// ------------------------------------------------------------ R42b vínculo da compra no débito
+
+export const PREFIXO_DEBITO = "debito:";
+
+/** R42b - `grupoId` de uma compra no débito feita com o cartão (físico ou virtual) `cartaoId`. */
+export function grupoIdDebito(cartaoId: number): string {
+  return `${PREFIXO_DEBITO}${cartaoId}`;
+}
+
+/** R42b - id do cartão de uma compra no débito (`grupoId = "debito:<id>"`), ou null. */
+export function cartaoDeDebito(d: Pick<Despesa, "grupoId">): number | null {
+  const g = d.grupoId;
+  if (!g || !g.startsWith(PREFIXO_DEBITO)) return null;
+  const resto = g.slice(PREFIXO_DEBITO.length);
+  if (!/^\d+$/.test(resto)) return null;
+  const id = Number(resto);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * R42b - compras no débito do grupo de cartões (físico + virtuais) na data civil do lançamento (mes/ano).
+ * São lançamentos da conta (cartaoId nulo): NÃO entram em fatura, limite nem em "Pagar fatura".
+ * `somenteCartaoId` restringe a um cartão do grupo. Mais recentes primeiro.
+ */
+export function debitosDoCartao(
+  cartoesDoGrupo: readonly Pick<Cartao, "id">[],
+  despesas: readonly Despesa[],
+  mes: number,
+  ano: number,
+  somenteCartaoId: number | null = null,
+): Despesa[] {
+  const ids = new Set(cartoesDoGrupo.map((c) => c.id));
+  return despesas
+    .filter((d) => {
+      if (d.natureza !== "NORMAL" || cartaoIdDe(d) !== null) return false;
+      const cid = cartaoDeDebito(d);
+      if (cid === null || !ids.has(cid)) return false;
+      if (somenteCartaoId !== null && cid !== somenteCartaoId) return false;
+      const m = mesAnoDe(d.data);
+      return m.mes === mes && m.ano === ano;
+    })
+    .sort((a, b) => b.data - a.data || b.id - a.id);
+}
+
+/** R42b - soma (centavos, DEBITO − CREDITO, em valor positivo = gasto líquido) das compras no débito. */
+export function totalDebitos(itens: readonly Despesa[]): number {
+  return fromCents(itens.reduce((s, d) => s - assinadoCents(d), 0));
+}
+
+/** `grupoId` que representa parcelamento (único que habilita "excluir todas as parcelas"). */
+export function ehGrupoParcelas(d: Pick<Despesa, "grupoId">): boolean {
+  return Boolean(d.grupoId?.startsWith("parc:"));
 }

@@ -79,6 +79,33 @@ object Financas {
         return Dinheiro.reais(Dinheiro.centavos(cartao.limiteTotal) + emAberto)
     }
 
+    /** R41 — saldo individual de um cartão do grupo (o limite total continua compartilhado, R18). */
+    data class SaldoCartao(
+        val usado: Double,
+        val limiteProprio: Double?,
+        val disponivel: Double,
+        val disponivelGrupo: Double,
+        val razao: Double
+    )
+
+    fun saldoDoCartao(cartao: Cartao, cartoesDoGrupo: Iterable<Cartao>, despesas: Iterable<Movimento>): SaldoCartao {
+        val grupo = cartoesDoGrupo.toList()
+        val principal = grupo.firstOrNull { it.id == cartao.idDoGrupo } ?: cartao
+        val ids = idsDoGrupo(principal, grupo)
+        val usadoCent = despesas
+            .filter { it.cartaoId == cartao.id && !it.pago }
+            .sumOf { -it.centavosAssinados } // compras positivas, estornos negativos
+            .coerceAtLeast(0L)
+        val disponivelGrupo = limiteDisponivel(principal, despesas.filter { it.cartaoId in ids }, ids)
+        val proprio = cartao.limiteProprio?.takeIf { it > 0.0 }
+        val disponivel = if (proprio != null) {
+            minOf(Dinheiro.reais(Dinheiro.centavos(proprio) - usadoCent), disponivelGrupo)
+        } else disponivelGrupo
+        val base = proprio ?: principal.limiteTotal
+        val razao = if (base > 0.0) usadoCent.toDouble() / Dinheiro.centavos(base) else 0.0
+        return SaldoCartao(Dinheiro.reais(usadoCent), proprio, disponivel, disponivelGrupo, razao)
+    }
+
     // ------------------------------------------------------------ R5 KPIs
 
     data class Kpis(
@@ -222,15 +249,38 @@ object Financas {
             .map { resumoFatura(cartao, despesasDoCartao, it, idsDoGrupo) }
             .filter { it.pendente > 0 }
 
+    /**
+     * Últimas movimentações de uma conta: lançamentos da própria conta (sem compras de cartão, que só
+     * entram no extrato pelo pagamento da fatura), já ocorridos (data até o fim de hoje), mais recentes primeiro.
+     * [conta] vazia = todas as contas.
+     */
+    fun ultimasDaConta(despesas: Iterable<Despesa>, conta: String, agora: Long, limite: Int = 5): List<Despesa> {
+        val alvo = conta.trim()
+        val fimDeHoje = inicioDoDia(agora) + 86_400_000L - 1
+        return despesas
+            .filter { it.semCartao && it.dataMs <= fimDeHoje && (alvo.isEmpty() || it.conta.trim().equals(alvo, ignoreCase = true)) }
+            .sortedByDescending { it.dataMs }
+            .take(limite)
+    }
+
     /** Ids do grupo do cartão: o principal e todos os virtuais ligados a ele. */
     fun idsDoGrupo(principal: Cartao, todos: Iterable<Cartao>): Set<Int> =
         todos.filter { it.id == principal.id || it.cartaoPrincipalId == principal.id }.map { it.id }.toSet() + principal.id
 
     // ------------------------------------------------------------- R8 parcelas
 
-    /** R8 — divide [modelo] em [n] parcelas; a soma é exata (resto na última); sem deriva de datas. */
-    fun parcelar(modelo: Despesa, n: Int, agora: Long, grupoId: String = UUID.randomUUID().toString()): List<Despesa> {
+    /**
+     * R8 — divide [modelo] (valor TOTAL) em [n] parcelas; a soma é exata (resto na última); sem deriva de datas.
+     * [aPartirDe] (k, padrão 1) cria só as parcelas k..n de uma compra já em andamento: os valores são os das
+     * posições k..n da divisão em centavos do total e a parcela k nasce na data de [modelo].
+     */
+    fun parcelar(
+        modelo: Despesa, n: Int, agora: Long,
+        grupoId: String = UUID.randomUUID().toString(),
+        aPartirDe: Int = 1
+    ): List<Despesa> {
         require(n >= 1) { "Número de parcelas inválido" }
+        require(aPartirDe in 1..n) { "Parcela atual inválida (1 a $n)" }
         val totalC = Dinheiro.centavos(modelo.valor)
         require(totalC > 0) { "Valor deve ser maior que zero" }
         val baseC = totalC / n
@@ -238,8 +288,8 @@ object Financas {
         val diaOriginal = Calendar.getInstance().apply { timeInMillis = modelo.dataMs }.get(Calendar.DAY_OF_MONTH)
         val noCartao = modelo.cartaoId != null && modelo.cartaoId != 0
 
-        return (1..n).map { i ->
-            val dataMs = somarMeses(modelo.dataMs, i - 1, diaOriginal)
+        return (aPartirDe..n).map { i ->
+            val dataMs = somarMeses(modelo.dataMs, i - aPartirDe, diaOriginal)
             modelo.copy(
                 id = 0,
                 descricao = if (n == 1) modelo.descricao else "${modelo.descricao} ($i/$n)",
@@ -251,6 +301,43 @@ object Financas {
                 grupoId = if (n == 1) modelo.grupoId else grupoId
             )
         }
+    }
+
+    // ------------------------------------------------- comprometimento do limite
+
+    data class LiberacaoFatura(val ref: FaturaRef, val valor: Double, val vencimento: Long)
+
+    data class ComprometimentoCartao(
+        val faturaAtual: Double,
+        val parcelasFuturas: Double,
+        val emAbertoTotal: Double,
+        val liberacaoPorFatura: List<LiberacaoFatura>
+    )
+
+    /**
+     * Quanto do limite do grupo está comprometido: fatura do ciclo corrente (a de [agora]), faturas de ciclos
+     * posteriores (parcelas futuras) e o que volta ao pagar cada fatura (ordenado). Faturas anteriores à atual
+     * ainda em aberto entram em [faturaAtual] (já estão vencidas/fechadas).
+     */
+    fun comprometimentoCartao(
+        cartao: Cartao,
+        despesasDoGrupo: Iterable<Despesa>,
+        agora: Long,
+        idsDoGrupo: Set<Int> = setOf(cartao.id)
+    ): ComprometimentoCartao {
+        val atual = faturaDaCompra(agora, cartao.diaFechamento)
+        val abertas = faturasEmAberto(cartao, despesasDoGrupo, idsDoGrupo)
+        var atualC = 0L; var futuraC = 0L
+        abertas.forEach {
+            val c = Dinheiro.centavos(it.pendente)
+            if (it.ref.ano * 12 + it.ref.mes > atual.ano * 12 + atual.mes) futuraC += c else atualC += c
+        }
+        return ComprometimentoCartao(
+            faturaAtual = Dinheiro.reais(atualC),
+            parcelasFuturas = Dinheiro.reais(futuraC),
+            emAbertoTotal = Dinheiro.reais(atualC + futuraC),
+            liberacaoPorFatura = abertas.map { LiberacaoFatura(it.ref, it.pendente, it.vencimento) }
+        )
     }
 
     // ------------------------------------------------------- R16 recorrências
@@ -402,6 +489,121 @@ object Financas {
             else -> NivelSaude.SAUDAVEL
         }
         return Saude(consumo, variacao, nivel, Dinheiro.reais(Dinheiro.centavos(receitas) - Dinheiro.centavos(despesas)))
+    }
+
+    // ------------------------------------------------------------------ R42
+
+    /** R42 — como uma compra no cartão é tratada: crédito (consome limite, entra na fatura) ou débito (sai da conta). */
+    enum class Modalidade { CREDITO, DEBITO }
+
+    /** "CRÉDITO"/"DÉBITO"/"MÚLTIPLO" → "CREDITO"/"DEBITO"/"MULTIPLO". */
+    fun tipoDeCartao(tipo: String): String = semAcento(tipo)
+
+    private fun semAcento(s: String): String =
+        java.text.Normalizer.normalize(s.trim().uppercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+
+    /**
+     * CRÉDITO → sempre crédito; DÉBITO → sempre débito; MÚLTIPLO → o que o usuário pediu (padrão crédito).
+     * Tipo desconhecido segue o comportamento histórico (crédito).
+     */
+    fun modalidadeDaCompra(cartao: Cartao, pedida: Modalidade? = null): Modalidade = when (semAcento(cartao.tipo)) {
+        "DEBITO" -> Modalidade.DEBITO
+        "MULTIPLO" -> pedida ?: Modalidade.CREDITO
+        else -> Modalidade.CREDITO
+    }
+
+    /**
+     * R42 — aplica a modalidade a uma compra feita com [cartao]. Crédito: devolve [compra] como está.
+     * Débito: vira lançamento direto na conta do cartão ([contaDoCartao]), sem cartão, pago conforme a data.
+     */
+    fun aplicarModalidade(compra: Despesa, cartao: Cartao, contaDoCartao: String, pedida: Modalidade?, agora: Long): Despesa =
+        if (modalidadeDaCompra(cartao, pedida) == Modalidade.CREDITO) {
+            // Compra que volta ao crédito não pode carregar o vínculo de débito de um cartão anterior.
+            if (cartaoDeDebito(compra) != null) compra.copy(grupoId = null) else compra
+        } else {
+            compra.copy(cartaoId = null, conta = contaDoCartao, pago = compra.dataMs <= agora, grupoId = grupoIdDebito(cartao.id))
+        }
+
+    // ------------------------------------------------- vínculo de débito (grupoId "debito:<cartaoId>")
+
+    const val PREFIXO_DEBITO = "debito:"
+
+    /** `grupoId` que liga uma compra convertida em débito ao cartão usado. Débito não parcela: não conflita com `parc:`. */
+    fun grupoIdDebito(cartaoId: Int): String = "$PREFIXO_DEBITO$cartaoId"
+
+    /** Id do cartão do vínculo `debito:<id>` ou `null` (grupoId ausente, `parc:`, `fixa:`, `fatura:`, `transf:`, `rep:`...). */
+    fun cartaoDeDebito(grupoId: String?): Int? =
+        grupoId?.takeIf { it.startsWith(PREFIXO_DEBITO) }?.removePrefix(PREFIXO_DEBITO)?.toIntOrNull()
+
+    fun cartaoDeDebito(d: Despesa): Int? = cartaoDeDebito(d.grupoId)
+
+    /** `true` se [grupoId] agrupa lançamentos de verdade (parcelas, repetição, fatura, transferência); `debito:` é só vínculo. */
+    fun ehGrupoDeLancamentos(grupoId: String?): Boolean = grupoId != null && cartaoDeDebito(grupoId) == null
+
+    /** Compras do grupo do cartão: crédito (com `cartaoId` do grupo) e débitos vinculados (`debito:<id do grupo>`). */
+    data class ComprasDoGrupo(val principalId: Int?, val credito: List<Despesa>, val debito: List<Despesa>)
+
+    fun comprasDoGrupo(cartaoId: Int, cartoes: List<Cartao>, despesas: List<Despesa>): ComprasDoGrupo {
+        val alvo = cartoes.firstOrNull { it.id == cartaoId }
+        val principal = alvo?.let { a -> cartoes.firstOrNull { it.id == a.idDoGrupo } }
+        val ids = principal?.let { idsDoGrupo(it, cartoes) } ?: setOf(cartaoId)
+        return ComprasDoGrupo(
+            principalId = principal?.id ?: alvo?.idDoGrupo ?: cartaoId,
+            credito = despesas.filter { it.cartaoId in ids }.sortedByDescending { it.dataMs },
+            debito = despesas.filter { it.cartaoId == null && cartaoDeDebito(it) in ids }.sortedByDescending { it.dataMs }
+        )
+    }
+
+    /** Débitos vinculados do mês civil da fatura exibida (não entram em total, em aberto, limite nem pagamento). */
+    fun debitosDaFatura(debitos: Iterable<Despesa>, ref: FaturaRef): List<Despesa> =
+        debitos.filter { mesDe(it.dataMs) == ref.mes && anoDe(it.dataMs) == ref.ano }.sortedByDescending { it.dataMs }
+
+    data class OutrasFaturas(val emAberto: Double, val proxima: FaturaRef?)
+
+    /**
+     * Em aberto (líquido) nas faturas diferentes de [exibida] e a fatura em aberto mais próxima para onde ir
+     * (a seguinte, senão a anterior mais recente). Só considera itens de cartão do grupo ([ids]).
+     */
+    fun outrasFaturasEmAberto(
+        ids: Set<Int>, diaFechamento: Int, despesas: Iterable<Despesa>, exibida: FaturaRef
+    ): OutrasFaturas {
+        val porFatura = despesas
+            .filter { it.cartaoId in ids && !it.pago }
+            .groupBy { faturaDaCompra(it.dataMs, diaFechamento) }
+            .filterKeys { it != exibida }
+            .mapValues { (_, v) -> v.sumOf { -it.centavosAssinados } }
+            .filterValues { it > 0 }
+        if (porFatura.isEmpty()) return OutrasFaturas(0.0, null)
+        fun idx(r: FaturaRef) = r.ano * 12 + r.mes
+        val proxima = porFatura.keys.filter { idx(it) > idx(exibida) }.minByOrNull { idx(it) }
+            ?: porFatura.keys.maxByOrNull { idx(it) }
+        return OutrasFaturas(Dinheiro.reais(porFatura.values.sum()), proxima)
+    }
+
+    /** R42 — diferença a lançar para o saldo do sistema igualar o do banco. */
+    data class Ajuste(val tipo: TipoDespesa, val centavos: Long) {
+        val valor: Double get() = Dinheiro.reais(centavos)
+    }
+
+    /** `null` quando já está igual (ou valores inválidos). CREDITO se o banco tem mais que o sistema, senão DEBITO. */
+    fun calcularAjusteSaldo(saldoAtual: Double, saldoReal: Double): Ajuste? {
+        if (!saldoAtual.isFinite() || !saldoReal.isFinite()) return null
+        val dif = Dinheiro.centavos(saldoReal) - Dinheiro.centavos(saldoAtual)
+        if (dif == 0L) return null
+        return Ajuste(if (dif > 0) TipoDespesa.CREDITO else TipoDespesa.DEBITO, kotlin.math.abs(dif))
+    }
+
+    /** "1.234,56", "-50,00", "R$ 10", "1234.5" → valor (pode ser negativo: conta no vermelho); vazio/inválido → null. */
+    fun parseSaldoInformado(texto: String): Double? {
+        var t = texto.trim().replace("R$", "").replace(" ", "")
+        if (t.isEmpty() || t == "-") return null
+        t = when {
+            t.contains(',') -> t.replace(".", "").replace(',', '.')
+            t.count { it == '.' } > 1 -> t.replace(".", "")
+            else -> t
+        }
+        val v = t.toDoubleOrNull() ?: return null
+        return if (v.isFinite()) Dinheiro.arredondar(v) else null
     }
 
     // ------------------------------------------------------------ investimentos

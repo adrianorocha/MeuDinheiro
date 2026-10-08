@@ -28,6 +28,7 @@ import com.meudinheiro.domain.Dinheiro
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.domain.WidgetResumo
 import com.meudinheiro.domain.Natureza
+import com.meudinheiro.domain.centavosAssinados
 import com.meudinheiro.funcoes.ExtratoPdf
 import com.meudinheiro.funcoes.UserPreferences
 import kotlinx.coroutines.Dispatchers
@@ -151,13 +152,25 @@ class MainRepository(
         return resultado
     }
 
+    /**
+     * R42 — compra com cartão: CRÉDITO consome limite/entra na fatura; DÉBITO vira lançamento direto na conta
+     * do cartão (sem cartão, pago conforme a data); MÚLTIPLO segue [pedida] (padrão crédito).
+     */
+    private suspend fun comModalidade(d: Despesa, pedida: Financas.Modalidade?): Despesa {
+        val id = d.cartaoId?.takeIf { it != 0 } ?: return d
+        val cartao = cartaoDao.getCartaoPorId(id) ?: throw RegraFinanceiraException("Cartão não encontrado.")
+        val conta = contaSaldoDao.obterPorId(cartao.contaId)
+            ?: throw RegraFinanceiraException("A conta vinculada ao cartão não existe mais.")
+        return Financas.aplicarModalidade(d, cartao, conta.conta, pedida, agora())
+    }
+
     /* ======================= LANÇAMENTOS (DESPESAS/RECEITAS) ======================= */
 
     /** Grava um lançamento e atualiza saldo/limite na mesma transação. Retorna o id gerado. */
-    suspend fun registrarLancamento(despesa: Despesa): Long {
+    suspend fun registrarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null): Long {
         val comAutor = completarAutor(despesa)
         return db.withTransaction {
-            val d = validar(comAutor)
+            val d = validar(comModalidade(comAutor, modalidade))
             val id = despesaDao.inserirDespesa(d)
             recalcularAfetados(listOf(d))
             atualizarSnapshotPatrimonial()
@@ -173,12 +186,18 @@ class MainRepository(
     }
 
     /** R8 — compra parcelada (parcelas já nascem consistentes com saldo/limite). */
-    suspend fun registrarParcelado(modelo: Despesa, parcelas: Int): List<Long> {
+    suspend fun registrarParcelado(
+        modelo: Despesa, parcelas: Int, modalidade: Financas.Modalidade? = null, parcelaAtual: Int = 1
+    ): List<Long> {
         val comAutor = completarAutor(modelo)
         return db.withTransaction {
             if (parcelas !in 1..120) throw RegraFinanceiraException("Número de parcelas inválido (1 a 120).")
-            val base = validar(comAutor)
-            val lista = Financas.parcelar(base, parcelas, agora())
+            if (parcelaAtual !in 1..parcelas) throw RegraFinanceiraException("A parcela atual deve estar entre 1 e $parcelas.")
+            val resolvida = comModalidade(comAutor, modalidade)
+            val naConta = comAutor.cartaoId?.takeIf { it != 0 } != null && resolvida.cartaoId == null // R42: débito não parcela
+            val base = validar(resolvida)
+            val lista = if (naConta) Financas.parcelar(base, 1, agora())
+            else Financas.parcelar(base, parcelas, agora(), aPartirDe = parcelaAtual)
             val ids = lista.map { despesaDao.inserirDespesa(it) }
             recalcularAfetados(lista)
             atualizarSnapshotPatrimonial()
@@ -212,10 +231,12 @@ class MainRepository(
         }
     }
 
-    suspend fun atualizarLancamento(despesa: Despesa) = db.withTransaction {
+    suspend fun atualizarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) = db.withTransaction {
         val antigo = despesaDao.obterDespesaPorId(despesa.id)
             ?: throw RegraFinanceiraException("Lançamento não encontrado.")
-        val novo = validar(despesa)
+        // R42: só reavalia a modalidade quando o cartão foi trocado (dados antigos não são migrados).
+        val trocouCartao = despesa.cartaoId?.takeIf { it != 0 } != null && despesa.cartaoId != antigo.cartaoId
+        val novo = validar(if (trocouCartao) comModalidade(despesa, modalidade) else despesa)
         despesaDao.inserirDespesa(novo)
         recalcularAfetados(listOf(antigo, novo))
         atualizarSnapshotPatrimonial()
@@ -364,6 +385,33 @@ class MainRepository(
 
     suspend fun inserirContaSaldo(contaSaldo: ContaSaldo) = salvarConta(contaSaldo)
 
+    /**
+     * R42 - iguala o saldo do sistema ao do banco com 1 lançamento AJUSTE (conta como saldo, mas não como
+     * receita/despesa). Retorna o ajuste feito, ou `null` se já estava igual. Pode ser excluído para desfazer.
+     */
+    suspend fun ajustarSaldoConta(numeroConta: String, saldoReal: Double, observacao: String? = null): Financas.Ajuste? =
+        db.withTransaction {
+            if (!saldoReal.isFinite()) throw RegraFinanceiraException("Informe o saldo real da conta.")
+            val conta = contaSaldoDao.obterPorNumero(numeroConta) ?: throw RegraFinanceiraException("Conta não encontrada.")
+            val atual = Financas.saldoConta(conta.conta, despesaDao.obterDaConta(conta.conta))
+            val ajuste = Financas.calcularAjusteSaldo(atual, saldoReal) ?: return@withTransaction null
+            val ms = agora()
+            val obs = observacao?.trim().orEmpty()
+            despesaDao.inserirDespesa(
+                normalizar(
+                    Despesa(
+                        descricao = "Ajuste de saldo (conferido com o banco)" + if (obs.isNotEmpty()) " - $obs" else "",
+                        valor = ajuste.valor, data = Date(ms),
+                        categoria = "Ajuste de saldo", conta = conta.conta, pic = "bank", tipo = ajuste.tipo,
+                        mes = 0, ano = 0, pago = true, natureza = Natureza.AJUSTE
+                    )
+                )
+            )
+            recalcularConta(conta.conta)
+            atualizarSnapshotPatrimonial()
+            ajuste
+        }
+
     /** Exclui a conta com tudo que depende dela: lançamentos, cartões (e suas compras) e agendamentos. */
     suspend fun excluirConta(id: Int) = db.withTransaction {
         val conta = contaSaldoDao.obterPorId(id) ?: return@withTransaction
@@ -442,12 +490,16 @@ class MainRepository(
     suspend fun buscarCartaoPorId(id: Int): Cartao? = cartaoDao.getCartaoPorId(id)
 
     /** Compras de todos os cartões do mesmo grupo (físico + virtuais) de [cartaoId], em fluxo reativo. */
-    fun getDespesasDoGrupoDe(cartaoId: Int): Flow<List<Despesa>> =
+    fun getDespesasDoGrupoDe(cartaoId: Int): Flow<List<Despesa>> = getComprasDoGrupoDe(cartaoId).map { it.credito }
+
+    /**
+     * Compras do grupo (físico + virtuais) de [cartaoId]: `credito` = com `cartaoId` do grupo (fatura/limite);
+     * `debito` = lançamentos diretos da conta vinculados por `grupoId = "debito:<id do grupo>"` (R42), só informativos.
+     * Traz o id do principal para a tela descartar emissões de outro grupo ao trocar de cartão.
+     */
+    fun getComprasDoGrupoDe(cartaoId: Int): Flow<Financas.ComprasDoGrupo> =
         combine(cartaoDao.obterTodosFlow(), despesaDao.obterTodasFlow()) { cartoes, despesas ->
-            val alvo = cartoes.firstOrNull { it.id == cartaoId }
-            val principal = alvo?.let { a -> cartoes.firstOrNull { it.id == a.idDoGrupo } }
-            val ids = principal?.let { Financas.idsDoGrupo(it, cartoes) } ?: setOf(cartaoId)
-            despesas.filter { it.cartaoId in ids }.sortedByDescending { it.dataMs }
+            Financas.comprasDoGrupo(cartaoId, cartoes, despesas)
         }
 
     /**
@@ -457,8 +509,10 @@ class MainRepository(
     suspend fun salvarCartao(cartao: Cartao): Unit = db.withTransaction {
         if (cartao.nome.isBlank()) throw RegraFinanceiraException("Informe o nome do cartão.")
         var c = cartao
+        var principalTotal = c.limiteTotal
 
         val principalId = c.cartaoPrincipalId
+        val anterior = if (c.id != 0) cartaoDao.getCartaoPorId(c.id) else null
         if (principalId != null) {
             if (principalId == c.id) throw RegraFinanceiraException("Um cartão não pode ser virtual de si mesmo.")
             val principal = cartaoDao.getCartaoPorId(principalId)
@@ -466,15 +520,25 @@ class MainRepository(
             if (principal.cartaoPrincipalId != null) {
                 throw RegraFinanceiraException("Um cartão virtual precisa estar ligado a um cartão físico (não a outro virtual).")
             }
+            // R42: um cartão que tem virtuais próprios não pode virar virtual.
+            if (c.id != 0 && cartaoDao.obterGrupo(c.id).any { it.id != c.id }) {
+                throw RegraFinanceiraException("Este cartão físico tem cartões virtuais. Mova ou exclua os virtuais antes de ligá-lo a outro cartão.")
+            }
             c = c.copy(
                 contaId = principal.contaId, limiteTotal = principal.limiteTotal,
                 diaFechamento = principal.diaFechamento, diaVencimento = principal.diaVencimento, tipo = principal.tipo
             )
-        } else if (c.id != 0) {
-            val anterior = cartaoDao.getCartaoPorId(c.id)
-            if (anterior?.cartaoPrincipalId != null) {
-                throw RegraFinanceiraException("Este cartão é virtual: exclua-o e crie um cartão físico novo.")
+            principalTotal = principal.limiteTotal
+        } else if (anterior?.cartaoPrincipalId != null) {
+            // R42: virtual → físico independente; mantém os valores herdados, sem limite próprio.
+            c = c.copy(limiteProprio = null)
+            if (c.limiteTotal <= 0.0 && c.contaId == 0) {
+                c = c.copy(
+                    contaId = anterior.contaId, limiteTotal = anterior.limiteTotal, diaFechamento = anterior.diaFechamento,
+                    diaVencimento = anterior.diaVencimento, tipo = anterior.tipo
+                )
             }
+            principalTotal = c.limiteTotal
         }
 
         if (c.limiteTotal < 0) throw RegraFinanceiraException("O limite não pode ser negativo.")
@@ -483,11 +547,32 @@ class MainRepository(
         }
         contaSaldoDao.obterPorId(c.contaId) ?: throw RegraFinanceiraException("Selecione a conta vinculada ao cartão.")
 
+        // R41: limite próprio opcional (0/nulo = sem teto); >0 e <= limite total do físico.
+        val proprio = c.limiteProprio?.takeIf { it != 0.0 }?.let { if (it.isFinite()) Dinheiro.arredondar(it) else Double.NaN }
+        if (proprio != null && (proprio.isNaN() || proprio <= 0.0 || proprio > Dinheiro.arredondar(principalTotal))) {
+            throw RegraFinanceiraException(MSG_LIMITE_PROPRIO)
+        }
+        if (c.cartaoPrincipalId == null && c.id != 0) {
+            cartaoDao.obterGrupo(c.id).filter { it.id != c.id }.forEach { v ->
+                val p = v.limiteProprio
+                if (p != null && p > Dinheiro.arredondar(c.limiteTotal)) {
+                    throw RegraFinanceiraException("O limite total não pode ficar abaixo do limite próprio do cartão virtual \"${v.nome}\".")
+                }
+            }
+        }
+        c = c.copy(limiteProprio = proprio)
+
         cartaoDao.inserirCartao(
             c.copy(limiteTotal = Dinheiro.arredondar(c.limiteTotal), limiteDisponivel = Dinheiro.arredondar(c.limiteTotal))
         )
         if (c.cartaoPrincipalId == null && c.id != 0) {
             cartaoDao.propagarParaVirtuais(c.id, c.contaId, Dinheiro.arredondar(c.limiteTotal), c.diaFechamento, c.diaVencimento, c.tipo)
+        }
+        // R42: as compras do cartão seguem o número de conta do cartão (e dos virtuais, se for físico).
+        if (c.id != 0) {
+            cartaoDao.obterGrupo(c.id).forEach { g ->
+                contaSaldoDao.obterPorId(g.contaId)?.let { despesaDao.atualizarContaDoCartao(g.id, it.conta) }
+            }
         }
         cartaoDao.obterTodasStatic().forEach { recalcularCartao(it.id) }
     }
@@ -503,6 +588,7 @@ class MainRepository(
                 throw RegraFinanceiraException("Este cartão virtual tem compras em aberto. Pague a fatura antes de excluí-lo.")
             }
             despesaDao.reatribuirCartao(atual.id, principalId)
+            despesaDao.reatribuirGrupo(Financas.grupoIdDebito(atual.id), Financas.grupoIdDebito(principalId))
             cartaoDao.deletarCartao(atual)
             return@withTransaction
         }
@@ -547,6 +633,60 @@ class MainRepository(
         recalcularCartao(cartao.id)
         atualizarSnapshotPatrimonial()
         resumo.pendente
+    }
+
+    /**
+     * Pagamento seletivo: quita só os [itemIds] (em aberto, do grupo do cartão) com UM lançamento
+     * PAGAMENTO_FATURA do valor líquido (débitos − estornos, em centavos). Retorna o valor pago.
+     */
+    suspend fun pagarItens(cartaoId: Int, itemIds: List<Long>): Double = db.withTransaction {
+        val escolhido = cartaoDao.getCartaoPorId(cartaoId) ?: throw RegraFinanceiraException("Cartão não encontrado.")
+        val cartao = cartaoDao.getCartaoPorId(escolhido.idDoGrupo) ?: throw RegraFinanceiraException("Cartão físico não encontrado.")
+        val ids = cartaoDao.obterGrupo(cartao.id).map { it.id }.toSet()
+        val conta = contaSaldoDao.obterPorId(cartao.contaId) ?: throw RegraFinanceiraException("Conta do cartão não encontrada.")
+        val unicos = itemIds.distinct()
+        if (unicos.isEmpty()) throw RegraFinanceiraException("Selecione ao menos um item.")
+        val doGrupo = despesaDao.obterDosCartoes(ids.toList())
+        val porId = doGrupo.associateBy { it.id }
+        val itens = unicos.map { porId[it] ?: throw RegraFinanceiraException("Item não pertence a este cartão.") }
+        if (itens.any { it.pago }) throw RegraFinanceiraException("Há itens já pagos na seleção.")
+        val liquidoC = itens.sumOf { -it.centavosAssinados }
+        if (liquidoC <= 0L) throw RegraFinanceiraException("Não há valor a pagar nos itens selecionados.")
+
+        val refs = itens.map { Financas.faturaDaCompra(it.dataMs, cartao.diaFechamento) }.distinct()
+        val rotulo: String
+        val grupoId: String
+        if (refs.size == 1) {
+            val ref = refs.first()
+            val abertosDaFatura = doGrupo.count { !it.pago && Financas.faturaDaCompra(it.dataMs, cartao.diaFechamento) == ref }
+            val base = "fatura:${cartao.id}:${ref.ano}-%02d".format(ref.mes)
+            if (abertosDaFatura == itens.size) {
+                rotulo = "%02d/%d".format(ref.mes, ref.ano); grupoId = base
+            } else {
+                rotulo = "%02d/%d (parcial)".format(ref.mes, ref.ano)
+                grupoId = "$base:parcial:${java.util.UUID.randomUUID()}"
+            }
+        } else {
+            rotulo = "(itens selecionados)"
+            grupoId = "fatura:${cartao.id}:multi:${java.util.UUID.randomUUID()}"
+        }
+
+        val valor = Dinheiro.reais(liquidoC)
+        despesaDao.marcarComoPagas(itens.map { it.id })
+        despesaDao.inserirDespesa(
+            normalizar(
+                Despesa(
+                    descricao = "Pagamento fatura ${cartao.nome} $rotulo",
+                    valor = valor, data = Date(agora()), categoria = "Cartão", conta = conta.conta,
+                    pic = "payments", tipo = TipoDespesa.DEBITO, mes = 0, ano = 0, pago = true,
+                    natureza = Natureza.PAGAMENTO_FATURA, grupoId = grupoId
+                )
+            )
+        )
+        recalcularConta(conta.conta)
+        recalcularCartao(cartao.id)
+        atualizarSnapshotPatrimonial()
+        valor
     }
 
     /** "Dar baixa" numa pendência: conta comum → marca paga; compra de cartão → paga a fatura inteira dela. */
@@ -598,18 +738,22 @@ class MainRepository(
             // Origem válida? (cartão → conta do cartão; conta → precisa existir). Senão a regra espera, sem perder meses.
             val origem = runCatching { resolverOrigem(regra) }.getOrNull() ?: return@forEach
             if (contaSaldoDao.obterPorNumero(origem.conta) == null) return@forEach
+            // R42: cartão DÉBITO gera na conta; CRÉDITO/MÚLTIPLO seguem como compra no cartão.
+            val cartaoDaRegra = origem.cartaoId?.let { cartaoDao.getCartaoPorId(it) }
+            val noCredito = cartaoDaRegra == null || Financas.modalidadeDaCompra(cartaoDaRegra) == Financas.Modalidade.CREDITO
+            val cartaoGerado = if (noCredito) origem.cartaoId else null
             datas.forEach { ms ->
                 despesaDao.inserirDespesa(
                     normalizar(
                         Despesa(
                             descricao = regra.descricao, valor = regra.valor, data = Date(ms),
                             categoria = regra.categoria, conta = origem.conta, pic = regra.pic,
-                            tipo = regra.tipo, mes = 0, ano = 0, pago = false, cartaoId = origem.cartaoId
+                            tipo = regra.tipo, mes = 0, ano = 0, pago = false, cartaoId = cartaoGerado
                         )
                     )
                 )
             }
-            origem.cartaoId?.let { recalcularCartao(it) } // a compra no cartão consome limite (R4/R18)
+            cartaoGerado?.let { recalcularCartao(it) } // a compra no cartão consome limite (R4/R18)
             despesaFixaDao.atualizar(origem.copy(ultimaDataLancamento = Date(datas.last())))
         }
     }
@@ -942,6 +1086,7 @@ class MainRepository(
     val atualizacaoSinal get() = _atualizacaoSinal.asSharedFlow()
 
     companion object {
+        const val MSG_LIMITE_PROPRIO = "O limite próprio deve ser maior que zero e não pode passar do limite total do cartão físico."
         // Compartilhado entre todas as instâncias (telas, receivers e workers criam repositórios próprios).
         private val _atualizacaoSinal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     }

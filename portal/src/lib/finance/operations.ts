@@ -1,5 +1,7 @@
 import {
+  cartaoDeDebito,
   cartaoIdDe,
+  grupoIdDebito,
   cartoesDoGrupo,
   faturaDaCompra,
   patrimonioLiquido,
@@ -134,6 +136,20 @@ export function dividirParcelas(total: number, n: number): number[] {
   return out.map(fromCents);
 }
 
+export type Modalidade = "CREDITO" | "DEBITO";
+
+/** R42 - modalidade da compra no cartão: CRÉDITO/DÉBITO fixam; MÚLTIPLO usa a pedida (padrão crédito). */
+export function modalidadeDaCompra(cartao: Pick<Cartao, "tipo">, pedida?: Modalidade): Modalidade {
+  const t = cartao.tipo
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .trim();
+  if (t === "DEBITO") return "DEBITO";
+  if (t === "MULTIPLO") return pedida === "DEBITO" ? "DEBITO" : "CREDITO";
+  return "CREDITO";
+}
+
 export interface NovoLancamento {
   descricao: string;
   valor: number;
@@ -149,7 +165,11 @@ export interface NovoLancamento {
   cotacaoNaData?: number;
   pago?: boolean;
   parcelas?: number;
+  /** R44 - compra no cartão já em andamento: cria só as parcelas k..N (padrão 1 = todas). `valor` segue sendo o TOTAL da compra. */
+  parcelaAtual?: number;
   autor?: string | null;
+  /** R42 - só vale em cartão MÚLTIPLO; padrão CREDITO. */
+  modalidade?: Modalidade;
 }
 
 export const MAX_PARCELAS = 120;
@@ -160,20 +180,31 @@ export function adicionarLancamento(ds: Dataset, input: NovoLancamento, ctx: Ctx
   if (!(round2(input.valor) > 0)) return erro("O valor deve ser maior que zero.");
   if (!input.categoria.trim()) return erro("Informe a categoria.");
   if (!Number.isFinite(input.data)) return erro("Data inválida.");
-  const n = Math.min(MAX_PARCELAS, Math.max(1, Math.trunc(input.parcelas ?? 1)));
+  let n = Math.min(MAX_PARCELAS, Math.max(1, Math.trunc(input.parcelas ?? 1)));
 
   let conta = input.conta ?? "";
   let cartaoId: number | null = null;
+  let debitoDireto = false;
+  let cartaoDebitoId: number | null = null;
   if (input.cartaoId) {
     const cartao = ds.cartoes.find((c) => c.id === input.cartaoId);
     if (!cartao) return erro("Cartão não encontrado.");
     const contaCartao = contaDoCartao(ds, cartao);
     if (!contaCartao) return erro("A conta vinculada ao cartão não existe.");
     conta = contaCartao.conta;
-    cartaoId = cartao.id;
+    // R42: compra no débito sai direto da conta (não consome limite nem entra na fatura).
+    debitoDireto = modalidadeDaCompra(cartao, input.modalidade) === "DEBITO";
+    if (debitoDireto) {
+      n = 1;
+      cartaoDebitoId = cartao.id; // R42b: vínculo com o cartão pelo grupoId.
+    } else cartaoId = cartao.id;
   } else if (!contaPorNumero(ds, conta)) {
     return erro("Conta não encontrada.");
   }
+
+  const k = Math.trunc(input.parcelaAtual ?? 1);
+  if (!Number.isFinite(k) || k < 1 || k > n) return erro(`A parcela atual deve estar entre 1 e ${n}.`);
+  if (k > 1 && cartaoId === null) return erro("A parcela atual só vale em compra parcelada no cartão de crédito.");
 
   const valores = n > 1 ? dividirParcelas(input.valor, n) : [round2(input.valor)];
   const originais =
@@ -182,14 +213,14 @@ export function adicionarLancamento(ds: Dataset, input: NovoLancamento, ctx: Ctx
         ? dividirParcelas(input.valorOriginal, n)
         : [input.valorOriginal]
       : [];
-  const grupoId = n > 1 ? `parc:${uuidDe(ctx)}` : null;
+  const grupoId = n > 1 ? `parc:${uuidDe(ctx)}` : cartaoDebitoId !== null ? grupoIdDebito(cartaoDebitoId) : null;
   const usados = new Set(idsDespesas(ds));
   const criados: Despesa[] = [];
-  for (let i = 0; i < n; i++) {
-    const data = i === 0 ? input.data : somaMeses(input.data, i);
+  for (let i = k - 1; i < n; i++) {
+    const data = i === k - 1 ? input.data : somaMeses(input.data, i - (k - 1));
     const id = novoIdLong(usados, ctx.agora);
     usados.add(id);
-    const pago = cartaoId !== null ? false : n > 1 ? data <= ctx.agora : (input.pago ?? data <= ctx.agora);
+    const pago = cartaoId !== null ? false : debitoDireto ? data <= ctx.agora : n > 1 ? data <= ctx.agora : (input.pago ?? data <= ctx.agora);
     criados.push(
       montaDespesa(
         {
@@ -236,9 +267,11 @@ export interface EdicaoLancamento {
   valorOriginal?: number;
   moedaOriginal?: string;
   cotacaoNaData?: number;
+  /** R42 - ao trocar o cartão/modalidade; só vale em cartão MÚLTIPLO. */
+  modalidade?: Modalidade;
 }
 
-export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancamento): Op {
+export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancamento, ctx: Ctx = { agora: Date.now() }): Op {
   const atual = ds.despesas.find((d) => d.id === id);
   if (!atual) return erro("Lançamento não encontrado.");
   if (NATUREZAS_BLOQUEADAS_EDICAO.has(atual.natureza)) {
@@ -254,13 +287,27 @@ export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancament
   const cartaoIdNovo = patch.cartaoId === undefined ? cartaoIdDe(atual) : patch.cartaoId || null;
   let conta = patch.conta ?? atual.conta;
   let pago = patch.pago ?? atual.pago;
+  let cartaoFinal: number | null = cartaoIdNovo;
+  // R42b: só o vínculo `debito:` é reescrito aqui; parc:/fixa:/rep:/transf: etc. permanecem.
+  let grupoIdFinal = atual.grupoId;
+  // Mover para outra conta desfaz o vínculo; editar sem mudar a conta (mesmo com cartaoId null) preserva.
+  if (cartaoDeDebito(atual) !== null && patch.conta !== undefined && patch.conta !== atual.conta) grupoIdFinal = null;
   if (cartaoIdNovo !== null) {
     const cartao = ds.cartoes.find((c) => c.id === cartaoIdNovo);
     if (!cartao) return erro("Cartão não encontrado.");
     const contaCartao = contaDoCartao(ds, cartao);
     if (!contaCartao) return erro("A conta vinculada ao cartão não existe.");
     conta = contaCartao.conta;
-    if (cartaoIdNovo !== cartaoIdDe(atual)) pago = false;
+    const trocou = cartaoIdNovo !== cartaoIdDe(atual);
+    // R42: ao trocar o cartão/modalidade, compra no débito vira lançamento direto da conta.
+    if ((trocou || patch.modalidade !== undefined) && modalidadeDaCompra(cartao, patch.modalidade) === "DEBITO") {
+      cartaoFinal = null;
+      pago = data <= ctx.agora;
+      if (grupoIdFinal === null || cartaoDeDebito({ grupoId: grupoIdFinal }) !== null) grupoIdFinal = grupoIdDebito(cartao.id);
+    } else {
+      if (trocou) pago = false;
+      if (cartaoDeDebito({ grupoId: grupoIdFinal }) !== null) grupoIdFinal = null; // vira compra no crédito: sem vínculo de débito
+    }
   } else if (!contaPorNumero(ds, conta)) {
     return erro("Conta não encontrada.");
   }
@@ -276,7 +323,8 @@ export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancament
     categoria: (patch.categoria ?? atual.categoria).trim(),
     conta,
     tipo: patch.tipo ?? atual.tipo,
-    cartaoId: cartaoIdNovo,
+    cartaoId: cartaoFinal,
+    grupoId: grupoIdFinal,
     pago,
     valorOriginal: round2(patch.valorOriginal && patch.valorOriginal > 0 ? patch.valorOriginal : valor),
     moedaOriginal: patch.moedaOriginal?.trim() || atual.moedaOriginal || "BRL",
@@ -467,7 +515,19 @@ export function excluirConta(ds: Dataset, id: number, opcoes: { forcar?: boolean
 
 // ------------------------------------------------------------ cartões (R18: físicos e virtuais)
 
-export type NovoCartao = Omit<Cartao, "id" | "limiteDisponivel" | "cartaoPrincipalId"> & { cartaoPrincipalId?: number | null };
+export type NovoCartao = Omit<Cartao, "id" | "limiteDisponivel" | "cartaoPrincipalId" | "limiteProprio"> & {
+  cartaoPrincipalId?: number | null;
+  limiteProprio?: number | null;
+};
+
+const MSG_LIMITE_PROPRIO = "O limite próprio deve ser maior que zero e não pode passar do limite total do cartão físico.";
+
+/** R41 - normaliza (null/0/vazio = sem teto) e valida contra o limite total do principal. */
+function limiteProprioValido(v: number | null | undefined, limiteTotal: number): { valor: number | null } | { erro: string } {
+  if (v === null || v === undefined || v === 0) return { valor: null };
+  if (!Number.isFinite(v) || v < 0 || round2(v) <= 0 || round2(v) > round2(limiteTotal)) return { erro: MSG_LIMITE_PROPRIO };
+  return { valor: round2(v) };
+}
 
 function validaCartao(ds: Dataset, c: NovoCartao): string | null {
   if (!c.nome.trim()) return "Informe o nome do cartão.";
@@ -495,18 +555,22 @@ export function criarCartao(ds: Dataset, input: NovoCartao, ctx: Ctx): Op<{ cart
     const p = principalValido(ds, input.cartaoPrincipalId);
     if (typeof p === "string") return erro(p);
     if (!input.nome.trim()) return erro("Informe o nome do cartão.");
+    const lp = limiteProprioValido(input.limiteProprio, p.limiteTotal);
+    if ("erro" in lp) return erro(lp.erro);
     const { lista, item } = inserirItem<Cartao>(
       ds.cartoes,
-      { nome: input.nome.trim(), finalCartao: input.finalCartao, ...herdadosDe(p), limiteDisponivel: p.limiteDisponivel, cartaoPrincipalId: p.id },
+      { nome: input.nome.trim(), finalCartao: input.finalCartao, ...herdadosDe(p), limiteDisponivel: p.limiteDisponivel, cartaoPrincipalId: p.id, limiteProprio: lp.valor },
       ctx,
     );
     return finaliza({ ...ds, cartoes: lista }, { cartao: item });
   }
   const e = validaCartao(ds, input);
   if (e) return erro(e);
+  const lp = limiteProprioValido(input.limiteProprio, input.limiteTotal);
+  if ("erro" in lp) return erro(lp.erro);
   const { lista, item } = inserirItem<Cartao>(
     ds.cartoes,
-    { ...input, nome: input.nome.trim(), limiteTotal: round2(input.limiteTotal), limiteDisponivel: round2(input.limiteTotal), cartaoPrincipalId: null },
+    { ...input, nome: input.nome.trim(), limiteTotal: round2(input.limiteTotal), limiteDisponivel: round2(input.limiteTotal), cartaoPrincipalId: null, limiteProprio: lp.valor },
     ctx,
   );
   return finaliza({ ...ds, cartoes: lista }, { cartao: item });
@@ -515,22 +579,50 @@ export function criarCartao(ds: Dataset, input: NovoCartao, ctx: Ctx): Op<{ cart
 export function editarCartao(ds: Dataset, id: number, patch: Partial<NovoCartao>): Op {
   const atual = ds.cartoes.find((c) => c.id === id);
   if (!atual) return erro("Cartão não encontrado.");
-  if (patch.cartaoPrincipalId !== undefined && (patch.cartaoPrincipalId ?? null) !== atual.cartaoPrincipalId) {
-    return erro("Não é possível alterar o vínculo físico/virtual de um cartão existente.");
-  }
+  // R42: vínculo físico/virtual editável. `alvo` = principal desejado (null = físico independente).
+  const alvo = patch.cartaoPrincipalId !== undefined ? (patch.cartaoPrincipalId ?? null) : atual.cartaoPrincipalId;
+  const viraFisico = atual.cartaoPrincipalId != null && alvo === null;
 
-  if (atual.cartaoPrincipalId != null) {
-    const p = principalValido(ds, atual.cartaoPrincipalId);
+  if (alvo !== null) {
+    if (alvo === id) return erro("Um cartão não pode compartilhar o saldo dele mesmo.");
+    const p = principalValido(ds, alvo);
     if (typeof p === "string") return erro(p);
+    if (ds.cartoes.some((c) => c.cartaoPrincipalId === id)) {
+      return erro("Este cartão físico possui cartões virtuais. Mova ou exclua os virtuais antes de torná-lo virtual.");
+    }
     const nome = (patch.nome ?? atual.nome).trim();
     if (!nome) return erro("Informe o nome do cartão.");
-    const novo: Cartao = { ...atual, nome, finalCartao: patch.finalCartao ?? atual.finalCartao, ...herdadosDe(p) };
-    return finaliza({ ...ds, cartoes: ds.cartoes.map((c) => (c.id === id ? novo : c)) }, {});
+    const lp = limiteProprioValido(patch.limiteProprio === undefined ? atual.limiteProprio : patch.limiteProprio, p.limiteTotal);
+    if ("erro" in lp) return erro(lp.erro);
+    const novo: Cartao = {
+      ...atual,
+      nome,
+      finalCartao: patch.finalCartao ?? atual.finalCartao,
+      ...herdadosDe(p),
+      cartaoPrincipalId: p.id,
+      limiteProprio: lp.valor,
+    };
+    // As compras e recorrências do cartão passam para a conta do físico.
+    const contaP = contaDoCartao(ds, p);
+    const despesas = contaP
+      ? ds.despesas.map((d) => (cartaoIdDe(d) === id ? { ...d, conta: contaP.conta } : d))
+      : ds.despesas;
+    const despesasFixas = contaP
+      ? ds.despesasFixas.map((f) => (f.cartaoId === id ? { ...f, conta: contaP.conta } : f))
+      : ds.despesasFixas;
+    return finaliza({ ...ds, cartoes: ds.cartoes.map((c) => (c.id === id ? novo : c)), despesas, despesasFixas }, {});
   }
 
-  const novo: Cartao = { ...atual, ...patch, cartaoPrincipalId: null, limiteDisponivel: atual.limiteDisponivel };
+
+  const novo: Cartao = { ...atual, ...patch, cartaoPrincipalId: null, limiteDisponivel: atual.limiteDisponivel, limiteProprio: viraFisico ? null : (atual.limiteProprio ?? null) };
   const e = validaCartao(ds, novo);
   if (e) return erro(e);
+  const lp = limiteProprioValido(patch.limiteProprio === undefined ? novo.limiteProprio : patch.limiteProprio, novo.limiteTotal);
+  if ("erro" in lp) return erro(lp.erro);
+  novo.limiteProprio = lp.valor;
+  if (ds.cartoes.some((c) => c.cartaoPrincipalId === id && c.limiteProprio != null && c.limiteProprio > round2(novo.limiteTotal))) {
+    return erro("O limite total não pode ficar abaixo do limite próprio de um cartão virtual deste grupo.");
+  }
   novo.nome = novo.nome.trim();
   novo.limiteTotal = round2(novo.limiteTotal);
   // Propaga ao grupo: virtuais herdam os campos; compras do grupo acompanham a conta.
@@ -588,7 +680,10 @@ export function excluirCartao(ds: Dataset, id: number, opcoes: { forcar?: boolea
       {
         ...ds,
         cartoes: ds.cartoes.filter((c) => c.id !== id),
-        despesas: ds.despesas.map((d) => (cartaoIdDe(d) === id ? { ...d, cartaoId: principal } : d)),
+        despesas: ds.despesas.map((d) => {
+          if (cartaoDeDebito(d) === id) return { ...d, grupoId: grupoIdDebito(principal) }; // R42b
+          return cartaoIdDe(d) === id ? { ...d, cartaoId: principal } : d;
+        }),
       },
       {},
     );
@@ -613,28 +708,75 @@ export function excluirCartao(ds: Dataset, id: number, opcoes: { forcar?: boolea
 
 // ------------------------------------------------------------ R7 pagar fatura
 
-/** Paga a fatura única do grupo (R18); aceita o id de qualquer cartão do grupo. */
-export function pagarFatura(ds: Dataset, cartaoId: number, mes: number, ano: number, ctx: Ctx): Op<{ pagamento: Despesa }> {
-  const escolhido = ds.cartoes.find((c) => c.id === cartaoId);
+const chaveFatura = (mes: number, ano: number) => `${ano}-${String(mes).padStart(2, "0")}`;
+
+export interface PagamentoItensFatura {
+  /** id de qualquer cartão do grupo (R18). */
+  cartaoId: number;
+  /** ids das despesas em aberto (do grupo) a pagar. */
+  itemIds: number[];
+}
+
+/**
+ * R44 - paga todos ou alguns itens em aberto do grupo, de qualquer fatura (permite antecipar parcelas futuras).
+ * Valor = Σ DEBITO − Σ CREDITO dos itens (centavos); cria 1 PAGAMENTO_FATURA e marca os itens como pagos.
+ */
+export function pagarItensFatura(ds: Dataset, input: PagamentoItensFatura, ctx: Ctx): Op<{ pagamento: Despesa; itens: Despesa[] }> {
+  const escolhido = ds.cartoes.find((c) => c.id === input.cartaoId);
   if (!escolhido) return erro("Cartão não encontrado.");
   const grupo = cartoesDoGrupo(escolhido, ds.cartoes);
   const cartao = grupo[0];
   const idsGrupo = new Set(grupo.map((c) => c.id));
   const conta = contaDoCartao(ds, cartao);
   if (!conta) return erro("A conta vinculada ao cartão não existe.");
-  const itens = ds.despesas.filter((d) => {
+  const selecionados = new Set(input.itemIds);
+  if (selecionados.size === 0) return erro("Selecione ao menos um item para pagar.");
+  const porId = new Map(ds.despesas.map((d) => [d.id, d]));
+  const itens: Despesa[] = [];
+  for (const id of selecionados) {
+    const d = porId.get(id);
+    if (!d) return erro("Algum item selecionado não existe mais.");
     const cid = cartaoIdDe(d);
-    if (cid === null || !idsGrupo.has(cid) || d.pago) return false;
-    const f = faturaDaCompra(cartao, d.data);
-    return f.mes === mes && f.ano === ano;
-  });
+    if (cid === null || !idsGrupo.has(cid)) return erro("Algum item selecionado não pertence a este cartão.");
+    if (d.pago) return erro("Algum item selecionado já está pago.");
+    itens.push(d);
+  }
   let cents = 0;
   for (const d of itens) cents += d.tipo === "DEBITO" ? toCents(d.valor) : -toCents(d.valor);
-  if (cents <= 0) return erro("Não há valor em aberto nesta fatura.");
-  const ids = new Set(itens.map((d) => d.id));
+  if (cents <= 0) return erro("Não há valor a pagar nos itens selecionados.");
+
+  const faturasDosItens = new Map<string, { mes: number; ano: number }>();
+  for (const d of itens) {
+    const f = faturaDaCompra(cartao, d.data);
+    faturasDosItens.set(chaveFatura(f.mes, f.ano), f);
+  }
+  let descricao: string;
+  let grupoId: string;
+  const usados = new Set(ds.despesas.map((d) => d.grupoId).filter((g): g is string => !!g));
+  const unico = (base: string) => {
+    let ts = ctx.agora;
+    while (usados.has(`${base}:p${ts}`)) ts += 1;
+    return `${base}:p${ts}`;
+  };
+  if (faturasDosItens.size === 1) {
+    const [chave, f] = [...faturasDosItens.entries()][0];
+    const rotulo = `${String(f.mes).padStart(2, "0")}/${f.ano}`;
+    const abertosDaFatura = ds.despesas.filter((d) => {
+      const cid = cartaoIdDe(d);
+      if (cid === null || !idsGrupo.has(cid) || d.pago) return false;
+      const x = faturaDaCompra(cartao, d.data);
+      return x.mes === f.mes && x.ano === f.ano;
+    });
+    const completa = abertosDaFatura.every((d) => selecionados.has(d.id));
+    descricao = completa ? `Fatura ${cartao.nome} ${rotulo}` : `Fatura ${cartao.nome} ${rotulo} (parcial)`;
+    grupoId = completa ? `fatura:${cartao.id}:${chave}` : unico(`fatura:${cartao.id}:${chave}`);
+  } else {
+    descricao = `Fatura ${cartao.nome} (itens selecionados)`;
+    grupoId = unico(`fatura:${cartao.id}:multi`);
+  }
   const pagamento = montaDespesa(
     {
-      descricao: `Fatura ${cartao.nome} ${String(mes).padStart(2, "0")}/${ano}`,
+      descricao,
       valor: fromCents(cents),
       data: ctx.agora,
       categoria: "Cartão",
@@ -644,12 +786,33 @@ export function pagarFatura(ds: Dataset, cartaoId: number, mes: number, ano: num
       pago: true,
       natureza: "PAGAMENTO_FATURA",
       cartaoId: null,
-      grupoId: `fatura:${cartao.id}:${ano}-${String(mes).padStart(2, "0")}`,
+      grupoId,
     },
     novoIdLong(idsDespesas(ds), ctx.agora),
   );
-  const despesas = ds.despesas.map((d) => (ids.has(d.id) ? { ...d, pago: true } : d));
-  return finaliza({ ...ds, despesas: [...despesas, pagamento] }, { pagamento });
+  const despesas = ds.despesas.map((d) => (selecionados.has(d.id) ? { ...d, pago: true } : d));
+  return finaliza({ ...ds, despesas: [...despesas, pagamento] }, { pagamento, itens });
+}
+
+/** Paga a fatura única do grupo (R18); aceita o id de qualquer cartão do grupo. */
+export function pagarFatura(ds: Dataset, cartaoId: number, mes: number, ano: number, ctx: Ctx): Op<{ pagamento: Despesa }> {
+  const escolhido = ds.cartoes.find((c) => c.id === cartaoId);
+  if (!escolhido) return erro("Cartão não encontrado.");
+  const grupo = cartoesDoGrupo(escolhido, ds.cartoes);
+  const cartao = grupo[0];
+  const idsGrupo = new Set(grupo.map((c) => c.id));
+  const itemIds = ds.despesas
+    .filter((d) => {
+      const cid = cartaoIdDe(d);
+      if (cid === null || !idsGrupo.has(cid) || d.pago) return false;
+      const f = faturaDaCompra(cartao, d.data);
+      return f.mes === mes && f.ano === ano;
+    })
+    .map((d) => d.id);
+  if (itemIds.length === 0) return erro("Não há valor em aberto nesta fatura.");
+  const r = pagarItensFatura(ds, { cartaoId, itemIds }, ctx);
+  if (!r.ok) return erro(r.erro === "Não há valor a pagar nos itens selecionados." ? "Não há valor em aberto nesta fatura." : r.erro);
+  return r;
 }
 
 // ------------------------------------------------------------ R9 transferências
@@ -727,6 +890,49 @@ export function executarAgendadasVencidas(ds: Dataset, ctx: Ctx): Op<ResultadoAg
     executadas++;
   }
   return finaliza(atual, { executadas, falhas });
+}
+
+// ------------------------------------------------------------ R42 ajuste de saldo
+
+export interface AjusteSaldo {
+  conta: string;
+  /** Saldo que o banco mostra de verdade. */
+  saldoReal: number;
+  data?: number;
+  observacao?: string;
+}
+
+/** Diferença (saldoReal - saldo no sistema) em reais; negativa = o sistema tem a mais. */
+export function diferencaAjuste(ds: Dataset, conta: string, saldoReal: number): number {
+  return fromCents(toCents(saldoReal) - toCents(saldoConta(ds.despesas, conta)));
+}
+
+/**
+ * R42 - cria um lançamento AJUSTE (pago, sem cartão) que iguala o saldo da conta ao do banco.
+ * Não é receita nem despesa (R5), mas entra no saldo (R3). Excluir o lançamento desfaz o ajuste.
+ */
+export function ajustarSaldoConta(ds: Dataset, input: AjusteSaldo, ctx: Ctx): Op<{ ajuste: Despesa; diferenca: number }> {
+  const conta = contaPorNumero(ds, input.conta);
+  if (!conta) return erro("Conta não encontrada.");
+  if (!Number.isFinite(input.saldoReal)) return erro("Informe o saldo real da conta.");
+  const diffC = toCents(input.saldoReal) - toCents(saldoConta(ds.despesas, conta.conta));
+  if (diffC === 0) return erro("O saldo já confere com o informado.");
+  const obs = input.observacao?.trim();
+  const ajuste = montaDespesa(
+    {
+      descricao: obs ? `Ajuste de saldo (conferido com o banco) - ${obs}` : "Ajuste de saldo (conferido com o banco)",
+      valor: fromCents(Math.abs(diffC)),
+      data: input.data ?? ctx.agora,
+      categoria: "Ajuste de saldo",
+      conta: conta.conta,
+      tipo: diffC > 0 ? "CREDITO" : "DEBITO",
+      pago: true,
+      cartaoId: null,
+      natureza: "AJUSTE",
+    },
+    novoIdLong(idsDespesas(ds), ctx.agora),
+  );
+  return finaliza({ ...ds, despesas: [...ds.despesas, ajuste] }, { ajuste, diferenca: fromCents(diffC) });
 }
 
 // ------------------------------------------------------------ R10 metas
@@ -900,8 +1106,9 @@ export function processarDespesasFixas(ds: Dataset, ctx: Ctx): Op<{ criados: Des
       // Regra com cartão: a ocorrência é uma compra no cartão, na conta dele (R16/R18).
       const cartaoRegra = regra.cartaoId ? ds.cartoes.find((c) => c.id === regra.cartaoId) : undefined;
       const contaRegra = cartaoRegra ? contaDoCartao(ds, cartaoRegra) : undefined;
-      const cartaoOcorrencia = cartaoRegra && contaRegra ? cartaoRegra.id : null;
-      const contaOcorrencia = cartaoOcorrencia !== null && contaRegra ? contaRegra.conta : regra.conta;
+      // R42: cartão DÉBITO gera a ocorrência direto na conta (sem fatura/limite).
+      const cartaoOcorrencia = cartaoRegra && contaRegra && modalidadeDaCompra(cartaoRegra) === "CREDITO" ? cartaoRegra.id : null;
+      const contaOcorrencia = cartaoRegra && contaRegra ? contaRegra.conta : regra.conta;
       criados.push(
         montaDespesa(
           {

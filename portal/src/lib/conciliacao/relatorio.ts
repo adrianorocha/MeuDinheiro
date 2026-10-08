@@ -84,3 +84,29 @@ export function csvRelatorio(resultado: ResultadoMatching, acoes: ReadonlyMap<nu
   }
   return `﻿${linhas.join("\r\n")}\r\n`;
 }
+
+/** Linha mínima para o relatório consolidado do lote (R43). */
+export interface LinhaConsolidada {
+  data: number;
+  descricao: string;
+  valor: number;
+  classe: ClasseMatch;
+  acao: string;
+  lancamentoId?: number;
+}
+
+/**
+ * R43 - CSV consolidado (`;`, BOM): uma linha por transação de cada arquivo, com a coluna `arquivo` primeiro:
+ * `arquivo;data;descricao;valor;situacao;lancamento_id;acao`. Arquivos com erro/cancelados saem com `acao` informada.
+ */
+export function csvRelatorioConsolidado(arquivos: readonly { nome: string; linhas: readonly LinhaConsolidada[] }[]): string {
+  const linhas = ["arquivo;data;descricao;valor;situacao;lancamento_id;acao"];
+  for (const a of arquivos) {
+    for (const l of a.linhas) {
+      linhas.push(
+        [celula(a.nome), dataBr(l.data), celula(l.descricao), l.valor.toFixed(2).replace(".", ","), SITUACAO[l.classe], l.lancamentoId !== undefined ? String(l.lancamentoId) : "", l.acao].join(";"),
+      );
+    }
+  }
+  return `﻿${linhas.join("\r\n")}\r\n`;
+}

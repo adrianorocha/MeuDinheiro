@@ -1,8 +1,10 @@
 "use client";
 
-import { CreditCard, Pencil, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { CircleCheck, CreditCard, Landmark, Pencil, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { LimiteComprometido } from "@/components/cartoes/LimiteComprometido";
+import { PagarFaturaModal } from "@/components/cartoes/PagarFaturaModal";
 import { LancamentoModal } from "@/components/lancamentos/LancamentoModal";
 import { ListaLancamentos } from "@/components/lancamentos/ListaLancamentos";
 import { Button, IconButton } from "@/components/ui/Button";
@@ -14,10 +16,10 @@ import { Money } from "@/components/ui/Money";
 import { TIPOS_CARTAO } from "@/lib/catalogo";
 import { melhorDiaCompra } from "@/lib/finance/analises";
 import { mesAnoDe } from "@/lib/finance/dates";
-import { cartoesDoGrupo, faturaDaCompra, principalDe, resumoFatura } from "@/lib/finance/calc";
+import { cartaoIdDe, cartoesDoGrupo, comprometimentoCartao, debitosDoCartao, faturaDaCompra, principalDe, resumoFatura, saldoDoCartao, totalDebitos } from "@/lib/finance/calc";
 import { cartaoTemCompras } from "@/lib/finance/operations";
 import type { Cartao } from "@/lib/finance/types";
-import { formatBRL, formatData, formatPercentual, parseValorBR, valorParaCampo } from "@/lib/format";
+import { formatData, formatPercentual, parseValorBR, valorParaCampo } from "@/lib/format";
 import { useAgora, useDataset } from "@/lib/hooks";
 import { acoes } from "@/lib/store/actions";
 import { useStore } from "@/lib/store/store";
@@ -33,19 +35,24 @@ function CartaoForm({ editar, onFechar }: FormProps) {
   const ds = useDataset();
   const avisar = useStore((s) => s.avisar);
   const fisicos = ds.cartoes.filter((c) => c.cartaoPrincipalId == null);
-  const [forma, setForma] = useState<Forma>(editar ? (editar.cartaoPrincipalId != null ? "virtual" : "fisico") : "fisico");
-  const [principalId, setPrincipalId] = useState(String(editar?.cartaoPrincipalId ?? fisicos[0]?.id ?? ""));
+  const [forma, setForma] = useState<Forma>("fisico");
+  // Na edição "" = cartão físico independente; na criação o seletor só aparece no modo virtual.
+  const [principalId, setPrincipalId] = useState(editar ? String(editar.cartaoPrincipalId ?? "") : String(fisicos[0]?.id ?? ""));
+  const temVirtuais = editar ? ds.cartoes.some((c) => c.cartaoPrincipalId === editar.id) : false;
+  const opcoesFisicos = fisicos.filter((c) => c.id !== editar?.id);
+  const orfao = editar?.cartaoPrincipalId != null && !fisicos.some((c) => c.id === editar.cartaoPrincipalId);
   const [nome, setNome] = useState(editar?.nome ?? "");
   const [final, setFinal] = useState(editar?.finalCartao ?? "");
   const [tipo, setTipo] = useState(editar?.tipo ?? TIPOS_CARTAO[0]);
   const [limiteTxt, setLimiteTxt] = useState(editar ? valorParaCampo(editar.limiteTotal) : "");
   const [fechamento, setFechamento] = useState(String(editar?.diaFechamento ?? 25));
   const [vencimento, setVencimento] = useState(String(editar?.diaVencimento ?? 5));
+  const [limiteProprioTxt, setLimiteProprioTxt] = useState(editar?.limiteProprio ? valorParaCampo(editar.limiteProprio) : "");
   const [contaId, setContaId] = useState(String(editar?.contaId ?? ds.contas[0]?.id ?? ""));
   const [erro, setErro] = useState<string | null>(null);
 
-  const virtual = forma === "virtual";
-  const principal = fisicos.find((c) => c.id === Number(principalId));
+  const virtual = editar ? principalId !== "" : forma === "virtual";
+  const principal = opcoesFisicos.find((c) => c.id === Number(principalId));
   // Virtual: campos herdados do físico, somente leitura.
   const vTipo = virtual && principal ? principal.tipo : tipo;
   const vLimite = virtual && principal ? valorParaCampo(principal.limiteTotal) : limiteTxt;
@@ -56,15 +63,18 @@ function CartaoForm({ editar, onFechar }: FormProps) {
   function enviar(e: FormEvent) {
     e.preventDefault();
     let r;
+    const lpTxt = limiteProprioTxt.trim();
+    const limiteProprio = lpTxt ? parseValorBR(lpTxt) : null;
+    if (limiteProprio !== null && !(limiteProprio > 0)) return setErro("O limite próprio deve ser maior que zero e não pode passar do limite total do cartão físico.");
     if (virtual) {
       if (!principal) return setErro("Selecione o cartão físico.");
       const dados = { nome, finalCartao: final.trim(), tipo: principal.tipo, limiteTotal: principal.limiteTotal, diaFechamento: principal.diaFechamento, diaVencimento: principal.diaVencimento, contaId: principal.contaId };
-      r = editar ? acoes.editarCartao(editar.id, { nome, finalCartao: final.trim() }) : acoes.criarCartao({ ...dados, cartaoPrincipalId: principal.id });
+      r = editar ? acoes.editarCartao(editar.id, { nome, finalCartao: final.trim(), limiteProprio, cartaoPrincipalId: principal.id }) : acoes.criarCartao({ ...dados, limiteProprio, cartaoPrincipalId: principal.id });
     } else {
       const limite = parseValorBR(limiteTxt);
       if (!(limite >= 0)) return setErro("Informe o limite total.");
-      const dados = { nome, finalCartao: final.trim(), tipo, limiteTotal: limite, diaFechamento: Number(fechamento), diaVencimento: Number(vencimento), contaId: Number(contaId) };
-      r = editar ? acoes.editarCartao(editar.id, dados) : acoes.criarCartao(dados);
+      const dados = { nome, finalCartao: final.trim(), tipo, limiteTotal: limite, diaFechamento: Number(fechamento), diaVencimento: Number(vencimento), contaId: Number(contaId), limiteProprio };
+      r = editar ? acoes.editarCartao(editar.id, { ...dados, cartaoPrincipalId: null }) : acoes.criarCartao(dados);
     }
     if (!r.ok) return setErro(r.erro);
     avisar("sucesso", editar ? "Cartão atualizado." : virtual ? "Cartão virtual criado." : "Cartão criado.");
@@ -85,9 +95,24 @@ function CartaoForm({ editar, onFechar }: FormProps) {
           ]}
         />
       )}
-      {virtual && (
+      {editar && (
         <>
-          <Select rotulo="Cartão físico" value={principalId} onChange={(e) => setPrincipalId(e.target.value)} disabled={editar !== null} required>
+          <Select rotulo="Compartilha o saldo do cartão físico" value={principalId} onChange={(e) => setPrincipalId(e.target.value)} disabled={temVirtuais}>
+            <option value="">Nenhum (cartão físico independente)</option>
+            {orfao && editar.cartaoPrincipalId != null && <option value={String(editar.cartaoPrincipalId)}>Cartão físico não encontrado — escolha um</option>}
+            {opcoesFisicos.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome} (final {c.finalCartao || "—"})
+              </option>
+            ))}
+          </Select>
+          {temVirtuais && <p className="text-xs text-muted">Este cartão físico tem cartões virtuais; mova ou exclua-os antes de torná-lo virtual.</p>}
+          {virtual && <p className="text-xs text-muted">Compartilha limite, conta, fechamento, vencimento e fatura com o cartão físico escolhido; o físico é a base do saldo.</p>}
+        </>
+      )}
+      {!editar && virtual && (
+        <>
+          <Select rotulo="Compartilha o saldo do cartão físico" value={principalId} onChange={(e) => setPrincipalId(e.target.value)} required>
             {fisicos.length === 0 && <option value="">Cadastre um cartão físico primeiro</option>}
             {fisicos.map((c) => (
               <option key={c.id} value={c.id}>
@@ -98,7 +123,7 @@ function CartaoForm({ editar, onFechar }: FormProps) {
           <p className="text-xs text-muted">O virtual compartilha limite, conta, fechamento, vencimento e fatura com o cartão físico.</p>
         </>
       )}
-      {!virtual && editar && ds.cartoes.some((c) => c.cartaoPrincipalId === editar.id) && (
+      {!virtual && editar && temVirtuais && (
         <p className="text-xs text-muted">Alterações de limite, conta, dias e tipo são aplicadas também aos cartões virtuais deste cartão.</p>
       )}
       <Input rotulo="Nome do cartão" value={nome} onChange={(e) => setNome(e.target.value)} required />
@@ -122,6 +147,8 @@ function CartaoForm({ editar, onFechar }: FormProps) {
           </option>
         ))}
       </Select>
+      <InputValor rotulo="Limite próprio (opcional)" value={limiteProprioTxt} onChange={(e) => setLimiteProprioTxt(e.target.value)} />
+      <p className="-mt-2 text-xs text-muted">Teto de gasto deste cartão dentro do limite total compartilhado. Deixe vazio para não limitar.</p>
       {erro && <ErroBox>{erro}</ErroBox>}
       <RodapeForm onCancelar={onFechar} />
     </form>
@@ -139,6 +166,19 @@ export default function CartoesPage() {
   const [excluir, setExcluir] = useState<Cartao | null>(null);
   const [pagar, setPagar] = useState(false);
   const [compra, setCompra] = useState(false);
+  /** Filtro da lista de lançamentos: null = todos os cartões do grupo. */
+  const [filtroId, setFiltroId] = useState<number | null>(null);
+
+  /** Seleciona o grupo, opcionalmente filtra por um cartão dele e leva a tela até a fatura. */
+  function selecionar(c: Cartao, filtro: number | null = null) {
+    setSelecionadoId(c.id);
+    setFatura(null);
+    setFiltroId(filtro);
+    requestAnimationFrame(() => {
+      const reduz = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document.getElementById("t-fatura")?.scrollIntoView({ behavior: reduz ? "auto" : "smooth", block: "start" });
+    });
+  }
 
   // Um item de lista por grupo: o cartão principal (físico) e, dentro, seus virtuais.
   const principais = useMemo(() => ds.cartoes.filter((c) => principalDe(c, ds.cartoes) === c), [ds.cartoes]);
@@ -151,14 +191,15 @@ export default function CartoesPage() {
     [selecionado, periodo, ds.despesas, ds.cartoes],
   );
   const conta = selecionado ? ds.contas.find((c) => c.id === selecionado.contaId) : undefined;
+  // Filtro só vale se o cartão ainda pertence ao grupo selecionado.
+  const filtro = filtroId !== null && grupo.some((k) => k.id === filtroId) ? filtroId : null;
+  const itensVisiveis = resumo ? (filtro === null ? resumo.itens : resumo.itens.filter((d) => cartaoIdDe(d) === filtro)) : [];
 
-  function confirmarPagamento() {
-    if (!selecionado || !periodo) return;
-    const r = acoes.pagarFatura(selecionado.id, periodo.mes, periodo.ano);
-    if (r.ok) avisar("sucesso", `Fatura paga: ${formatBRL(r.pagamento.valor)}.`);
-    else avisar("erro", r.erro);
-    setPagar(false);
-  }
+  // R42b: compras no débito (saem direto da conta) do mês exibido; não entram em fatura/limite/pagamento.
+  const debitos = useMemo(
+    () => (periodo ? debitosDoCartao(grupo, ds.despesas, periodo.mes, periodo.ano, filtro) : []),
+    [grupo, ds.despesas, periodo, filtro],
+  );
 
   function confirmarExclusao() {
     if (!excluir) return;
@@ -195,10 +236,23 @@ export default function CartoesPage() {
               const razao = c.limiteTotal > 0 ? usado / c.limiteTotal : 0;
               const ativo = selecionado?.id === c.id;
               return (
-                <li key={c.id}>
-                  <Card className={ativo ? "border-primary" : ""}>
+                <li
+                  key={c.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    // O cartão inteiro seleciona; botões internos (editar/excluir/linhas) cuidam do próprio clique.
+                    if ((e.target as HTMLElement).closest("button, a, input, select, [role=button]")) return;
+                    selecionar(c);
+                  }}
+                >
+                  <Card className={ativo ? "border-primary ring-2 ring-primary" : "hover:bg-surface-2"}>
                     <div className="flex items-start gap-2">
-                      <button type="button" onClick={() => { setSelecionadoId(c.id); setFatura(null); }} aria-pressed={ativo} className="min-w-0 flex-1 rounded-lg text-left">
+                      <button type="button" onClick={() => selecionar(c)} aria-pressed={ativo} className="min-w-0 flex-1 rounded-lg text-left">
+                        {ativo && (
+                          <span className="mb-1 flex items-center gap-1 text-xs font-medium text-primary">
+                            <CircleCheck size={14} aria-hidden /> Fatura exibida abaixo
+                          </span>
+                        )}
                         <p className="truncate font-medium">{c.nome}</p>
                         <p className="text-xs text-muted">
                           Final {c.finalCartao || "—"} · {c.tipo}
@@ -213,7 +267,7 @@ export default function CartoesPage() {
                       </IconButton>
                     </div>
                     <div className="mt-3 flex items-end justify-between text-sm">
-                      <span className="text-muted">{virtuais.length > 0 ? "Disponível (compartilhado)" : "Disponível"}</span>
+                      <span className="text-muted">{virtuais.length > 0 ? "Limite compartilhado · disponível" : "Disponível"}</span>
                       <Money valor={c.limiteDisponivel} className="text-lg font-semibold" />
                     </div>
                     <div className="mt-2">
@@ -238,28 +292,67 @@ export default function CartoesPage() {
                         </p>
                       );
                     })()}
-                    {virtuais.length > 0 && (
-                      <ul className="mt-3 divide-y divide-line border-t border-line" aria-label={`Cartões virtuais de ${c.nome}`}>
-                        {virtuais.map((v) => (
-                          <li key={v.id} className="flex items-center gap-2 py-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="flex items-center gap-2 truncate text-sm font-medium">
-                                {v.nome} <Badge tom="primary">VIRTUAL</Badge>
-                              </p>
-                              <p className="truncate text-xs text-muted">
-                                Final {v.finalCartao || "—"} · compartilha limite com {nomePrincipal(v)}
-                              </p>
+                    <LimiteComprometido nome={c.nome} c={comprometimentoCartao(c, ds.cartoes, ds.despesas, agora)} />
+                    <ul className="mt-3 divide-y divide-line border-t border-line" aria-label={`Saldo por cartão de ${c.nome}`}>
+                      {[c, ...virtuais].map((k) => {
+                        const sc = saldoDoCartao(k, ds.cartoes, ds.despesas);
+                        const virt = k.cartaoPrincipalId != null;
+                        return (
+                          <li key={k.id} className="py-2">
+                            <div className="flex items-center gap-2">
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => selecionar(c, virtuais.length > 0 ? k.id : null)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    selecionar(c, virtuais.length > 0 ? k.id : null);
+                                  }
+                                }}
+                                aria-label={`Ver lançamentos de ${k.nome}`}
+                                aria-pressed={ativo && filtroId === (virtuais.length > 0 ? k.id : null)}
+                                className="min-w-0 flex-1 rounded-lg"
+                              >
+                                <p className="flex items-center gap-2 truncate text-sm font-medium">
+                                  {k.nome} {virt && <Badge tom="primary">VIRTUAL</Badge>}
+                                </p>
+                                {virt && <p className="truncate text-xs text-muted">Compartilha o saldo de {ds.cartoes.find((x) => x.id === k.cartaoPrincipalId)?.nome ?? "cartão físico não encontrado"}</p>}
+                                <p className="truncate text-xs text-muted">
+                                  Final {k.finalCartao || "—"}
+                                  {sc.limiteProprio != null && (
+                                    <>
+                                      {" "}· Limite próprio <Money valor={sc.limiteProprio} />
+                                    </>
+                                  )}
+                                </p>
+                              </div>
+                              {virt && (
+                                <>
+                                  <IconButton rotulo={`Editar cartão virtual ${k.nome}`} onClick={() => setFormCartao({ editar: k })}>
+                                    <Pencil size={16} aria-hidden />
+                                  </IconButton>
+                                  <IconButton rotulo={`Excluir cartão virtual ${k.nome}`} onClick={() => setExcluir(k)}>
+                                    <Trash2 size={16} aria-hidden />
+                                  </IconButton>
+                                </>
+                              )}
                             </div>
-                            <IconButton rotulo={`Editar cartão virtual ${v.nome}`} onClick={() => setFormCartao({ editar: v })}>
-                              <Pencil size={16} aria-hidden />
-                            </IconButton>
-                            <IconButton rotulo={`Excluir cartão virtual ${v.nome}`} onClick={() => setExcluir(v)}>
-                              <Trash2 size={16} aria-hidden />
-                            </IconButton>
+                            <div className="mt-1">
+                              <ProgressBar razao={sc.razao} tom={sc.razao >= 1 ? "neg" : sc.razao >= 0.8 ? "warn" : "primary"} rotulo={`Uso próprio do cartão ${k.nome}`} />
+                            </div>
+                            <p className="mt-1 flex justify-between text-xs text-muted">
+                              <span>
+                                Usado <Money valor={sc.usado} /> ({formatPercentual(sc.razao)})
+                              </span>
+                              <span>
+                                Disponível <Money valor={sc.disponivel} />
+                              </span>
+                            </p>
                           </li>
-                        ))}
-                      </ul>
-                    )}
+                        );
+                      })}
+                    </ul>
                   </Card>
                 </li>
               );
@@ -306,14 +399,51 @@ export default function CartoesPage() {
               </dl>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 {resumo.paga ? <Badge tom="pos">Fatura paga</Badge> : resumo.itens.length === 0 ? <Badge>Sem compras</Badge> : <Badge tom="warn">Em aberto</Badge>}
-                <Button variante="primary" disabled={resumo.emAberto <= 0} onClick={() => setPagar(true)}>
+                <Button variante="primary" disabled={comprometimentoCartao(selecionado, ds.cartoes, ds.despesas, agora).emAbertoTotal <= 0} onClick={() => setPagar(true)}>
                   Pagar fatura
                 </Button>
                 {conta && <span className="text-xs text-muted">Débito na conta {conta.banco} · {conta.conta}</span>}
               </div>
+              {grupo.length > 1 && (
+                <div role="group" aria-label="Filtrar lançamentos por cartão" className="mt-4 flex flex-wrap gap-2">
+                  {[{ id: null as number | null, nome: "Todos os cartões" }, ...grupo.map((k) => ({ id: k.id as number | null, nome: k.nome }))].map((o) => (
+                    <button
+                      key={o.id ?? "todos"}
+                      type="button"
+                      aria-pressed={filtro === o.id}
+                      onClick={() => setFiltroId(o.id)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium ${filtro === o.id ? "border-primary bg-primary-soft text-primary" : "border-line text-muted hover:bg-surface-2"}`}
+                    >
+                      {o.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="mt-4">
-                {resumo.itens.length === 0 ? <p className="py-6 text-center text-sm text-muted">Nenhuma compra nesta fatura.</p> : <ListaLancamentos itens={resumo.itens} semOrigem={grupo.length <= 1} />}
+                {itensVisiveis.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted">{resumo.itens.length === 0 ? "Nenhuma compra nesta fatura." : "Nenhuma compra deste cartão nesta fatura."}</p>
+                ) : (
+                  <ListaLancamentos itens={itensVisiveis} semOrigem={grupo.length <= 1} />
+                )}
               </div>
+              <section className="mt-6 border-t border-line pt-4" aria-labelledby="t-debitos">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 id="t-debitos" className="flex items-center gap-2 text-sm font-semibold">
+                    <Landmark size={16} aria-hidden /> Compras no débito (saem direto da conta)
+                  </h3>
+                  <p className="text-sm text-muted">
+                    Subtotal <Money valor={totalDebitos(debitos)} className="font-semibold text-fg" />
+                  </p>
+                </div>
+                <p className="mt-1 text-xs text-muted">Em {String(periodo.mes).padStart(2, "0")}/{periodo.ano}, pela data da compra. Não entram no total da fatura, no limite nem em &quot;Pagar fatura&quot;.</p>
+                <div className="mt-2">
+                  {debitos.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-muted">Nenhuma compra no débito neste mês.</p>
+                  ) : (
+                    <ListaLancamentos itens={debitos} semOrigem={false} />
+                  )}
+                </div>
+              </section>
             </Card>
           )}
         </>
@@ -322,14 +452,9 @@ export default function CartoesPage() {
       <Modal aberto={formCartao !== null} onFechar={() => setFormCartao(null)} titulo={formCartao?.editar ? "Editar cartão" : "Novo cartão"}>
         {formCartao && <CartaoForm editar={formCartao.editar} onFechar={() => setFormCartao(null)} />}
       </Modal>
-      <Confirmar
-        aberto={pagar}
-        titulo="Pagar fatura"
-        rotuloConfirmar="Pagar"
-        mensagem={resumo && selecionado && periodo ? `Pagar ${formatBRL(resumo.emAberto)} da fatura ${String(periodo.mes).padStart(2, "0")}/${periodo.ano} do cartão ${selecionado.nome}${grupo.length > 1 ? " e seus virtuais" : ""}? O valor será debitado da conta ${conta?.banco ?? ""}.` : ""}
-        onConfirmar={confirmarPagamento}
-        onCancelar={() => setPagar(false)}
-      />
+      {selecionado && periodo && (
+        <PagarFaturaModal aberto={pagar} onFechar={() => setPagar(false)} cartao={selecionado} cartoes={ds.cartoes} despesas={ds.despesas} conta={conta} periodo={periodo} />
+      )}
       <Confirmar
         aberto={excluir !== null}
         perigo
@@ -345,7 +470,7 @@ export default function CartoesPage() {
         onConfirmar={confirmarExclusao}
         onCancelar={() => setExcluir(null)}
       />
-      <LancamentoModal aberto={compra} onFechar={() => setCompra(false)} predefinicao={{ entrada: "cartao", cartaoId: selecionado?.id }} />
+      <LancamentoModal aberto={compra} onFechar={() => setCompra(false)} predefinicao={{ entrada: "cartao", cartaoId: filtro ?? selecionado?.id }} />
     </>
   );
 }

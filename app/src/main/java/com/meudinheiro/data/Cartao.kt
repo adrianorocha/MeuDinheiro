@@ -28,7 +28,9 @@ data class Cartao(
     @ColumnInfo(index = true)
     val contaId: Int,             // 📍 O VÍNCULO: ID da conta corrente associada
     /** null = cartão físico (principal). Preenchido = cartão VIRTUAL que compartilha limite/fatura com esse físico (R18). */
-    val cartaoPrincipalId: Int? = null
+    val cartaoPrincipalId: Int? = null,
+    /** R41: teto de gasto DESTE cartão dentro do limite compartilhado do grupo. null = sem teto próprio. */
+    val limiteProprio: Double? = null
 ) {
     val ehVirtual: Boolean get() = cartaoPrincipalId != null
 

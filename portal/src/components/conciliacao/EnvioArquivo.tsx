@@ -17,47 +17,54 @@ export interface ArquivoLido {
   texto: string;
 }
 
-const MAX_BYTES = 25 * 1024 * 1024;
+export const MAX_BYTES = 25 * 1024 * 1024;
 
 export async function lerArquivo(file: File): Promise<ArquivoLido> {
   if (file.size > MAX_BYTES) throw new Error(`${file.name}: arquivo grande demais (máx. 25 MB).`);
   return { nome: file.name, texto: decodificarTexto(new Uint8Array(await file.arrayBuffer())) };
 }
 
-/** Passo 1: arrastar/soltar ou escolher arquivos (um por vez). */
-export function SeletorArquivos({ onArquivos, onExemplo, exemploDisponivel }: { onArquivos: (files: File[]) => void; onExemplo: () => void; exemploDisponivel: boolean }) {
+/** Área de arrastar/soltar ou escolher arquivos (vários de uma vez). */
+export function ZonaDrop({ onArquivos, compacto = false }: { onArquivos: (files: File[]) => void; compacto?: boolean }) {
   const [arrastando, setArrastando] = useState(false);
+  return (
+    <label
+      onDragOver={(e) => {
+        e.preventDefault();
+        setArrastando(true);
+      }}
+      onDragLeave={() => setArrastando(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setArrastando(false);
+        if (e.dataTransfer.files.length) onArquivos([...e.dataTransfer.files]);
+      }}
+      className={`flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed text-center transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ring)] ${compacto ? "px-4 py-4" : "px-6 py-10"} ${arrastando ? "border-primary bg-primary-soft" : "border-line hover:bg-surface-2"}`}
+    >
+      <FileUp size={compacto ? 22 : 32} className="text-primary" aria-hidden />
+      <span className="font-medium">{compacto ? "Adicionar mais arquivos" : "Arraste os arquivos aqui ou clique para escolher"}</span>
+      {!compacto && <span className="text-sm text-muted">OFX (v1 ou v2) ou CSV do seu banco. Envie vários de uma vez: eles entram numa fila e podem ser conciliados em lote.</span>}
+      <input
+        type="file"
+        multiple
+        accept=".ofx,.qfx,.csv,.txt,text/csv,application/x-ofx"
+        className="sr-only"
+        aria-label="Escolher arquivos de extrato"
+        onChange={(e) => {
+          if (e.target.files?.length) onArquivos([...e.target.files]);
+          e.target.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
+/** Passo 1 (modo detalhado): arrastar/soltar ou escolher arquivos (revisados um por vez). */
+export function SeletorArquivos({ onArquivos, onExemplo, exemploDisponivel }: { onArquivos: (files: File[]) => void; onExemplo: () => void; exemploDisponivel: boolean }) {
   return (
     <Card aria-labelledby="t-envio">
       <CardTitulo id="t-envio">1. Enviar extrato</CardTitulo>
-      <label
-        onDragOver={(e) => {
-          e.preventDefault();
-          setArrastando(true);
-        }}
-        onDragLeave={() => setArrastando(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setArrastando(false);
-          if (e.dataTransfer.files.length) onArquivos([...e.dataTransfer.files]);
-        }}
-        className={`flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ring)] ${arrastando ? "border-primary bg-primary-soft" : "border-line hover:bg-surface-2"}`}
-      >
-        <FileUp size={32} className="text-primary" aria-hidden />
-        <span className="font-medium">Arraste os arquivos aqui ou clique para escolher</span>
-        <span className="text-sm text-muted">OFX (v1 ou v2) ou CSV do seu banco. Você pode enviar vários; eles são conciliados um por vez.</span>
-        <input
-          type="file"
-          multiple
-          accept=".ofx,.qfx,.csv,.txt,text/csv,application/x-ofx"
-          className="sr-only"
-          aria-label="Escolher arquivos de extrato"
-          onChange={(e) => {
-            if (e.target.files?.length) onArquivos([...e.target.files]);
-            e.target.value = "";
-          }}
-        />
-      </label>
+      <ZonaDrop onArquivos={onArquivos} />
       <p className="mt-3 text-xs text-muted">Privacidade: o arquivo é lido somente no seu navegador. Nada dele é enviado a servidores; só os lançamentos que você confirmar são gravados.</p>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button onClick={onExemplo} disabled={!exemploDisponivel}>

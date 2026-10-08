@@ -205,6 +205,33 @@ class FinancasTest {
     @Test(expected = IllegalArgumentException::class)
     fun `parcelamento exige valor positivo`() { Financas.parcelar(lanc(0.0), 3, 0L) }
 
+    @Test fun `parcelas em andamento criam so k a n com os valores das posicoes originais`() {
+        val p = Financas.parcelar(lanc(100.0, data = ms(2026, 5, 10), cartaoId = 1, pago = false), 3, 0L, aPartirDe = 2)
+        assertEquals(listOf(33.33, 33.34), p.map { it.valor })
+        assertEquals(listOf("x (2/3)", "x (3/3)"), p.map { it.descricao })
+        assertEquals(listOf(5 to 2026, 6 to 2026), p.map { it.mes to it.ano })
+        val ultima = Financas.parcelar(lanc(100.0, cartaoId = 1, pago = false), 3, 0L, aPartirDe = 3)
+        assertEquals(listOf(33.34), ultima.map { it.valor })
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `parcela atual maior que o total e invalida`() { Financas.parcelar(lanc(100.0), 3, 0L, aPartirDe = 4) }
+
+    @Test fun `limite desconta todas as parcelas e comprometimento separa atual e futuras`() {
+        val compras = Financas.parcelar(
+            lanc(1200.0, data = ms(2026, 10, 10), cartaoId = 1, pago = false), 12, 0L
+        )
+        val c = cartao.copy(limiteTotal = 5000.0, limiteDisponivel = 5000.0)
+        assertEquals(3800.0, Financas.limiteDisponivel(c, compras), 0.0)
+        val comp = Financas.comprometimentoCartao(c, compras, ms(2026, 10, 15))
+        assertEquals(100.0, comp.faturaAtual, 0.0)
+        assertEquals(1100.0, comp.parcelasFuturas, 0.0)
+        assertEquals(1200.0, comp.emAbertoTotal, 0.0)
+        assertEquals(12, comp.liberacaoPorFatura.size)
+        assertEquals(FaturaRef(10, 2026), comp.liberacaoPorFatura.first().ref)
+        assertTrue(comp.liberacaoPorFatura.zipWithNext().all { (a, b) -> a.vencimento < b.vencimento })
+    }
+
     // ------------------------------------------------------------------ R16
 
     private fun regra(dia: Int, ultima: Long? = null) = DespesaFixa(
@@ -325,5 +352,207 @@ class FinancasTest {
         assertEquals(100.0, Financas.rendimento(1000.0, 1100.0), 0.0)
         assertEquals(10.0, Financas.rentabilidadePercentual(1000.0, 1100.0), 1e-9)
         assertEquals(0.0, Financas.rentabilidadePercentual(0.0, 50.0), 0.0)
+    }
+
+    // ------------------------------------------------------------------ R41
+
+    private val virtual = Cartao(
+        id = 2, nome = "Virtual", finalCartao = "9999", tipo = "CRÉDITO", limiteDisponivel = 1000.0, limiteTotal = 1000.0,
+        diaFechamento = 25, diaVencimento = 5, contaId = 1, cartaoPrincipalId = 1
+    )
+
+    @Test fun `saldo do cartao separa uso do fisico e do virtual`() {
+        val grupo = listOf(cartao, virtual)
+        val l = listOf(
+            lanc(300.0, cartaoId = 1, pago = false), lanc(100.0, cartaoId = 2, pago = false),
+            lanc(40.0, TipoDespesa.CREDITO, cartaoId = 2, pago = false),   // estorno no virtual
+            lanc(500.0, cartaoId = 1, pago = true)                           // pago: não conta
+        )
+        val f = Financas.saldoDoCartao(cartao, grupo, l)
+        val v = Financas.saldoDoCartao(virtual, grupo, l)
+        assertEquals(300.0, f.usado, 0.0); assertEquals(60.0, v.usado, 0.0)
+        assertEquals(640.0, f.disponivelGrupo, 0.0); assertEquals(640.0, v.disponivel, 0.0)
+        assertEquals(0.3, f.razao, 1e-9); assertEquals(0.06, v.razao, 1e-9)
+    }
+
+    @Test fun `disponivel respeita limite proprio e nunca passa do disponivel do grupo`() {
+        val v = virtual.copy(limiteProprio = 200.0)
+        val grupo = listOf(cartao, v)
+        val l = listOf(lanc(50.0, cartaoId = 2, pago = false))
+        val s = Financas.saldoDoCartao(v, grupo, l)
+        assertEquals(150.0, s.disponivel, 0.0); assertEquals(0.25, s.razao, 1e-9); assertEquals(200.0, s.limiteProprio!!, 0.0)
+        // grupo quase esgotado pelo físico: disponível do virtual = min(150, 80)
+        val l2 = l + lanc(870.0, cartaoId = 1, pago = false)
+        val s2 = Financas.saldoDoCartao(v, grupo, l2)
+        assertEquals(80.0, s2.disponivelGrupo, 0.0); assertEquals(80.0, s2.disponivel, 0.0)
+        // uso acima do teto próprio: disponível próprio negativo limitado pelo cálculo (não passa do grupo)
+        assertEquals(0.0, Financas.saldoDoCartao(cartao, grupo, emptyList()).usado, 0.0)
+    }
+
+    @Test fun `estorno maior que compras nao gera uso negativo`() {
+        val s = Financas.saldoDoCartao(cartao, listOf(cartao), listOf(lanc(30.0, TipoDespesa.CREDITO, cartaoId = 1, pago = false)))
+        assertEquals(0.0, s.usado, 0.0)
+    }
+
+    // ------------------------------------------------------------------ R42
+
+    private fun cartaoTipo(tipo: String) = cartao.copy(tipo = tipo)
+
+    @Test fun `modalidade da compra depende do tipo do cartao`() {
+        val c = Financas.Modalidade.CREDITO; val d = Financas.Modalidade.DEBITO
+        assertEquals(c, Financas.modalidadeDaCompra(cartaoTipo("CRÉDITO"), d))   // crédito: sempre crédito
+        assertEquals(c, Financas.modalidadeDaCompra(cartaoTipo("CRÉDITO")))
+        assertEquals(d, Financas.modalidadeDaCompra(cartaoTipo("DÉBITO"), c))    // débito: sempre débito
+        assertEquals(d, Financas.modalidadeDaCompra(cartaoTipo("DEBITO")))
+        assertEquals(c, Financas.modalidadeDaCompra(cartaoTipo("MÚLTIPLO")))     // múltiplo: padrão crédito
+        assertEquals(d, Financas.modalidadeDaCompra(cartaoTipo("MÚLTIPLO"), d))
+        assertEquals(d, Financas.modalidadeDaCompra(cartaoTipo("MULTIPLO"), d))
+        assertEquals(c, Financas.modalidadeDaCompra(cartaoTipo("???"), d))       // desconhecido: comportamento histórico
+    }
+
+    @Test fun `compra no debito vira lancamento na conta e credito fica como esta`() {
+        val compra = lanc(50.0, cartaoId = 1, pago = false, conta = "outra", data = ms(2026, 10, 10))
+        val agora = ms(2026, 10, 15)
+        val deb = Financas.aplicarModalidade(compra, cartaoTipo("DÉBITO"), "111", null, agora)
+        assertEquals(null, deb.cartaoId); assertEquals("111", deb.conta); assertTrue(deb.pago)
+        val futura = Financas.aplicarModalidade(compra.copy(data = Date(ms(2026, 10, 20))), cartaoTipo("MÚLTIPLO"), "111", Financas.Modalidade.DEBITO, agora)
+        assertEquals(null, futura.cartaoId); assertFalse(futura.pago)
+        assertEquals(compra, Financas.aplicarModalidade(compra, cartaoTipo("CRÉDITO"), "111", Financas.Modalidade.DEBITO, agora))
+        assertEquals(compra, Financas.aplicarModalidade(compra, cartaoTipo("MÚLTIPLO"), "111", null, agora))
+    }
+
+    // ------------------------------------------------ vínculo de débito (grupoId "debito:<cartao>")
+
+    @Test fun `compra convertida em debito recebe grupoId debito do cartao usado`() {
+        val compra = lanc(50.0, cartaoId = 1, pago = false, data = ms(2026, 10, 10))
+        val agora = ms(2026, 10, 15)
+        val deb = Financas.aplicarModalidade(compra, cartaoTipo("DÉBITO"), "111", null, agora)
+        assertEquals("debito:1", deb.grupoId)
+        assertEquals(1, Financas.cartaoDeDebito(deb))
+        val mult = Financas.aplicarModalidade(compra, cartaoTipo("MÚLTIPLO").copy(id = 7), "111", Financas.Modalidade.DEBITO, agora)
+        assertEquals("debito:7", mult.grupoId)
+        // crédito: não ganha vínculo e perde um vínculo de débito herdado (edição trocando de cartão)
+        assertEquals(null, Financas.aplicarModalidade(compra, cartaoTipo("CRÉDITO"), "111", null, agora).grupoId)
+        val herdado = compra.copy(grupoId = "debito:9")
+        assertEquals(null, Financas.aplicarModalidade(herdado, cartaoTipo("CRÉDITO"), "111", null, agora).grupoId)
+        // grupo de parcelas não é tocado no crédito
+        val parc = compra.copy(grupoId = "parc:abc")
+        assertEquals("parc:abc", Financas.aplicarModalidade(parc, cartaoTipo("CRÉDITO"), "111", null, agora).grupoId)
+    }
+
+    @Test fun `debito nao e tratado como grupo de lancamentos`() {
+        assertEquals(12, Financas.cartaoDeDebito("debito:12"))
+        assertEquals(null, Financas.cartaoDeDebito("debito:x"))
+        listOf(null, "parc:1", "fixa:2", "fatura:1:2026-10", "transf:abc", "rep:u", "uuid-solto").forEach {
+            assertEquals(null, Financas.cartaoDeDebito(it)); assertEquals(it != null, Financas.ehGrupoDeLancamentos(it))
+        }
+        assertFalse(Financas.ehGrupoDeLancamentos("debito:3"))
+    }
+
+    @Test fun `compras do grupo separam credito do grupo e debitos vinculados de qualquer cartao do grupo`() {
+        val fisico = cartao
+        val virtual = cartao.copy(id = 2, cartaoPrincipalId = 1)
+        val outro = cartao.copy(id = 3)
+        val cartoes = listOf(fisico, virtual, outro)
+        val credFisico = lanc(10.0, cartaoId = 1, pago = false).copy(id = 1)
+        val credVirtual = lanc(20.0, cartaoId = 2, pago = false).copy(id = 2)
+        val credOutro = lanc(30.0, cartaoId = 3, pago = false).copy(id = 3)
+        val debFisico = lanc(1.0).copy(id = 4, grupoId = "debito:1")
+        val debVirtual = lanc(2.0).copy(id = 5, grupoId = "debito:2")
+        val debOutro = lanc(3.0).copy(id = 6, grupoId = "debito:3")
+        val comum = lanc(4.0).copy(id = 7)
+        val todas = listOf(credFisico, credVirtual, credOutro, debFisico, debVirtual, debOutro, comum)
+
+        val foco = Financas.comprasDoGrupo(2, cartoes, todas)   // foco no virtual: fatura/débitos do grupo
+        assertEquals(1, foco.principalId)
+        assertEquals(setOf(1L, 2L), foco.credito.map { it.id }.toSet())
+        assertEquals(setOf(4L, 5L), foco.debito.map { it.id }.toSet())
+        val outroGrupo = Financas.comprasDoGrupo(3, cartoes, todas)
+        assertEquals(3, outroGrupo.principalId)
+        assertEquals(listOf(3L), outroGrupo.credito.map { it.id }); assertEquals(listOf(6L), outroGrupo.debito.map { it.id })
+
+        // resumoFatura só enxerga o crédito: o débito vinculado não entra no total
+        val ref = Financas.faturaDaCompra(ms(2026, 10, 10), 25)
+        val r = Financas.resumoFatura(setOf(1, 2), 25, 5, foco.credito, ref)
+        assertEquals(30.0, r.total, 0.0)
+    }
+
+    @Test fun `debitos da fatura sao do mes civil exibido`() {
+        val a = lanc(5.0, data = ms(2026, 10, 1)).copy(id = 1, grupoId = "debito:1")
+        val b = lanc(6.0, data = ms(2026, 10, 31)).copy(id = 2, grupoId = "debito:1")
+        val c = lanc(7.0, data = ms(2026, 11, 2)).copy(id = 3, grupoId = "debito:1")
+        assertEquals(listOf(2L, 1L), Financas.debitosDaFatura(listOf(a, b, c), Financas.FaturaRef(10, 2026)).map { it.id })
+        assertEquals(listOf(3L), Financas.debitosDaFatura(listOf(a, b, c), Financas.FaturaRef(11, 2026)).map { it.id })
+        assertTrue(Financas.debitosDaFatura(listOf(a, b, c), Financas.FaturaRef(12, 2026)).isEmpty())
+    }
+
+    @Test fun `outras faturas em aberto indicam o valor e a fatura mais proxima`() {
+        val ids = setOf(1)
+        val itens = listOf(
+            lanc(100.0, cartaoId = 1, pago = false, data = ms(2026, 9, 10)),   // fatura 09
+            lanc(40.0, cartaoId = 1, pago = false, data = ms(2026, 12, 10)),   // fatura 12
+            lanc(70.0, cartaoId = 1, pago = false, data = ms(2027, 1, 10)),    // fatura 01/2027
+            lanc(5.0, cartaoId = 1, pago = true, data = ms(2026, 11, 3)),      // paga: ignora
+            lanc(9.0, cartaoId = 2, pago = false, data = ms(2026, 11, 3))      // outro grupo: ignora
+        )
+        val o = Financas.outrasFaturasEmAberto(ids, 25, itens, Financas.FaturaRef(10, 2026))
+        assertEquals(210.0, o.emAberto, 0.0)
+        assertEquals(Financas.FaturaRef(12, 2026), o.proxima)                  // a seguinte com itens
+        val dez = Financas.outrasFaturasEmAberto(ids, 25, itens, Financas.FaturaRef(2, 2027))
+        assertEquals(Financas.FaturaRef(1, 2027), dez.proxima)                 // só há anteriores: a mais recente
+        val vazio = Financas.outrasFaturasEmAberto(ids, 25, emptyList(), Financas.FaturaRef(10, 2026))
+        assertEquals(0.0, vazio.emAberto, 0.0); assertEquals(null, vazio.proxima)
+    }
+
+    @Test fun `ajuste de saldo calcula a diferenca em centavos`() {
+        assertEquals(null, Financas.calcularAjusteSaldo(100.0, 100.0))
+        assertEquals(null, Financas.calcularAjusteSaldo(0.1 + 0.2, 0.3))             // ruído de ponto flutuante
+        Financas.calcularAjusteSaldo(100.0, 150.55)!!.let { assertEquals(TipoDespesa.CREDITO, it.tipo); assertEquals(5055L, it.centavos); assertEquals(50.55, it.valor, 0.0) }
+        Financas.calcularAjusteSaldo(100.0, 40.0)!!.let { assertEquals(TipoDespesa.DEBITO, it.tipo); assertEquals(6000L, it.centavos) }
+        Financas.calcularAjusteSaldo(-10.0, 5.0)!!.let { assertEquals(TipoDespesa.CREDITO, it.tipo); assertEquals(1500L, it.centavos) }
+        Financas.calcularAjusteSaldo(5.0, -5.0)!!.let { assertEquals(TipoDespesa.DEBITO, it.tipo); assertEquals(1000L, it.centavos) }
+        assertEquals(null, Financas.calcularAjusteSaldo(1.0, Double.NaN))
+    }
+
+    @Test fun `saldo informado aceita formatos brasileiros e negativo`() {
+        assertEquals(1234.56, Financas.parseSaldoInformado("1.234,56")!!, 0.0)
+        assertEquals(-50.0, Financas.parseSaldoInformado("-50,00")!!, 0.0)
+        assertEquals(10.0, Financas.parseSaldoInformado("R$ 10")!!, 0.0)
+        assertEquals(1234.5, Financas.parseSaldoInformado("1234.5")!!, 0.0)
+        assertEquals(null, Financas.parseSaldoInformado("")); assertEquals(null, Financas.parseSaldoInformado("-")); assertEquals(null, Financas.parseSaldoInformado("abc"))
+    }
+
+    @Test fun `ajuste entra no saldo da conta mas nao em receita, despesa, orcamento nem previsao`() {
+        val ini = ms(2026, 10, 1); val fim = ms(2026, 10, 31)
+        val l = listOf(
+            lanc(100.0, TipoDespesa.CREDITO, data = ms(2026, 10, 2)),
+            lanc(30.0, TipoDespesa.DEBITO, data = ms(2026, 10, 3), categoria = "Ajuste de saldo", natureza = Natureza.AJUSTE),
+            lanc(20.0, TipoDespesa.CREDITO, data = ms(2026, 10, 4), natureza = Natureza.AJUSTE)
+        )
+        assertEquals(90.0, Financas.saldoConta("111", l), 0.0)                       // saldo conta os dois ajustes
+        val k = Financas.kpisPeriodo(l, ini, fim)
+        assertEquals(100.0, k.receitasRealizadas, 0.0); assertEquals(0.0, k.despesasTotal, 0.0)
+        assertEquals(0.0, Financas.progressoOrcamento("Ajuste de saldo", 100.0, l, ini, fim).gasto, 0.0)
+        val p = Financas.previsaoMes(90.0, l.filter { it.natureza == Natureza.AJUSTE }.map { it.copy(pago = false) }, emptyList(), fim)
+        assertEquals(0.0, p.despesasPendentes, 0.0); assertEquals(0.0, p.receitasPrevistas, 0.0)
+        val w = WidgetResumo.montar(listOf(90.0), emptyList(), emptyList(), ms(2026, 10, 15), historico = l.filter { it.natureza == Natureza.AJUSTE }, orcamentos = emptyList())
+        assertEquals(0.0, w.despesasMes, 0.0); assertEquals(0.0, w.receitasMes, 0.0)
+    }
+
+    // ------------------------------------------------------------------ últimas movimentações por conta
+
+    @Test fun `ultimas movimentacoes seguem a conta selecionada e ignoram cartao e futuro`() {
+        val hoje = ms(2026, 10, 15)
+        val l = listOf(
+            lanc(10.0, conta = "111", data = ms(2026, 10, 14), id = 1),
+            lanc(20.0, conta = "222", data = ms(2026, 10, 14), id = 2),
+            lanc(30.0, conta = "111", data = ms(2028, 5, 18), id = 3), // parcela futura
+            lanc(40.0, conta = "111", data = ms(2026, 10, 13), cartaoId = 1, pago = false, id = 4), // compra de cartao
+            lanc(50.0, conta = "111", data = ms(2026, 10, 15, 23), id = 5) // hoje, fim do dia
+        )
+        assertEquals(listOf(5L, 1L), Financas.ultimasDaConta(l, "111", hoje).map { it.id })
+        assertEquals(listOf(2L), Financas.ultimasDaConta(l, " 222 ", hoje).map { it.id })
+        assertEquals(setOf(5L, 1L, 2L), Financas.ultimasDaConta(l, "", hoje).map { it.id }.toSet())
+        assertEquals(1, Financas.ultimasDaConta(l, "111", hoje, limite = 1).size)
     }
 }

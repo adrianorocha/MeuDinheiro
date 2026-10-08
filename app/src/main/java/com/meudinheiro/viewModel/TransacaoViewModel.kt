@@ -9,6 +9,8 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.TransacaoModel
 import com.meudinheiro.funcoes.DateUtils
 import com.meudinheiro.funcoes.obterCorDaCategoria
+import com.meudinheiro.domain.Financas
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -20,11 +22,16 @@ import java.util.Date
  */
 class TransacaoViewModel(despesaDao: DespesaDao, contaDao: ContaSaldoDao) : ViewModel() {
 
-    val ultimasTransacoes = combine(despesaDao.obterTodasFlow(), contaDao.getTodasContas()) { despesas, contas ->
+    private val contaSelecionada = MutableStateFlow("")
+
+    /** Conta do carrossel: a lista mostra só os movimentos dela. Vazio = todas as contas. */
+    fun selecionarConta(conta: String?) {
+        contaSelecionada.value = conta?.trim().orEmpty()
+    }
+
+    val ultimasTransacoes = combine(despesaDao.obterTodasFlow(), contaDao.getTodasContas(), contaSelecionada) { despesas, contas, conta ->
         val bancoPorConta = contas.associate { it.conta to it.banco }
-        despesas
-            .sortedByDescending { it.data }
-            .take(5)
+        Financas.ultimasDaConta(despesas, conta, System.currentTimeMillis())
             .map { d ->
                 TransacaoModel(
                     id = d.id.toInt(),

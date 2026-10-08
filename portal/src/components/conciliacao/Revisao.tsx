@@ -15,7 +15,7 @@ import {
   type Mescla,
   type Plano,
 } from "@/lib/conciliacao/plano";
-import { limparDescricaoBanco } from "@/lib/conciliacao/texto-banco";
+import { detectarParcelaExtrato, limparDescricaoBanco } from "@/lib/conciliacao/texto-banco";
 import type { ClasseMatch, Destino, ItemMatch, ResultadoMatching } from "@/lib/conciliacao/tipos";
 import { toCents } from "@/lib/finance/money";
 import { normalizar } from "@/lib/finance/texto";
@@ -38,6 +38,8 @@ interface Escolha {
   lancamentoId?: number;
   mescla: Mescla;
   categoria: string;
+  /** R44 - em cartão, lança também as parcelas i+1..n (padrão ligado) */
+  parcelasRestantes: boolean;
 }
 
 function tipoDoPar(valorBanco: number, d: Despesa): "EXATO" | "DIFERENCA" {
@@ -47,14 +49,18 @@ function tipoDoPar(valorBanco: number, d: Despesa): "EXATO" | "DIFERENCA" {
 function padrao(it: ItemMatch, ds: Dataset, destino: Destino): Escolha {
   const categoria = categoriaSugerida(ds, it.transacao.descricao);
   const mescla = mesclaPadrao(it, destino);
-  if (it.classe === "AUTOMATICO") return { acao: "conciliar", lancamentoId: it.lancamentoId, mescla, categoria };
-  if (it.classe === "SUGERIDO") return { acao: "ignorar", lancamentoId: it.lancamentoId, mescla, categoria };
-  return { acao: "ignorar", mescla, categoria };
+  if (it.classe === "AUTOMATICO") return { acao: "conciliar", lancamentoId: it.lancamentoId, mescla, categoria, parcelasRestantes: true };
+  if (it.classe === "SUGERIDO") return { acao: "ignorar", lancamentoId: it.lancamentoId, mescla, categoria, parcelasRestantes: true };
+  return { acao: "ignorar", mescla, categoria, parcelasRestantes: true };
 }
 
 function descreverAcao(e: Escolha, it: ItemMatch, d: Despesa | undefined, destino: Destino): string {
   if (e.acao === "ignorar") return it.classe === "DUPLICADO" ? "Nada será feito (já conciliado antes)." : "Nada será feito (ignorado).";
-  if (e.acao === "criar") return `Criará um lançamento de ${formatBRL(Math.abs(it.transacao.valor))} em ${formatData(it.transacao.data)}, categoria "${e.categoria}", ${destino.tipo === "CONTA" ? "já pago" : "pendente na fatura"}.`;
+  if (e.acao === "criar") {
+    const p = destino.tipo === "CARTAO" && it.transacao.valor < 0 ? detectarParcelaExtrato(it.transacao.descricao, it.transacao.data) : null;
+    const resto = p && p.i < p.n && e.parcelasRestantes ? ` Também lançará as parcelas ${p.i + 1}/${p.n} a ${p.n}/${p.n} em aberto (reserva ${formatBRL(Math.abs(it.transacao.valor) * (p.n - p.i))} do limite).` : "";
+    return `Criará um lançamento de ${formatBRL(Math.abs(it.transacao.valor))} em ${formatData(it.transacao.data)}, categoria "${e.categoria}", ${destino.tipo === "CONTA" ? "já pago" : "pendente na fatura"}.${resto}`;
+  }
   if (!d) return "Escolha um lançamento.";
   const partes = [`Vinculará ao lançamento "${d.descricao}"`];
   if (e.mescla.data && diasDoPar(it.transacao, d) !== 0) partes.push(`data → ${formatData(it.transacao.data)}`);
@@ -157,6 +163,12 @@ function Linha({ it, e, ds, destino, porId, conflito, onChange }: LinhaProps) {
               </Select>
             </div>
           )}
+          {e.acao === "criar" && destino.tipo === "CARTAO" && (() => {
+            const p = t.valor < 0 ? detectarParcelaExtrato(t.descricao, t.data) : null;
+            return p && p.i < p.n ? (
+              <Checkbox rotulo={`Lançar parcelas restantes (reserva o limite): ${p.i + 1}/${p.n} a ${p.n}/${p.n}`} checked={e.parcelasRestantes} onChange={(ev) => onChange({ parcelasRestantes: ev.target.checked })} />
+            ) : null;
+          })()}
           {e.acao === "conciliar" && (
             <details className="text-sm">
               <summary className="cursor-pointer text-primary">Opções de mescla</summary>
@@ -216,7 +228,7 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
     for (const it of resultado.itens) {
       const e = { ...padrao(it, ds, destino), ...over[it.indice] };
       if (e.acao === "conciliar" && e.lancamentoId !== undefined) acoes.push({ tipo: "CONCILIAR", transacao: it.transacao, lancamentoId: e.lancamentoId, mescla: e.mescla });
-      else if (e.acao === "criar") acoes.push({ tipo: "CRIAR", transacao: it.transacao, categoria: e.categoria });
+      else if (e.acao === "criar") acoes.push({ tipo: "CRIAR", transacao: it.transacao, categoria: e.categoria, ...(e.parcelasRestantes ? { parcelasRestantes: true } : {}) });
     }
     return { destino, acoes };
   }, [resultado.itens, ds, destino, over]);

@@ -85,6 +85,7 @@ const cartaoSchema = z.object({
   diaVencimento: num,
   contaId: num,
   cartaoPrincipalId: num.nullish(),
+  limiteProprio: num.nullish(),
 });
 const agendadaSchema = z.object({
   id: id.optional(),
@@ -225,6 +226,7 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
       ...c,
       limiteDisponivel: c.limiteDisponivel ?? c.limiteTotal,
       cartaoPrincipalId: c.cartaoPrincipalId ? c.cartaoPrincipalId : null,
+      limiteProprio: c.limiteProprio ? c.limiteProprio : null,
     })),
     transferenciasAgendadas: comIds(b.transferenciasAgendadas, gerarInt).map((t) => ({
       ...t,

@@ -282,6 +282,71 @@ class MainRepositoryTest {
         assertEquals(500.5, k.despesasTotal, 0.0)
     }
 
+    @Test fun `compra 1200 em 12x consome todo o total e pagar uma fatura devolve so a parcela`() = runBlocking {
+        repo.salvarConta(conta("111", 2000.0))
+        val cartaoId = novoCartao("111", limite = 5000.0, fecha = 25, vence = 5)
+        repo.registrarParcelado(lanc(1200.0, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 10, 10)), 12)
+        assertEquals(3800.0, limite(cartaoId), 0.0)
+        repo.pagarFatura(cartaoId, Financas.FaturaRef(10, 2026))
+        assertEquals(3900.0, limite(cartaoId), 0.0)
+        assertEquals(1900.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `parcela atual cria so as restantes`() = runBlocking {
+        repo.salvarConta(conta("111", 0.0))
+        val cartaoId = novoCartao("111", limite = 5000.0)
+        val ids = repo.registrarParcelado(lanc(1200.0, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 10, 10)), 12, parcelaAtual = 10)
+        assertEquals(3, ids.size)
+        assertEquals(listOf("x (10/12)", "x (11/12)", "x (12/12)"), todas().sortedBy { it.dataMs }.map { it.descricao })
+        assertEquals(4700.0, limite(cartaoId), 0.0)
+        exige<RegraFinanceiraException> { runBlocking { repo.registrarParcelado(lanc(100.0, "111", cartaoId = cartaoId, pago = false), 3, parcelaAtual = 4) } }
+    }
+
+    @Test fun `pagar itens seletivos debita liquido, devolve limite e quitar o resto fecha a fatura`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val cartaoId = novoCartao("111", limite = 1000.0, fecha = 25, vence = 5)
+        repo.registrarLancamento(lanc(100.10, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 10, 10)))
+        repo.registrarLancamento(lanc(50.20, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 10, 12)))
+        repo.registrarLancamento(lanc(20.05, "111", tipo = TipoDespesa.CREDITO, cartaoId = cartaoId, pago = false, data = ms(2026, 10, 14))) // estorno
+        repo.registrarLancamento(lanc(80.0, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 11, 10)))
+        val itens = todas().filter { it.cartaoId == cartaoId }.sortedBy { it.dataMs }
+        val (a, b, estorno, nov) = itens
+
+        // parcial: a + estorno
+        val pago = repo.pagarItens(cartaoId, listOf(a.id, estorno.id))
+        assertEquals(80.05, pago, 0.0)
+        assertEquals(919.95, saldo("111"), 0.0)
+        assertEquals(1000.0 - 50.20 - 80.0, limite(cartaoId), 0.0)
+        assertTrue(todas().any { it.natureza == Natureza.PAGAMENTO_FATURA && it.descricao.endsWith("10/2026 (parcial)") })
+
+        // quitar o restante da fatura de outubro fecha sem erro de centavos
+        val resto = repo.pagarItens(cartaoId, listOf(b.id))
+        assertEquals(50.20, resto, 0.0)
+        assertTrue(todas().any { it.natureza == Natureza.PAGAMENTO_FATURA && it.descricao.endsWith("10/2026") })
+        assertEquals(1000.0 - 80.0, limite(cartaoId), 0.0)
+        exige<RegraFinanceiraException> { runBlocking { repo.pagarFatura(cartaoId, Financas.FaturaRef(10, 2026)) } }
+
+        // várias faturas e validações
+        exige<RegraFinanceiraException> { runBlocking { repo.pagarItens(cartaoId, listOf(a.id)) } }      // já pago
+        exige<RegraFinanceiraException> { runBlocking { repo.pagarItens(cartaoId, listOf(999999L)) } }   // fora do grupo
+        exige<RegraFinanceiraException> { runBlocking { repo.pagarItens(cartaoId, emptyList()) } }
+        repo.pagarItens(cartaoId, listOf(nov.id))
+        assertEquals(1000.0, limite(cartaoId), 0.0)
+        assertEquals(1000.0 - 100.10 - 50.20 + 20.05 - 80.0, saldo("111"), 0.0001)
+    }
+
+    @Test fun `pagar itens so de estorno e recusado e varias faturas usam descricao de itens selecionados`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val cartaoId = novoCartao("111", limite = 1000.0, fecha = 25, vence = 5)
+        repo.registrarLancamento(lanc(10.0, "111", tipo = TipoDespesa.CREDITO, cartaoId = cartaoId, pago = false, data = ms(2026, 10, 10)))
+        repo.registrarLancamento(lanc(60.0, "111", cartaoId = cartaoId, pago = false, data = ms(2026, 11, 10)))
+        val (est, nov) = todas().filter { it.cartaoId == cartaoId }.sortedBy { it.dataMs }
+        exige<RegraFinanceiraException> { runBlocking { repo.pagarItens(cartaoId, listOf(est.id)) } }
+        repo.pagarItens(cartaoId, listOf(est.id, nov.id))
+        assertTrue(todas().any { it.natureza == Natureza.PAGAMENTO_FATURA && it.descricao.endsWith("(itens selecionados)") })
+        assertEquals(950.0, saldo("111"), 0.0)
+    }
+
     @Test fun `pagamento de fatura nao pode ser excluido`() = runBlocking {
         repo.salvarConta(conta("111", 1000.0))
         val cartaoId = novoCartao("111")
@@ -726,5 +791,303 @@ class MainRepositoryTest {
         repo.excluirConta(contaId("111"))
         assertTrue(db.despesaFixaDao().obterTodas().isEmpty())
     }
-}
 
+    // ------------------------------------------------------------------ R41 limite próprio
+
+    private fun salvarVirtualComTeto(principalId: Int, teto: Double?): Unit = runBlocking {
+        repo.salvarCartao(
+            Cartao(nome = "V", finalCartao = "9999", tipo = "CRÉDITO", limiteDisponivel = 0.0, limiteTotal = 1.0,
+                diaFechamento = 1, diaVencimento = 1, contaId = 0, cartaoPrincipalId = principalId, limiteProprio = teto)
+        )
+    }
+
+    @Test fun `limite proprio e validado e zero vira nulo`() = runBlocking {
+        repo.salvarConta(conta("111"))
+        val fisico = novoCartao("111", limite = 1000.0)
+        val e1 = capturar<com.meudinheiro.repository.RegraFinanceiraException> { runBlocking { salvarVirtualComTeto(fisico, 1000.01) } }
+        assertEquals("O limite próprio deve ser maior que zero e não pode passar do limite total do cartão físico.", e1.message)
+        capturar<com.meudinheiro.repository.RegraFinanceiraException> { runBlocking { salvarVirtualComTeto(fisico, -5.0) } }
+        salvarVirtualComTeto(fisico, 0.0)
+        assertNull(db.cartaoDao().obterTodasStatic().last().limiteProprio)
+        salvarVirtualComTeto(fisico, 1000.0)
+        assertEquals(1000.0, db.cartaoDao().obterTodasStatic().last().limiteProprio!!, 0.0)
+    }
+
+    @Test fun `propagacao do fisico preserva limite proprio e baixar limite abaixo do teto falha`() = runBlocking {
+        repo.salvarConta(conta("111"))
+        val fisico = novoCartao("111", limite = 1000.0)
+        salvarVirtualComTeto(fisico, 600.0)
+        val f = db.cartaoDao().getCartaoPorId(fisico)!!
+        repo.salvarCartao(f.copy(limiteTotal = 800.0, diaFechamento = 10))
+        val v = db.cartaoDao().obterTodasStatic().last()
+        assertEquals(600.0, v.limiteProprio!!, 0.0); assertEquals(800.0, v.limiteTotal, 0.0); assertEquals(10, v.diaFechamento)
+        capturar<com.meudinheiro.repository.RegraFinanceiraException> { runBlocking { repo.salvarCartao(f.copy(limiteTotal = 500.0)) } }
+        assertEquals(800.0, db.cartaoDao().getCartaoPorId(fisico)!!.limiteTotal, 0.0)
+    }
+
+    // ------------------------------------------------------------------ R42 vínculo editável
+
+    private fun novoCartaoTipo(contaNumero: String, tipo: String, limite: Double = 1000.0, nome: String = "Cartao"): Int = runBlocking {
+        repo.salvarCartao(
+            Cartao(nome = nome, finalCartao = "1111", tipo = tipo, limiteDisponivel = 0.0, limiteTotal = limite,
+                diaFechamento = 25, diaVencimento = 5, contaId = contaId(contaNumero))
+        )
+        db.cartaoDao().obterTodasStatic().last().id
+    }
+
+    private fun cartao(id: Int) = runBlocking { db.cartaoDao().getCartaoPorId(id)!! }
+
+    @Test fun `fisico independente vira virtual e herda tudo do fisico novo`() = runBlocking {
+        repo.salvarConta(conta("111")); repo.salvarConta(conta("222"))
+        val a = novoCartaoTipo("111", "CRÉDITO", 1000.0, "A")
+        val b = novoCartaoTipo("222", "CRÉDITO", 500.0, "B")
+        repo.registrarLancamento(lanc(100.0, "222", cartaoId = b, pago = false))     // compra em aberto no B (grupo antigo)
+        repo.registrarLancamento(lanc(200.0, "111", cartaoId = a, pago = false))
+        assertEquals(1000.0 - 200.0, limite(a), 0.0)
+
+        repo.salvarCartao(cartao(b).copy(cartaoPrincipalId = a, limiteProprio = 300.0))
+
+        val nb = cartao(b)
+        assertEquals(a, nb.cartaoPrincipalId); assertEquals(contaId("111"), nb.contaId)
+        assertEquals(1000.0, nb.limiteTotal, 0.0); assertEquals(25, nb.diaFechamento); assertEquals("CRÉDITO", nb.tipo)
+        assertEquals(300.0, nb.limiteProprio!!, 0.0)
+        assertEquals("111", todas().first { it.cartaoId == b }.conta)                // despesas passam para a conta do físico
+        assertEquals(700.0, limite(a), 0.0); assertEquals(700.0, limite(b), 0.0)     // grupo: 1000 - 200 - 100
+    }
+
+    @Test fun `limite proprio e revalidado ao vincular e fisico com virtuais nao pode virar virtual`() = runBlocking {
+        repo.salvarConta(conta("111"))
+        val a = novoCartaoTipo("111", "CRÉDITO", 1000.0, "A")
+        val b = novoCartaoTipo("111", "CRÉDITO", 5000.0, "B")
+        exige<RegraFinanceiraException> { runBlocking { repo.salvarCartao(cartao(b).copy(cartaoPrincipalId = a, limiteProprio = 1000.01)) } }
+        assertNull(cartao(b).cartaoPrincipalId)                                      // nada mudou
+        exige<RegraFinanceiraException> { runBlocking { repo.salvarCartao(cartao(b).copy(cartaoPrincipalId = a, limiteProprio = -1.0)) } }
+
+        val v = novoVirtual(b)
+        exige<RegraFinanceiraException> { runBlocking { repo.salvarCartao(cartao(b).copy(cartaoPrincipalId = a)) } }  // B tem virtual
+        assertNull(cartao(b).cartaoPrincipalId)
+        exige<RegraFinanceiraException> { runBlocking { repo.salvarCartao(cartao(a).copy(cartaoPrincipalId = a)) } } // de si mesmo
+        exige<RegraFinanceiraException> { runBlocking { repo.salvarCartao(cartao(a).copy(cartaoPrincipalId = v)) } } // de um virtual
+        exige<RegraFinanceiraException> { runBlocking { repo.salvarCartao(cartao(a).copy(cartaoPrincipalId = 9999)) } }
+    }
+
+    @Test fun `virtual vira fisico independente mantendo valores e recalcula os dois grupos`() = runBlocking {
+        repo.salvarConta(conta("111"))
+        val a = novoCartaoTipo("111", "CRÉDITO", 1000.0, "A")
+        val v = novoVirtual(a)
+        repo.salvarCartao(cartao(v).copy(limiteProprio = 400.0))
+        repo.registrarLancamento(lanc(300.0, "111", cartaoId = v, pago = false))
+        repo.registrarLancamento(lanc(100.0, "111", cartaoId = a, pago = false))
+        assertEquals(600.0, limite(a), 0.0)
+
+        repo.salvarCartao(cartao(v).copy(cartaoPrincipalId = null))
+
+        val nv = cartao(v)
+        assertNull(nv.cartaoPrincipalId); assertNull(nv.limiteProprio)
+        assertEquals(1000.0, nv.limiteTotal, 0.0); assertEquals(contaId("111"), nv.contaId); assertEquals(25, nv.diaFechamento)
+        assertEquals(700.0, limite(v), 0.0)      // grupo próprio: 1000 - 300 (compras do virtual vão com ele)
+        assertEquals(900.0, limite(a), 0.0)      // grupo antigo: 1000 - 100
+    }
+
+    @Test fun `virtual orfao pode ser corrigido pela edicao`() = runBlocking {
+        repo.salvarConta(conta("111"))
+        val a = novoCartaoTipo("111", "CRÉDITO", 800.0, "A")
+        db.cartaoDao().inserirCartao(Cartao(nome = "Orfao", finalCartao = "0001", tipo = "CRÉDITO", limiteDisponivel = 800.0, limiteTotal = 800.0,
+            diaFechamento = 1, diaVencimento = 2, contaId = contaId("111"), cartaoPrincipalId = 9999))
+        val orfao = db.cartaoDao().obterTodasStatic().last().id
+        repo.salvarCartao(cartao(orfao).copy(cartaoPrincipalId = a))
+        assertEquals(a, cartao(orfao).cartaoPrincipalId)
+        assertEquals(25, cartao(orfao).diaFechamento)
+
+        val orfao2 = run {
+            db.cartaoDao().inserirCartao(Cartao(nome = "Orfao2", finalCartao = "0002", tipo = "CRÉDITO", limiteDisponivel = 10.0, limiteTotal = 10.0,
+                diaFechamento = 1, diaVencimento = 2, contaId = contaId("111"), cartaoPrincipalId = 9998))
+            db.cartaoDao().obterTodasStatic().last().id
+        }
+        repo.salvarCartao(cartao(orfao2).copy(cartaoPrincipalId = null))               // ou vira físico
+        assertNull(cartao(orfao2).cartaoPrincipalId)
+    }
+
+    @Test fun `editar limite proprio de cartao existente`() = runBlocking {
+        repo.salvarConta(conta("111"))
+        val a = novoCartaoTipo("111", "CRÉDITO", 1000.0, "A")
+        repo.salvarCartao(cartao(a).copy(limiteProprio = 250.0))
+        assertEquals(250.0, cartao(a).limiteProprio!!, 0.0)
+        repo.salvarCartao(cartao(a).copy(limiteProprio = null))
+        assertNull(cartao(a).limiteProprio)
+    }
+
+    // ------------------------------------------------------------------ R42 modalidade da compra
+
+    @Test fun `compra em cartao de debito sai direto da conta sem consumir limite`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val c = novoCartaoTipo("111", "DÉBITO", 0.0)
+        repo.registrarLancamento(lanc(80.0, "xx", cartaoId = c, pago = false))
+        val d = todas().single { it.valor == 80.0 }
+        assertNull(d.cartaoId); assertEquals("111", d.conta); assertTrue(d.pago)
+        assertEquals(420.0, saldo("111"), 0.0)
+        assertEquals(0.0, limite(c), 0.0)
+
+        repo.registrarLancamento(lanc(50.0, "111", cartaoId = c, pago = false, data = hoje() + 5 * 86_400_000L))
+        assertFalse(todas().single { it.valor == 50.0 }.pago)                         // futuro: pago conforme a data
+        assertEquals(420.0, saldo("111"), 0.0)
+
+        val ids = repo.registrarParcelado(lanc(90.0, "111", cartaoId = c, pago = false), 3)  // parcelas forçadas a 1
+        assertEquals(1, ids.size)
+        assertEquals(90.0, todas().single { it.valor == 90.0 }.valor, 0.0)
+        assertNull(todas().single { it.valor == 90.0 }.cartaoId)
+        assertEquals(330.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `cartao multiplo segue a escolha e padrao e credito`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val m = novoCartaoTipo("111", "MÚLTIPLO", 1000.0)
+        repo.registrarLancamento(lanc(100.0, "111", cartaoId = m, pago = false))
+        assertEquals(m, todas().single { it.valor == 100.0 }.cartaoId)
+        assertEquals(900.0, limite(m), 0.0); assertEquals(500.0, saldo("111"), 0.0)
+
+        repo.registrarLancamento(lanc(40.0, "111", cartaoId = m, pago = false), Financas.Modalidade.DEBITO)
+        assertNull(todas().single { it.valor == 40.0 }.cartaoId)
+        assertEquals(460.0, saldo("111"), 0.0); assertEquals(900.0, limite(m), 0.0)
+
+        repo.registrarLancamento(lanc(10.0, "111", cartaoId = m, pago = false), Financas.Modalidade.CREDITO)
+        assertEquals(m, todas().single { it.valor == 10.0 }.cartaoId)
+        val ids = repo.registrarParcelado(lanc(300.0, "111", cartaoId = m, pago = false), 3, Financas.Modalidade.CREDITO)
+        assertEquals(3, ids.size)
+    }
+
+    @Test fun `cartao de credito ignora pedido de debito`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val c = novoCartaoTipo("111", "CRÉDITO", 1000.0)
+        repo.registrarLancamento(lanc(100.0, "111", cartaoId = c, pago = false), Financas.Modalidade.DEBITO)
+        assertEquals(c, todas().single { it.valor == 100.0 }.cartaoId)
+        assertEquals(900.0, limite(c), 0.0); assertEquals(500.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `compra no debito pelo virtual cai na conta do fisico`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val f = novoCartaoTipo("111", "DÉBITO", 0.0)
+        val v = novoVirtual(f)
+        repo.registrarLancamento(lanc(60.0, "zzz", cartaoId = v, pago = false))
+        todas().single { it.valor == 60.0 }.let { assertEquals("111", it.conta); assertNull(it.cartaoId) }
+        assertEquals(440.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `recorrencia em cartao de debito gera na conta e multiplo continua credito`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val deb = novoCartaoTipo("111", "DÉBITO", 0.0, "Deb")
+        repo.salvarDespesaFixa(regraFixa("111", deb))
+        val geradas = todas().filter { it.descricao == "Streaming" }
+        assertEquals(2, geradas.size)
+        assertTrue(geradas.all { it.cartaoId == null && it.conta == "111" })
+        assertEquals(deb, db.despesaFixaDao().obterTodas().single().cartaoId)         // a regra continua apontando o cartão
+
+        val mul = novoCartaoTipo("111", "MÚLTIPLO", 1000.0, "Mul")
+        repo.salvarDespesaFixa(regraFixa("111", mul).copy(descricao = "Outra"))
+        val outras = todas().filter { it.descricao == "Outra" }
+        assertTrue(outras.isNotEmpty() && outras.all { it.cartaoId == mul })
+    }
+
+    @Test fun `trocar o cartao na edicao reaplica a modalidade`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val cred = novoCartaoTipo("111", "CRÉDITO", 1000.0, "Cred")
+        val deb = novoCartaoTipo("111", "DÉBITO", 0.0, "Deb")
+        val id = repo.registrarLancamento(lanc(100.0, "111", cartaoId = cred, pago = false))
+        assertEquals(900.0, limite(cred), 0.0)
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = deb))
+        val d = repo.obterDespesaPorId(id)!!
+        assertNull(d.cartaoId); assertTrue(d.pago)
+        assertEquals(400.0, saldo("111"), 0.0); assertEquals(1000.0, limite(cred), 0.0)
+    }
+
+    // ------------------------------------------------------------------ vínculo de débito (debito:<cartao>)
+
+    @Test fun `compra no debito fica vinculada ao cartao e excluir uma nao apaga as outras`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val c = novoCartaoTipo("111", "DÉBITO", 0.0)
+        val a = repo.registrarLancamento(lanc(10.0, "111", cartaoId = c, pago = false))
+        val b = repo.registrarLancamento(lanc(20.0, "111", cartaoId = c, pago = false))
+        assertEquals("debito:$c", repo.obterDespesaPorId(a)!!.grupoId)
+        assertEquals("debito:$c", repo.obterDespesaPorId(b)!!.grupoId)
+        repo.excluirLancamento(a)                                // vínculo não é grupo de parcelas/transferência
+        assertNull(repo.obterDespesaPorId(a)); assertNotNull(repo.obterDespesaPorId(b))
+        assertEquals(480.0, saldo("111"), 0.0)
+        // editar um débito vinculado (sem trocar de cartão) preserva o vínculo
+        repo.atualizarLancamento(repo.obterDespesaPorId(b)!!.copy(valor = 25.0))
+        assertEquals("debito:$c", repo.obterDespesaPorId(b)!!.grupoId)
+        assertEquals(475.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `debito vinculado aparece na tela do cartao fora da fatura e do limite`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val m = novoCartaoTipo("111", "MÚLTIPLO", 1000.0)
+        val v = novoVirtual(m)
+        repo.registrarLancamento(lanc(100.0, "111", cartaoId = m, pago = false))                       // crédito
+        repo.registrarLancamento(lanc(40.0, "111", cartaoId = v, pago = false), Financas.Modalidade.DEBITO) // débito pelo virtual
+        repo.registrarLancamento(lanc(15.0, "111"))                                                      // lançamento comum
+
+        val doFisico = repo.getComprasDoGrupoDe(m).first()
+        val doVirtual = repo.getComprasDoGrupoDe(v).first()
+        assertEquals(m, doFisico.principalId); assertEquals(m, doVirtual.principalId)  // virtual → grupo do físico
+        assertEquals(listOf(100.0), doFisico.credito.map { it.valor })
+        assertEquals(listOf(40.0), doFisico.debito.map { it.valor })
+        assertEquals(doFisico, doVirtual)
+        assertEquals(listOf(100.0), repo.getDespesasDoGrupoDe(v).first().map { it.valor })
+        assertEquals(900.0, limite(m), 0.0)                                                              // débito não consome limite
+        val fatura = Financas.resumoFatura(setOf(m, v), 25, 5, doFisico.credito, Financas.faturaDaCompra(hoje(), 25))
+        assertEquals(100.0, fatura.total, 0.0)
+    }
+
+    @Test fun `excluir virtual leva o vinculo de debito para o fisico`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val f = novoCartaoTipo("111", "DÉBITO", 0.0)
+        val v = novoVirtual(f)
+        val id = repo.registrarLancamento(lanc(30.0, "111", cartaoId = v, pago = false))
+        assertEquals("debito:$v", repo.obterDespesaPorId(id)!!.grupoId)
+        repo.excluirCartao(db.cartaoDao().getCartaoPorId(v)!!)
+        assertEquals("debito:$f", repo.obterDespesaPorId(id)!!.grupoId)
+        assertEquals(listOf(30.0), repo.getComprasDoGrupoDe(f).first().debito.map { it.valor })
+    }
+
+    @Test fun `trocar para cartao de credito remove o vinculo de debito`() = runBlocking {
+        repo.salvarConta(conta("111", 500.0))
+        val deb = novoCartaoTipo("111", "DÉBITO", 0.0, "Deb")
+        val cred = novoCartaoTipo("111", "CRÉDITO", 1000.0, "Cred")
+        val id = repo.registrarLancamento(lanc(100.0, "111", cartaoId = deb, pago = false))
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = cred, pago = false))
+        val d = repo.obterDespesaPorId(id)!!
+        assertEquals(cred, d.cartaoId); assertNull(d.grupoId)
+    }
+
+    // ------------------------------------------------------------------ R42 ajuste de saldo
+
+    @Test fun `ajuste de saldo cria lancamento AJUSTE que entra no saldo mas nao em receita ou despesa`() = runBlocking {
+        repo.salvarConta(conta("111", 100.0))
+        val a = repo.ajustarSaldoConta("111", 150.55)!!
+        assertEquals(TipoDespesa.CREDITO, a.tipo); assertEquals(5055L, a.centavos)
+        assertEquals(150.55, saldo("111"), 0.0)
+        val l = todas().single { it.natureza == Natureza.AJUSTE }
+        assertEquals(50.55, l.valor, 0.0); assertEquals(TipoDespesa.CREDITO, l.tipo); assertTrue(l.pago); assertNull(l.cartaoId)
+        assertEquals("Ajuste de saldo", l.categoria); assertEquals("Ajuste de saldo (conferido com o banco)", l.descricao)
+        val k = Financas.kpisPeriodo(todas(), null, null)
+        assertEquals(0.0, k.receitasRealizadas, 0.0); assertEquals(0.0, k.despesasTotal, 0.0)  // o saldo inicial também fica de fora
+
+        assertNull(repo.ajustarSaldoConta("111", 150.55))                              // já igual: nada criado
+        assertEquals(1, todas().count { it.natureza == Natureza.AJUSTE })
+
+        val b = repo.ajustarSaldoConta("111", 100.0, "conferido")!!
+        assertEquals(TipoDespesa.DEBITO, b.tipo); assertEquals(5055L, b.centavos)
+        assertEquals(100.0, saldo("111"), 0.0)
+        assertTrue(todas().any { it.natureza == Natureza.AJUSTE && it.descricao.endsWith("conferido") })
+    }
+
+    @Test fun `ajuste pode ser excluido para desfazer e conta inexistente falha`() = runBlocking {
+        repo.salvarConta(conta("111", 100.0))
+        repo.ajustarSaldoConta("111", -20.0)                                            // saldo real negativo
+        assertEquals(-20.0, saldo("111"), 0.0)
+        repo.excluirLancamento(todas().single { it.natureza == Natureza.AJUSTE }.id)
+        assertEquals(100.0, saldo("111"), 0.0)
+        exige<RegraFinanceiraException> { runBlocking { repo.ajustarSaldoConta("999", 10.0) } }
+        exige<RegraFinanceiraException> { runBlocking { repo.ajustarSaldoConta("111", Double.NaN) } }
+    }
+}

@@ -108,6 +108,14 @@ interface DespesaDao {
     @Query("UPDATE despesas SET cartaoId = :para WHERE cartaoId = :de")
     suspend fun reatribuirCartao(de: Int, para: Int)
 
+    /** Move o vínculo de débito (`debito:<id>`) de um cartão excluído para outro. */
+    @Query("UPDATE despesas SET grupoId = :para WHERE grupoId = :de")
+    suspend fun reatribuirGrupo(de: String, para: String)
+
+    /** R42: compras do cartão acompanham o número de conta do cartão. */
+    @Query("UPDATE despesas SET conta = :conta WHERE cartaoId = :cartaoId AND conta != :conta")
+    suspend fun atualizarContaDoCartao(cartaoId: Int, conta: String)
+
     @Query("DELETE FROM despesas WHERE id IN (:ids)")
     suspend fun excluirPorIds(ids: List<Long>)
 }

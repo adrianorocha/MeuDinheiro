@@ -106,6 +106,8 @@ export interface Cartao {
   contaId: number;
   /** null = cartão físico (principal); id do físico = cartão virtual (R18). */
   cartaoPrincipalId: number | null;
+  /** R41 - teto de gasto deste cartão dentro do limite compartilhado; null = sem teto próprio. */
+  limiteProprio: number | null;
 }
 
 export interface TransferenciaAgendada {

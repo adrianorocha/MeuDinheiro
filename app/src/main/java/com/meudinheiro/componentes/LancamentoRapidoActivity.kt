@@ -162,6 +162,7 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
     var categoriaManual by remember { mutableStateOf(atalho != null) }
     var origemChave by remember { mutableStateOf<String?>(atalho?.let { a -> a.cartaoId?.let { "k:$it" } ?: "c:${a.conta}" }) }
     var erro by remember { mutableStateOf<String?>(null) }
+    var modalidade by remember { mutableStateOf(Financas.Modalidade.CREDITO) } // R42: só vale para cartão MÚLTIPLO
     var salvando by remember { mutableStateOf(false) }
     val foco = remember { FocusRequester() }
 
@@ -202,7 +203,7 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
                 cartaoId = (origem as? Origem.DeCartao)?.cartao?.id,
                 agora = agora
             )
-            val resultado = withContext(Dispatchers.IO) { runCatching { MainRepository(context).registrarLancamento(lanc) } }
+            val resultado = withContext(Dispatchers.IO) { runCatching { MainRepository(context).registrarLancamento(lanc, if (origem is Origem.DeCartao) modalidade else null) } }
             if (resultado.isFailure) {
                 salvando = false
                 erro = resultado.exceptionOrNull()?.message ?: "Não foi possível salvar."
@@ -275,6 +276,23 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
                                 labelColor = Color.White.copy(0.8f), selectedContainerColor = NeonGreen.copy(0.25f), selectedLabelColor = NeonGreen
                             )
                         )
+                    }
+                }
+                val cartaoOrigem = (d.origens.firstOrNull { it.chave == origemChave } as? Origem.DeCartao)?.cartao
+                if (!receita && cartaoOrigem != null) {
+                    when (Financas.tipoDeCartao(cartaoOrigem.tipo)) {
+                        "MULTIPLO" -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(Financas.Modalidade.CREDITO to "Crédito", Financas.Modalidade.DEBITO to "Débito").forEach { (m, rotulo) ->
+                                FilterChip(
+                                    selected = modalidade == m, onClick = { modalidade = m },
+                                    label = { Text(rotulo) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        labelColor = Color.White.copy(0.8f), selectedContainerColor = NeonCyan.copy(0.25f), selectedLabelColor = NeonCyan
+                                    )
+                                )
+                            }
+                        }
+                        "DEBITO" -> Text("Compra no débito: sai direto da conta", color = NeonCyan, fontSize = 12.sp)
                     }
                 }
                 if (d.origens.isEmpty()) Text("Nenhuma conta cadastrada. Abra o app para criar a primeira.", color = Color(0xFFFF8A80), fontSize = 12.sp)

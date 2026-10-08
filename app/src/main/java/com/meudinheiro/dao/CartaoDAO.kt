@@ -23,7 +23,7 @@ interface CartaoDao {
         """
         SELECT c.id, c.nome as nomeCartao, c.finalCartao, c.tipo, c.limiteDisponivel, c.limiteTotal,
                c.diaFechamento, c.diaVencimento, c.contaId,
-               b.banco as nomeConta, b.conta as numeroConta, c.cartaoPrincipalId
+               b.banco as nomeConta, b.conta as numeroConta, c.cartaoPrincipalId, c.limiteProprio
         FROM cartoes c
         INNER JOIN contasaldo b ON c.contaId = b.id
         """

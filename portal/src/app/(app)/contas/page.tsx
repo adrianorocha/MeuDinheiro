@@ -11,9 +11,10 @@ import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
 import { Money } from "@/components/ui/Money";
 import { PicBadge } from "@/components/ui/PicIcon";
 import { BANCOS } from "@/lib/catalogo";
-import { contaTemDependencias } from "@/lib/finance/operations";
+import { saldoConta } from "@/lib/finance/calc";
+import { contaTemDependencias, diferencaAjuste } from "@/lib/finance/operations";
 import type { Conta } from "@/lib/finance/types";
-import { deInputData, formatData, paraInputData, parseValorBR } from "@/lib/format";
+import { deInputData, formatBRL, formatData, paraInputData, parseValorBR } from "@/lib/format";
 import { lancamentosParaCsv } from "@/lib/csv";
 import { baixarArquivo } from "@/lib/download";
 import { useDataset } from "@/lib/hooks";
@@ -68,6 +69,52 @@ function ContaForm({ editar, onFechar }: { editar: Conta | null; onFechar: () =>
       )}
       {erro && <ErroBox>{erro}</ErroBox>}
       <RodapeForm onCancelar={onFechar} />
+    </form>
+  );
+}
+
+function AjusteSaldoForm({ conta, onFechar }: { conta: Conta; onFechar: () => void }) {
+  const ds = useDataset();
+  const avisar = useStore((s) => s.avisar);
+  const [realTxt, setRealTxt] = useState("");
+  const [obs, setObs] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const noSistema = saldoConta(ds.despesas, conta.conta);
+  const informado = realTxt.trim() !== "" && !Number.isNaN(parseValorBR(realTxt));
+  const diferenca = informado ? diferencaAjuste(ds, conta.conta, parseValorBR(realTxt)) : null;
+
+  function enviar(e: FormEvent) {
+    e.preventDefault();
+    if (!informado) return setErro("Informe o saldo real da conta no banco.");
+    const r = acoes.ajustarSaldoConta({ conta: conta.conta, saldoReal: parseValorBR(realTxt), observacao: obs });
+    if (!r.ok) return setErro(r.erro);
+    avisar("sucesso", `Saldo ajustado (${r.diferenca > 0 ? "+" : "−"}${formatBRL(Math.abs(r.diferenca))}). Exclua o lançamento "Ajuste" do extrato para desfazer.`);
+    onFechar();
+  }
+
+  return (
+    <form onSubmit={enviar} className="flex flex-col gap-4" noValidate>
+      <div>
+        <p className="text-xs text-muted">Saldo no sistema</p>
+        <p className="text-xl font-semibold">
+          <Money valor={noSistema} tom="auto" />
+        </p>
+      </div>
+      <InputValor rotulo="Saldo real no banco (R$)" value={realTxt} onChange={(e) => setRealTxt(e.target.value)} dica="Informe o saldo que o banco mostra agora." />
+      <Input rotulo="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} maxLength={80} />
+      {diferenca !== null && (
+        <p className="text-sm" role="status">
+          {diferenca === 0 ? (
+            "O saldo já confere com o informado."
+          ) : (
+            <>
+              Diferença: <strong>{diferenca > 0 ? "+" : "−"}<Money valor={Math.abs(diferenca)} /></strong> ({diferenca > 0 ? "entrada" : "saída"} de ajuste; não conta como receita nem despesa)
+            </>
+          )}
+        </p>
+      )}
+      {erro && <ErroBox>{erro}</ErroBox>}
+      <RodapeForm onCancelar={onFechar} rotuloEnviar="Ajustar saldo" />
     </form>
   );
 }
@@ -137,6 +184,7 @@ export default function ContasPage() {
   const [transf, setTransf] = useState<{ origem?: string } | null>(null);
   const [excluir, setExcluir] = useState<Conta | null>(null);
   const [extratoId, setExtratoId] = useState<number | null>(null);
+  const [ajuste, setAjuste] = useState<Conta | null>(null);
 
   const extratoConta = ds.contas.find((c) => c.id === extratoId) ?? null;
   const extrato = useMemo(
@@ -206,6 +254,9 @@ export default function ContasPage() {
                   </Button>
                   <Button tamanho="sm" onClick={() => setTransf({ origem: c.conta })} disabled={ds.contas.length < 2}>
                     Transferir
+                  </Button>
+                  <Button tamanho="sm" onClick={() => setAjuste(c)}>
+                    Ajustar saldo
                   </Button>
                 </div>
               </Card>
@@ -277,6 +328,9 @@ export default function ContasPage() {
       </Modal>
       <Modal aberto={transf !== null} onFechar={() => setTransf(null)} titulo="Transferência entre contas">
         {transf && <TransferenciaForm origemInicial={transf.origem} onFechar={() => setTransf(null)} />}
+      </Modal>
+      <Modal aberto={ajuste !== null} onFechar={() => setAjuste(null)} titulo="Ajustar saldo da conta">
+        {ajuste && <AjusteSaldoForm conta={ajuste} onFechar={() => setAjuste(null)} />}
       </Modal>
       <Confirmar
         aberto={excluir !== null}

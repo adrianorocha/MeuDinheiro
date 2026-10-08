@@ -57,6 +57,17 @@ describe("backup v2", () => {
     expect(volta.dataset.cartoes.map((c) => c.cartaoPrincipalId)).toEqual([null, 5]);
   });
 
+  it("limiteProprio: ausente vira null e é preservado no round-trip", () => {
+    const base = { contas: [{ id: 1, saldo: 0, banco: "X", pic: "", agencia: "", conta: "1", titular: "" }] };
+    const cartao = { nome: "F", finalCartao: "1", tipo: "CRÉDITO", limiteDisponivel: 10, limiteTotal: 10, diaFechamento: 1, diaVencimento: 5, contaId: 1 };
+    const r = importarBackup(JSON.stringify({ ...base, cartoes: [{ id: 5, ...cartao }, { id: 6, ...cartao, cartaoPrincipalId: 5, limiteProprio: 4.5 }] }), agora);
+    if (!r.ok) throw new Error(r.erro);
+    expect(r.dataset.cartoes.map((c) => c.limiteProprio)).toEqual([null, 4.5]);
+    const volta = importarBackup(JSON.stringify(exportarBackup(r.dataset)), agora);
+    if (!volta.ok) throw new Error(volta.erro);
+    expect(volta.dataset.cartoes.map((c) => c.limiteProprio)).toEqual([null, 4.5]);
+  });
+
   it("rejeita JSON inválido e estrutura incorreta", () => {
     expect(importarBackup("{nao json", agora).ok).toBe(false);
     expect(importarBackup("[]", agora).ok).toBe(false);

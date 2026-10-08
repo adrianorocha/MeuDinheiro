@@ -53,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,7 +83,9 @@ import com.meudinheiro.R
 import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.domain.Financas
 import com.meudinheiro.funcoes.SuccessAnimation
+import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.compartilharComprovante
 import com.meudinheiro.ui.theme.NeonCyan
 import com.meudinheiro.ui.theme.NeonGreen
@@ -122,6 +125,7 @@ fun ActionButtonRow(
     var exibirFormulario by remember { mutableStateOf(false) }
     var exibirDeposito by remember { mutableStateOf(false) }
     var exibirAssinaturas by remember { mutableStateOf(false) }
+    var exibirAjuste by remember { mutableStateOf(false) }
 
     var valorEscaneado by remember { mutableStateOf<Double?>(null) }
     var codigoEscaneado by remember { mutableStateOf("") }
@@ -194,6 +198,18 @@ fun ActionButtonRow(
                 onClick = onConfigClick
             )
         }
+    }
+
+    // R42: ajuste de saldo para igualar ao banco.
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        androidx.compose.material3.TextButton(onClick = {
+            if (contaSelecionada.isBlank()) Toast.makeText(currentContext, "Selecione uma conta", Toast.LENGTH_SHORT).show()
+            else exibirAjuste = true
+        }) { Text("Ajustar saldo da conta", color = NeonCyan.copy(alpha = 0.8f), fontSize = 12.sp) }
+    }
+
+    if (exibirAjuste) {
+        AjusteSaldoDialog(contaSelecionada = contaSelecionada, viewModel = viewModel, onDismiss = { exibirAjuste = false })
     }
 
     if (exibirFormulario) {
@@ -341,6 +357,81 @@ fun PremiumTextField(
     )
 }
 
+/** R42 — confere o saldo do sistema com o do banco e lança um AJUSTE (não conta como receita/despesa). */
+@Composable
+fun AjusteSaldoDialog(contaSelecionada: String, viewModel: ContaSaldoViewModel, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val contas by viewModel.contaSaldo.observeAsState(emptyList())
+    val conta = contas.firstOrNull { it.conta.trim().equals(contaSelecionada.trim(), ignoreCase = true) }
+    val exigirBio by remember { com.meudinheiro.funcoes.UserPreferences(ctx).biometriaLancarFlow }.collectAsState(initial = true)
+    var saldoRealTxt by rememberSaveable { mutableStateOf("") }
+    var observacao by rememberSaveable { mutableStateOf("") }
+
+    val saldoSistema = conta?.saldo ?: 0.0
+    val saldoReal = com.meudinheiro.domain.Financas.parseSaldoInformado(saldoRealTxt)
+    val ajuste = saldoReal?.let { com.meudinheiro.domain.Financas.calcularAjusteSaldo(saldoSistema, it) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        PremiumDialogCard {
+            Text("Ajustar saldo", style = MaterialTheme.typography.titleLarge, color = TextColor, fontWeight = FontWeight.Bold)
+            Text(conta?.let { "${it.banco} · ${it.conta}" } ?: contaSelecionada, color = NeonCyan)
+            Text("Saldo no sistema: " + formatarMoedaBR(saldoSistema, false), color = TextColor)
+
+            PremiumTextField(
+                value = saldoRealTxt,
+                onValueChange = { saldoRealTxt = it.filter { c -> c.isDigit() || c == '.' || c == ',' || c == '-' } },
+                label = "Saldo real no banco",
+                prefix = { Text("R$ ", color = NeonCyan) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                onClick = { }
+            )
+            PremiumTextField(value = observacao, onValueChange = { observacao = it.take(60) }, label = "Observação (opcional)", onClick = { })
+
+            val previa = when {
+                saldoRealTxt.isBlank() -> "Informe o saldo que aparece no extrato do banco."
+                saldoReal == null -> "Valor inválido."
+                ajuste == null -> "O saldo já confere com o banco. Nada a ajustar."
+                else -> (if (ajuste.tipo == TipoDespesa.CREDITO) "Diferença: +" else "Diferença: -") +
+                    formatarMoedaBR(ajuste.valor, false) +
+                    (if (ajuste.tipo == TipoDespesa.CREDITO) " (entra na conta)" else " (sai da conta)")
+            }
+            Text(
+                previa,
+                color = if (ajuste == null) Color.White.copy(0.6f) else if (ajuste.tipo == TipoDespesa.CREDITO) NeonGreen else Color(0xFFFF8A80),
+                fontSize = 13.sp
+            )
+            Text(
+                "O ajuste não conta como receita nem despesa; só acerta o saldo. Para desfazer, exclua o lançamento.",
+                color = Color.White.copy(0.45f), fontSize = 11.sp
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+                BotaGlassmorphic(
+                    texto = "Cancelar", corAcento = Color.White.copy(alpha = 0.6f), hapticType = "impacto",
+                    animateIdleJump = false, modifier = Modifier.weight(1f), onClick = onDismiss
+                )
+                BotaGlassmorphic(
+                    texto = "Ajustar", corAcento = NeonCyan, hapticType = "sucesso",
+                    animateIdleJump = false, modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (conta == null || saldoReal == null) {
+                            Toast.makeText(ctx, "Informe o saldo real no banco.", Toast.LENGTH_SHORT).show()
+                        } else if (ajuste == null) {
+                            Toast.makeText(ctx, "O saldo já confere com o banco.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            autenticarParaLancar(ctx, exigirBio, "Confirmar ajuste de saldo", "Autentique para ajustar o saldo de ${conta.banco}") {
+                                viewModel.ajustarSaldoConta(conta.conta, saldoReal, observacao)
+                                Toast.makeText(ctx, "Saldo ajustado", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DepositDialog(
@@ -474,12 +565,15 @@ fun AddDespesaDialog(
 
     var formaPagamento by remember { mutableStateOf("CONTA") } // "CONTA" ou "CARTAO"
     var cartaoSelecionadoId by remember { mutableStateOf<Int?>(cartoesDisponiveis.firstOrNull()?.id) }
+    // R42: só cartão MÚLTIPLO deixa escolher; CRÉDITO/DÉBITO são fixos pelo tipo do cartão.
+    var modalidadePedida by remember { mutableStateOf(Financas.Modalidade.CREDITO) }
 
     var categoriaSelecionada by remember { mutableStateOf(categorias.firstOrNull()) }
     var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
     var descricao by rememberSaveable { mutableStateOf("") }
     var valorTexto by rememberSaveable { mutableStateOf(if (valorInicial > 0) Math.round(valorInicial * 100).toString() else "") }
     var numeroParcelas by rememberSaveable { mutableStateOf("2") }
+    var parcelaAtualTexto by rememberSaveable { mutableStateOf("1") }
     var moedaSelecionada by remember { mutableStateOf("BRL") }
     var cotacaoTexto by remember { mutableStateOf("1.00") }
 
@@ -509,6 +603,17 @@ fun AddDespesaDialog(
         }
     }
 
+    val cartaoEscolhido = cartoesFiltrados.find { it.id == cartaoSelecionadoId }
+    val tipoCartaoEscolhido = cartaoEscolhido?.let { Financas.tipoDeCartao(it.tipo) }
+    val cartaoMultiplo = formaPagamento == "CARTAO" && tipoCartaoEscolhido == "MULTIPLO"
+    val compraNoDebito = formaPagamento == "CARTAO" && cartaoEscolhido != null &&
+        Financas.modalidadeDaCompra(cartaoEscolhido.paraCartao(), modalidadePedida) == Financas.Modalidade.DEBITO
+
+    // Débito sai direto da conta: não parcela.
+    LaunchedEffect(compraNoDebito) {
+        if (compraNoDebito && frequencia == Frequencia.PARCELADA) frequencia = Frequencia.UNICA
+    }
+
     fun validar(): Boolean {
         val novosErros = mutableMapOf<String, String>()
         if (categoriaSelecionada.isNullOrBlank()) novosErros["cat"] = "Selecione a categoria"
@@ -517,6 +622,10 @@ fun AddDespesaDialog(
         if (v == null || v <= 0.0) novosErros["valor"] = "Valor inválido"
         if (frequencia == Frequencia.PARCELADA && (numeroParcelas.toIntOrNull() ?: 0) < 2) {
             novosErros["parc"] = "Mínimo 2x"
+        } else if (frequencia == Frequencia.PARCELADA && formaPagamento == "CARTAO") {
+            val n = numeroParcelas.toIntOrNull() ?: 0
+            val k = parcelaAtualTexto.toIntOrNull() ?: 0
+            if (k !in 1..n) novosErros["parcAtual"] = "Entre 1 e $n"
         }
         if (formaPagamento == "CARTAO" && cartaoSelecionadoId == null) {
             novosErros["cartao"] = "Selecione um cartão"
@@ -572,9 +681,19 @@ fun AddDespesaDialog(
                                     onSelect = { cartaoSelecionadoId = it },
                                     erro = erros["cartao"]
                                 )
+                                if (cartaoMultiplo) {
+                                    ModalidadeSelector(modalidadePedida) { modalidadePedida = it }
+                                }
+                                if (compraNoDebito) {
+                                    Text(
+                                        "Compra no débito: sai direto da conta",
+                                        color = NeonCyan.copy(alpha = 0.9f),
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
 
-                            FrequenciaSelector(frequencia) { frequencia = it }
+                            FrequenciaSelector(frequencia, permitirParcelada = !compraNoDebito) { frequencia = it }
 
                             if (recentes.isNotEmpty() && descricao.isBlank() && valorTexto.isBlank()) {
                                 Text("Recentes", color = Color.White.copy(0.5f), fontSize = 11.sp)
@@ -641,7 +760,11 @@ fun AddDespesaDialog(
                                 onOpenCalendar = { mostrarCalendario.value = true },
                                 parcelas = numeroParcelas,
                                 onParcelasChange = { numeroParcelas = it },
-                                erroParc = erros["parc"]
+                                erroParc = erros["parc"],
+                                mostrarParcelaAtual = formaPagamento == "CARTAO",
+                                parcelaAtual = parcelaAtualTexto,
+                                onParcelaAtualChange = { parcelaAtualTexto = it.filter(Char::isDigit).take(3) },
+                                erroParcelaAtual = erros["parcAtual"]
                             )
 
                             Spacer(Modifier.height(8.dp))
@@ -668,6 +791,8 @@ fun AddDespesaDialog(
                                             "Forma Pgto: $formaPagamento | Cartão ID capturado: $idDoCartaoParaSalvar"
                                         )
 
+                                        val modalidadeEnviada = if (formaPagamento == "CARTAO") modalidadePedida else null
+
                                         val nomeCartaoParaRecibo =
                                             cartoesFiltrados.find { it.id == idDoCartaoParaSalvar }?.nomeCartao
 
@@ -691,11 +816,13 @@ fun AddDespesaDialog(
                                         autenticarParaLancar(currentContext, exigirBio, "Confirmar lançamento", "Autentique para lançar esta despesa") {
                                         parentScope.launch {
                                             when (frequencia) {
-                                                Frequencia.UNICA -> viewModel.adicionarDespesa(desp)
+                                                Frequencia.UNICA -> viewModel.adicionarDespesa(desp, modalidadeEnviada)
                                                 Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(
                                                     desp,
                                                     numeroParcelas.toInt(),
-                                                    dataMillis.value!!
+                                                    dataMillis.value!!,
+                                                    modalidadeEnviada,
+                                                    if (formaPagamento == "CARTAO") parcelaAtualTexto.toIntOrNull() ?: 1 else 1
                                                 )
 
                                                 Frequencia.FIXA -> viewModel.salvarDespesaRecorrente(
@@ -750,13 +877,13 @@ fun HeaderSection(conta: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FrequenciaSelector(atual: Frequencia, onSelect: (Frequencia) -> Unit) {
+fun FrequenciaSelector(atual: Frequencia, permitirParcelada: Boolean = true, onSelect: (Frequencia) -> Unit) {
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         val opcoes = listOf(
             Frequencia.UNICA to "Única",
             Frequencia.PARCELADA to "Parcelada",
             Frequencia.FIXA to "Fixa"
-        )
+        ).filter { permitirParcelada || it.first != Frequencia.PARCELADA }
         opcoes.forEachIndexed { index, (freq, label) ->
             SegmentedButton(
                 selected = atual == freq,
@@ -909,7 +1036,9 @@ fun CategoryGridSection(
 @Composable
 fun DateAndInstallmentSection(
     frequencia: Frequencia, dataMillis: Long?, onOpenCalendar: () -> Unit,
-    parcelas: String, onParcelasChange: (String) -> Unit, erroParc: String?
+    parcelas: String, onParcelasChange: (String) -> Unit, erroParc: String?,
+    mostrarParcelaAtual: Boolean = false, parcelaAtual: String = "1",
+    onParcelaAtualChange: (String) -> Unit = {}, erroParcelaAtual: String? = null
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PremiumTextField(
@@ -944,6 +1073,26 @@ fun DateAndInstallmentSection(
             }
         }
     }
+    if (frequencia == Frequencia.PARCELADA && mostrarParcelaAtual) {
+        Column {
+            PremiumTextField(
+                value = parcelaAtual,
+                onValueChange = onParcelaAtualChange,
+                label = "Parcela atual (1 = compra nova)",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { }
+            )
+            erroParcelaAtual?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 10.sp) }
+            val k = parcelaAtual.toIntOrNull() ?: 1
+            if (k > 1) {
+                Text(
+                    "Valor = total da compra; só as parcelas $k a ${parcelas.ifBlank { "N" }} serão lançadas, a primeira na data informada.",
+                    color = Color.White.copy(0.5f), fontSize = 11.sp
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -973,11 +1122,35 @@ fun ActionButtons(onCancel: () -> Unit, onSave: () -> Unit) {
     }
 }
 
+/** R42: escolha Crédito/Débito, exibida só para cartão MÚLTIPLO. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ModalidadeSelector(atual: Financas.Modalidade, onSelect: (Financas.Modalidade) -> Unit) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        val opcoes = listOf(Financas.Modalidade.CREDITO to "Crédito", Financas.Modalidade.DEBITO to "Débito")
+        opcoes.forEachIndexed { index, (valor, label) ->
+            SegmentedButton(
+                selected = atual == valor,
+                onClick = { onSelect(valor) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = opcoes.size),
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = NeonCyan.copy(alpha = 0.2f),
+                    activeContentColor = NeonCyan,
+                    inactiveContainerColor = Color.Transparent,
+                    inactiveContentColor = Color.White.copy(0.6f)
+                )
+            ) {
+                Text(label, fontSize = 12.sp, fontWeight = if (atual == valor) FontWeight.Bold else FontWeight.Normal)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormaPagamentoSelector(atual: String, onSelect: (String) -> Unit) {
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        val opcoes = listOf("CONTA" to "Débito (Conta)", "CARTAO" to "Crédito (Cartão)")
+        val opcoes = listOf("CONTA" to "Conta", "CARTAO" to "Cartão")
         opcoes.forEachIndexed { index, (valor, label) ->
             SegmentedButton(
                 selected = atual == valor,
@@ -1021,7 +1194,7 @@ fun CartaoDropdownSection(
                     ?: "Selecione um cartão...",
                 onValueChange = {},
                 readOnly = true,
-                label = "Cartão de Crédito",
+                label = "Cartão",
                 modifier = Modifier.menuAnchor(),
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
                 onClick = { expandido = true }

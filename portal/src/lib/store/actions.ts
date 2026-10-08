@@ -29,10 +29,14 @@ import {
   inserirItem,
   marcarPago,
   pagarFatura,
+  pagarItensFatura,
+  type PagamentoItensFatura,
   processarDespesasFixas,
   removerItem,
   transferir,
   atualizarItem,
+  ajustarSaldoConta,
+  type AjusteSaldo,
   type EdicaoConta,
   type EdicaoLancamento,
   type NovaConta,
@@ -85,6 +89,7 @@ export const acoes = {
   criarConta: (input: NovaConta) => exec()((ds, ctx) => criarConta(ds, input, ctx)),
   editarConta: (id: number, patch: EdicaoConta) => exec()((ds) => editarConta(ds, id, patch)),
   excluirConta: (id: number, forcar = false) => exec()((ds) => excluirConta(ds, id, { forcar })),
+  ajustarSaldoConta: (input: AjusteSaldo) => exec()((ds, ctx) => ajustarSaldoConta(ds, input, ctx)),
   transferir: (input: NovaTransferencia) => exec()((ds, ctx) => transferir(ds, input, ctx)),
   agendarTransferencia: (input: { dataAgendada: number; contaOrigem: string; contaDestino: string; valor: number }) =>
     exec()((ds, ctx) => agendarTransferencia(ds, input, ctx)),
@@ -97,6 +102,7 @@ export const acoes = {
   editarCartao: (id: number, patch: Partial<NovoCartao>) => exec()((ds) => editarCartao(ds, id, patch)),
   excluirCartao: (id: number, forcar = false) => exec()((ds) => excluirCartao(ds, id, { forcar })),
   pagarFatura: (cartaoId: number, mes: number, ano: number) => exec()((ds, ctx) => pagarFatura(ds, cartaoId, mes, ano, ctx)),
+  pagarItensFatura: (input: PagamentoItensFatura) => exec()((ds, ctx) => pagarItensFatura(ds, input, ctx)),
 
   // orçamentos (um por categoria)
   salvarOrcamento: (categoria: string, valorLimite: number) =>

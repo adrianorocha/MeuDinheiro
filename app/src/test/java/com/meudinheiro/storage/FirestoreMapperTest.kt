@@ -131,4 +131,17 @@ class FirestoreMapperTest {
         val c = FirestoreMapper.cartaoFromDoc(mapOf("id" to 1L, "nome" to "Visa", "limiteTotal" to 1000L, "diaFechamento" to 99L, "diaVencimento" to 0L, "contaId" to 3L))
         assertEquals(31, c.diaFechamento); assertEquals(1, c.diaVencimento)
     }
+
+    @Test fun `cartao leva limiteProprio no documento e normaliza zero para nulo`() {
+        val c = Cartao(id = 2, nome = "V", finalCartao = "1", tipo = "CRÉDITO", limiteDisponivel = 0.0, limiteTotal = 100.0,
+            diaFechamento = 1, diaVencimento = 1, contaId = 1, cartaoPrincipalId = 1, limiteProprio = 40.5)
+        val doc = FirestoreMapper.toDoc(c)
+        assertEquals(40.5, doc["limiteProprio"])
+        assertEquals(40.5, FirestoreMapper.cartaoFromDoc(doc).limiteProprio!!, 0.0)
+        assertEquals(25.0, FirestoreMapper.cartaoFromDoc(doc + ("limiteProprio" to 25L)).limiteProprio!!, 0.0)
+        assertNull(FirestoreMapper.cartaoFromDoc(doc + ("limiteProprio" to 0L)).limiteProprio)
+        assertNull(FirestoreMapper.cartaoFromDoc(doc + ("limiteProprio" to null)).limiteProprio)
+        assertNull(FirestoreMapper.toDoc(c.copy(limiteProprio = 0.0))["limiteProprio"])
+        assertTrue(FirestoreMapper.toDoc(c.copy(limiteProprio = null)).containsKey("limiteProprio"))
+    }
 }

@@ -30,6 +30,10 @@ import java.util.Locale
 @OptIn(ExperimentalCoroutinesApi::class)
 class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
 
+    companion object {
+        val SEM_COMPRAS = Financas.ComprasDoGrupo(null, emptyList(), emptyList())
+    }
+
     private val _uiEvent = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val uiEvent = _uiEvent.asSharedFlow()
 
@@ -41,10 +45,15 @@ class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
 
     private val cartaoEmFoco = MutableStateFlow<Int?>(null)
 
-    /** Compras do cartão em foco. Trocar de cartão cancela a coleta anterior (antes vazava coletores). */
-    val despesasDoCartao: StateFlow<List<Despesa>> = cartaoEmFoco
-        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else repository.getDespesasDoGrupoDe(id) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /**
+     * Compras do grupo do cartão em foco (crédito + débitos vinculados). Trocar de cartão cancela a coleta anterior
+     * e a emissão traz `principalId`: a tela só usa a lista se for do grupo do cartão focado (sem dados do anterior).
+     */
+    val comprasDoCartao: StateFlow<Financas.ComprasDoGrupo> = cartaoEmFoco
+        .flatMapLatest { id ->
+            if (id == null) flowOf(SEM_COMPRAS) else repository.getComprasDoGrupoDe(id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SEM_COMPRAS)
 
     val cartoes: StateFlow<List<CartaoComConta>> = repository.getTodosOsCartoes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -105,6 +114,22 @@ class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
                 val ref = Financas.FaturaRef(Financas.mesDe(dataReferencia.time), Financas.anoDe(dataReferencia.time))
                 val pago = repository.pagarFatura(cartao.id, ref)
                 _uiEvent.tryEmit("Fatura | Fatura paga: R$ %.2f debitados de ${cartao.nomeConta}. | Sucesso".format(pago))
+            } catch (e: Exception) {
+                avisarErro("Fatura", e)
+            } finally {
+                pagandoId = null
+            }
+        }
+    }
+
+    /** Pagamento seletivo de itens em aberto (qualquer fatura do grupo). */
+    fun pagarItens(cartao: CartaoComConta, itemIds: List<Long>) {
+        if (pagandoId == cartao.id) return
+        pagandoId = cartao.id
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val pago = repository.pagarItens(cartao.id, itemIds)
+                _uiEvent.tryEmit("Fatura | Pago: R$ %.2f debitados de ${cartao.nomeConta}. | Sucesso".format(pago))
             } catch (e: Exception) {
                 avisarErro("Fatura", e)
             } finally {

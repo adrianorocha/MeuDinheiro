@@ -27,7 +27,7 @@ IDs gerados pelo portal: tipos `Long` (despesas) → `Date.now()`; tipos `Int` �
 | `orcamentos` | `id:int, categoria, valorLimite` |
 | `metas` | `id:int, nome, valorObjetivo, valorGuardado, icone, dataAlvo:ms\|null` |
 | `investimentos` | `id:int, nome, tipo, valorInvestido, valorAtual` |
-| `cartoes` | `id:int, nome, finalCartao, tipo, limiteDisponivel, limiteTotal, diaFechamento, diaVencimento, contaId:int, cartaoPrincipalId:int\|null` |
+| `cartoes` | `id:int, nome, finalCartao, tipo, limiteDisponivel, limiteTotal, diaFechamento, diaVencimento, contaId:int, cartaoPrincipalId:int\|null, limiteProprio:double\|null` |
 | `transferenciasAgendadas` | `id:int, dataAgendada:ms, contaOrigem, contaDestino, valor, executada:bool` |
 | `patrimonio` | `id:int, dataMillis:ms, valorTotal, mesReferencia` |
 | `lixeira` | `id:int, tipo:"DESPESA", descricao, valor, excluidoEm:ms, payload:string` (JSON da despesa excluída — R31) |
@@ -67,6 +67,7 @@ O **grupo** = principal + seus virtuais. O grupo compartilha: limite, conta, dia
 - R4 por grupo: `limiteDisponivel = limiteTotal(principal) − Σ DEBITO + Σ CREDITO` das despesas `!pago` de **todos os cartões do grupo**; gravar o mesmo valor em todos os cartões do grupo.
 - R6/R7 por grupo: existe **uma** fatura por ciclo, a do principal, contendo as compras de todos os cartões do grupo; pagar a fatura (por qualquer cartão do grupo) quita todas elas; `grupoId` do pagamento usa o id do **principal**. Cada compra mantém o `cartaoId` do cartão realmente usado (para identificar qual virtual comprou).
 - R15 e R14 tratam o grupo como um cartão só (não somar faturas duplicadas).
+- R41: cada cartão tem saldo próprio dentro do limite compartilhado (ver seção abaixo).
 - Excluir virtual: só sem compras em aberto; as compras já pagas passam para o principal (`cartaoId = principal`). Excluir principal: só se o grupo todo estiver sem compras em aberto; remove os virtuais e as compras do grupo.
 
 **R5 – KPIs do período** (filtro por `despesa.data` no intervalo `[inicio, fim]`; só `natureza == NORMAL`):
@@ -111,7 +112,7 @@ Snapshot mensal: **um** registro por mês/ano, **atualizado** no mês (não cong
 
 **R16 – Despesas fixas (recorrências).** Para cada regra e cada mês desde `ultimaDataLancamento` (ou só o mês corrente se nunca lançou) até o mês atual (máx. 12):
 `data = dia clampado ao mês`; se `data <= hoje` e o mês ainda não foi lançado ⇒ cria despesa `pago=false, natureza=NORMAL` e atualiza `ultimaDataLancamento`. Dia 29–31 vira o último dia dos meses curtos.
-Se a regra tem `cartaoId` (física ou virtual), cada ocorrência é uma **compra no cartão** (`cartaoId` preenchido, `conta` = conta do cartão, `pago=false`, consome limite — R4/R18); sem `cartaoId`, é lançamento na conta (`conta`). Uma regra tem conta **ou** cartão como origem do pagamento.
+Se a regra tem `cartaoId` (física ou virtual; cartão DÉBITO gera direto na conta, R42), cada ocorrência é uma **compra no cartão** (`cartaoId` preenchido, `conta` = conta do cartão, `pago=false`, consome limite — R4/R18); sem `cartaoId`, é lançamento na conta (`conta`). Uma regra tem conta **ou** cartão como origem do pagamento.
 
 **R17 – Saúde financeira.** `consumo = receitas > 0 ? despesas/receitas : (despesas > 0 ? 1 : 0)`; `≥0,9` PERIGO · `≥0,7` ALERTA · senão SAUDÁVEL.
 `variacaoGastos = despesasAnt > 0 ? (desp − despAnt)/despAnt·100 : 0`.
@@ -207,3 +208,69 @@ Sem campos novos: usa só `despesas` e `despesasFixas` já existentes (compatív
 - Pagamento parcial: o último lançamento é dividido — nasce um lançamento pago (`… (adiantamento)`) e o original continua em aberto com `valor - quitado`, mesmo vencimento.
 - Só despesas `NORMAL` em conta (compras de cartão são pagas pela fatura), todas da mesma conta.
 - Recorrência: paga o mês futuro criando a ocorrência paga com `grupoId = fixa:<id>:<AAAA-MM>`; o R16 (idempotente por `grupoId`) não a lança de novo.
+
+**R41 – Saldo por cartão no grupo.** O limite total continua compartilhado (R18; `limiteDisponivel` armazenado segue sendo o do grupo), mas cada cartão (físico e virtuais) mostra o seu próprio uso.
+- `limiteProprio: double|null` (opcional, default `null`): teto de gasto do cartão dentro do limite compartilhado. Deve ser `> 0` e `<= limiteTotal` do principal; `null`/`0`/vazio = sem teto. Erro: "O limite próprio deve ser maior que zero e não pode passar do limite total do cartão físico." Vale para físico e virtual.
+- Ao editar o físico, a propagação aos virtuais **não** sobrescreve o `limiteProprio` dos virtuais; se o `limiteTotal` do físico baixar abaixo de algum `limiteProprio` do grupo, é erro.
+- `saldoDoCartao(cartao)`: `usado` = Σ DEBITO − Σ CREDITO das despesas `!pago` **apenas deste cartão** (centavos, mínimo 0); `disponivelGrupo` = limite disponível do grupo (R18); `disponivel = limiteProprio != null ? min(limiteProprio − usado, disponivelGrupo) : disponivelGrupo`; `razao = usado / (limiteProprio ?? limiteTotal do principal)` (0 se denominador 0).
+- UI: o topo do grupo é "Limite compartilhado"; abaixo, uma linha por cartão (físico primeiro) com usado próprio, percentual, barra e disponível. Nova compra acima do `limiteProprio` apenas **avisa** (não bloqueia).
+
+## R42 — Vínculo editável, modalidade da compra no cartão e ajuste de saldo (portal)
+
+Sem campos novos nem mudança de formato de dados (compatível com o app).
+
+**A) Vínculo físico↔virtual editável.** `editarCartao` aceita `cartaoPrincipalId: number | null`.
+- `número`: o cartão vira/continua virtual e compartilha o saldo (limite) daquele físico. O alvo deve existir, ser físico (`cartaoPrincipalId == null`) e diferente do próprio cartão; o cartão editado **não pode ter virtuais próprios**. Ele herda do físico `limiteTotal`, `contaId`, `diaFechamento`, `diaVencimento` e `tipo`; as despesas e recorrências dele passam para a `conta` do físico; `limiteProprio` é revalidado (`> 0` e `<= limiteTotal` do físico, senão erro R41) e `limiteDisponivel` dos grupos antigo e novo é recalculado (R4/R18).
+- `null` (em um virtual): vira físico independente, mantendo os valores herdados atuais; `limiteProprio` vira `null` (a menos que o patch informe um); os dois grupos são recalculados.
+- O **físico é a base**: o limite/saldo do grupo é sempre o do físico principal. Virtual órfão (aponta para cartão inexistente) é corrigido por esta edição.
+- UI: o formulário (também na edição) tem "Compartilha o saldo do cartão físico" com "Nenhum (cartão físico independente)" + os físicos; ao escolher um físico, os campos herdados ficam travados com os valores dele. Cada virtual mostra "Compartilha o saldo de <físico>".
+
+**B) Modalidade da compra no cartão.** `modalidadeDaCompra(cartao, pedida)`: tipo `CRÉDITO` → sempre crédito; `DÉBITO` → sempre débito; `MÚLTIPLO` → usa `modalidade` (`CREDITO`|`DEBITO`, padrão `CREDITO`).
+- Crédito: como antes (R4/R6/R18; compra em aberto, consome limite, entra na fatura).
+- Débito: **não** consome limite nem entra na fatura; vira lançamento direto da conta do cartão (`cartaoId = null`, `conta` = conta do cartão, `pago = data <= agora`, parcelas forçadas a 1, `tipo` conforme o input).
+- Vale em `adicionarLancamento` e em `editarLancamento` ao trocar o cartão/modalidade (`modalidade` no patch). Recorrência (R16) vinculada a cartão `DÉBITO` gera as ocorrências direto na conta (`cartaoId = null`, `pago = false` como toda recorrência em conta); `CRÉDITO` e `MÚLTIPLO` continuam no cartão (crédito). Dados existentes não são migrados.
+- UI: com entrada "Cartão", o seletor Crédito/Débito aparece só para cartões `MÚLTIPLO`; no débito mostra "Compra no débito: sai direto da conta", esconde parcelas e o aviso de limite próprio (R41) vale só no crédito.
+
+**C) Ajuste de saldo da conta.** `ajustarSaldoConta(ds, { conta, saldoReal, data?, observacao? })`: `diff = saldoReal − saldo(conta)` (R3, em centavos). `diff == 0` → erro "O saldo já confere com o informado."; senão cria 1 despesa `natureza = AJUSTE`, `tipo = CREDITO` se `diff > 0` senão `DEBITO`, `valor = |diff|`, `pago = true`, `cartaoId = null`, `categoria = "Ajuste de saldo"`, `descricao = "Ajuste de saldo (conferido com o banco)"` (+ observação), `data = data ?? agora`. Retorna `{ ajuste, diferenca }`.
+- `AJUSTE` entra no saldo da conta (R3) mas **não** em receitas/despesas, orçamentos, relatórios, fluxo e análises (R5/R13: só `NORMAL`). Pode ser excluído para desfazer (aparece como "Ajuste" no extrato).
+- UI (Contas): botão "Ajustar saldo" por conta; modal com "Saldo no sistema", "Saldo real no banco" e prévia da diferença (+/−) antes de confirmar.
+
+**R42b) Vínculo da compra no débito com o cartão (convenção de `grupoId`, sem campo novo).** Para a compra no débito (R42-B) continuar visível na tela do cartão, o lançamento direto da conta (`cartaoId = null`) recebe `grupoId = "debito:<id do cartão usado>"` (físico **ou** virtual; débito não parcela, então nunca conflita com `parc:`).
+- Gravação: `adicionarLancamento` e `editarLancamento` (ao converter para débito; trocar de cartão de débito reaponta; voltar para crédito, mover para outra conta ou excluir o cartão remove/ajusta o vínculo; excluir um virtual reaponta `debito:<virtual>` para o físico). Um `grupoId` existente de outro tipo (`parc:`, `fixa:`, `rep:`…) nunca é sobrescrito.
+- Helpers puros (calc.ts): `cartaoDeDebito(d)` (id do prefixo ou `null`), `grupoIdDebito(id)`, `debitosDoCartao(cartoesDoGrupo, despesas, mes, ano, somenteCartaoId?)` (NORMAL, `cartaoId` nulo, mês/ano pela data civil do lançamento, mais recentes primeiro), `totalDebitos(itens)`.
+- UI (Cartões): abaixo da fatura, "Compras no débito (saem direto da conta)" lista esses lançamentos do mês exibido (respeita o filtro por cartão) com subtotal. **Não** entram em total/em aberto da fatura, limite (R4/R18) nem "Pagar fatura"; continuam no saldo da conta (R3) e nos relatórios como despesa normal.
+- `debito:` **não** é parcelamento nem grupo: "excluir todas as parcelas" só existe para `parc:`; exclusão/edição atuam sobre um único lançamento. Conciliação, backup e relatórios apenas preservam o `grupoId`.
+- Limitações: recorrências (R16) em cartão `DÉBITO` geram `fixa:<id>:<AAAA-MM>` (idempotência) e ficam **sem** vínculo; lançamentos de débito anteriores a esta regra não são migrados; duplicar/repetir troca o `grupoId` (perde o vínculo).
+
+## R43 — Conciliação em lote de vários arquivos (portal)
+
+Sem campos novos nem mudança de formato (compatível com o app). Estende R35–R39; a implementação pura está em `lib/conciliacao/lote-multiplo.ts`, sem dependência de React/store (o dataset e a aplicação são injetados).
+
+- **Fila e leitura.** Vários OFX/CSV de uma vez (limite de 25 MB cada). Leitura assíncrona, um arquivo por vez, cedendo ao navegador entre etapas. Arquivo com mesmo nome e tamanho já na fila é ignorado com aviso. CSV sem mapeamento de colunas detectado nem lembrado fica "Precisa de revisão" até o usuário mapear as colunas. O destino de cada arquivo é sugerido (R36) e editável.
+- **Opções.** "Conciliar automáticos" é sempre ligado. Opcionais (padrão desligados): incluir **sugeridos de alta confiança** (SUGERIDO com valor EXATO, `score >= 0,70` e score maior que o do melhor concorrente em mais de 0,05) e **criar lançamentos que só estão no extrato** (categoria por R21, senão "Outros"). Janela e tolerância: padrão por destino (R37) ou valor único para o lote. A prévia por arquivo não aplica nada: simula o lote em sequência sobre uma cópia do dataset.
+- **Ordem e semântica.** Os arquivos são processados **em sequência, na ordem da fila**. Para cada arquivo: lê o dataset **atual**, `casar` (R37) contra os lançamentos do destino, `montarPlano` (automáticos [+ sugeridos altos] [+ criar]) e aplica via `aplicarConciliacao` (R38). Assim, o arquivo B casa contra o estado já atualizado por A: lançamentos conciliados não são reutilizados e `fitid` repetido entre arquivos de períodos sobrepostos vira **DUPLICADO** (nunca gera lançamento duplicado). Ações com `fitid` repetido dentro do mesmo plano são descartadas.
+- **Atomicidade.** Atômica **por arquivo** (R38). Se a aplicação de um arquivo falha (erro ou exceção), nada dele é aplicado, o erro fica registrado nele e os demais continuam. **Cancelar** para após o arquivo corrente: o já aplicado permanece (e pode ser desfeito); os restantes ficam "Cancelado".
+- **Contadores.** Por arquivo e somados no lote: conciliados, criados, valores/datas atualizados, marcados como pagos (de `ResumoAplicacao`), duplicados ignorados e **pendentes** = transações − duplicadas − conciliadas − criadas. Taxa de conciliação = `(conciliados + criados + duplicados) / transações`. Percentual geral = `(arquivos concluídos + fração da etapa) / total`, com frações LENDO 10%, COMPARANDO 40%, APLICANDO 75%, CONCLUÍDO 100%.
+- **Desfazer.** Cada arquivo aplicado guarda seu plano inverso. "Desfazer lote inteiro" aplica os inversos em **ordem inversa** (último arquivo primeiro), devolvendo o dataset ao estado anterior ao lote. Vale enquanto a aba estiver aberta (estado em memória, `useUltimoLote.multiplo`); o `ultimo` (R38) é zerado ao rodar um lote.
+- **Relatório consolidado.** CSV (`;`, BOM): `arquivo;data;descricao;valor;situacao;lancamento_id;acao`, uma linha por transação de cada arquivo (`acao` = `conciliar`, `criar` ou `nenhuma`). `csvRelatorio` (R39, por arquivo) não mudou.
+- **Revisar pendências.** Abre o fluxo detalhado (R38) arquivo a arquivo, só para os que terminaram com SUGERIDO/SO_NO_EXTRATO pendentes, recalculando `casar` contra o dataset atualizado. O modo "Revisar um por um" continua disponível.
+
+## R44 — Parcelas em andamento, limite comprometido e pagamento seletivo da fatura (portal)
+
+Sem campos novos nem mudança de formato (compatível com o app). Confirma e estende R4/R7/R8/R18: compra parcelada no cartão **já** cria as N parcelas em aberto (`pago=false`) e o limite do grupo desconta o total (ex.: 1.200 em 12x com limite 5.000 → disponível 3.800; pagar a fatura de 1 mês devolve só aquela parcela). As regras abaixo cobrem onde isso não acontecia ou não ficava visível.
+
+**A) Parcelas em andamento.**
+- **Conciliação de cartão (R38, criar).** Se a transação SO_NO_EXTRATO de um **cartão** é compra (valor < 0) e indica parcela `i/n` com `i < n` ("(3/10)", "PARC 3/10" ou `i/n` solto como "COMPRA 03/10" — este só quando **não** parece a data da transação: dd/mm a ≤ 10 dias da data do extrato — e com `n ≥ 2`, `i ≤ n`), a ação CRIAR pode também lançar as parcelas `i+1..n`: `pago=false`, `cartaoId` do destino, mesmo `grupoId = "parc:…"`, **valor igual ao da parcela do banco** (não divide), data = `somaMeses(data do banco, j−i)` (R8, sem deriva), descrição `"<base> (j/n)"` (a da parcela do banco passa a `"<base> (i/n)"`, sem o marcador original), mesma categoria, `autor = "Importação"`. **Só a parcela do banco recebe `fitid`/`conciliadoEm`** (idempotência por fitid; reimportar vira DUPLICADO e não recria nada).
+- **Sem duplicar.** Parcela futura não é criada se o grupo do cartão já tem lançamento de mesma descrição normalizada (sem o marcador "(j/n)"), mesmo valor em centavos e mesmo mês/ano; se já existe lançamento do mesmo grupo `parc:`, a parcela do banco reaproveita esse `grupoId`.
+- **Opção** "Lançar parcelas restantes (reserva o limite)": padrão **ligado** em Revisão (por linha criada, visível só em cartão com parcela i<n) e no modo lote (`OpcoesLote.parcelasRestantes`, padrão `true`; só tem efeito junto de "Criar lançamentos"). Não vale para conta, estornos (crédito) nem parcela final (i = n).
+- **Atomicidade/inverso (R38/R43).** Tudo no mesmo `aplicarConciliacao`; `PlanoInverso.remover` lista primeiro os ids criados a partir do extrato (na ordem das ações CRIAR) e depois as parcelas restantes, então desfazer remove todas. `ResumoAplicacao.parcelasRestantes` conta as extras; `criados` continua contando só as do extrato.
+- **Lançamento manual com "Parcela atual" (k).** `adicionarLancamento({ parcelas: N, parcelaAtual: k })` em cartão de **crédito**: o valor informado continua sendo o **TOTAL da compra**; as parcelas são `dividirParcelas(total, N)` (R8) e só `k..N` são criadas, a parcela `k` na data informada e as seguintes mês a mês, descrição `"<desc> (j/N)"`, `grupoId` comum, `pago=false`. Validação: `1 ≤ k ≤ N`; `k > 1` só em cartão de crédito. Padrão `k = 1` (comportamento anterior). Todas as parcelas criadas consomem o limite.
+
+**B) Limite comprometido.** `comprometimentoCartao(cartao, cartoes, despesas, agora)` (puro, por grupo R18) devolve `faturaAtual` (em aberto no ciclo corrente, R6), `anteriores` (em aberto de ciclos já passados), `parcelasFuturas` (ciclos posteriores), `emAbertoTotal` (= limite usado, R4), `limiteTotal`, `disponivel` e `liberacaoPorFatura: {mes, ano, valor, vencimento}[]` em ordem cronológica (valor = DEBITO − CREDITO em aberto da fatura, só `> 0`: quanto de limite volta ao pagar aquela fatura). `faturasEmAberto` lista os itens em aberto por fatura. UI (Cartões): barra empilhada fatura atual × parcelas futuras × disponível, com legenda e valores, e bloco "Limite que volta ao pagar".
+
+**C) Pagamento seletivo.** `pagarItensFatura(ds, { cartaoId, itemIds }, ctx)` (qualquer cartão do grupo; antecipa faturas futuras):
+- valida: ao menos um item; todos existem, pertencem ao grupo (físico + virtuais) e estão em aberto; líquido = Σ DEBITO − Σ CREDITO dos itens em centavos; `≤ 0` → "Não há valor a pagar nos itens selecionados.".
+- marca os itens como `pago=true` e cria 1 despesa `PAGAMENTO_FATURA` (`DEBITO`, `pago`, `cartaoId=null`, conta do cartão, `data = agora`, categoria "Cartão") com o valor líquido. Saldo da conta cai pelo líquido (R3) e o limite volta pelo mesmo valor (R4); pagar o restante depois fecha a fatura sem resíduo de centavos.
+- descrição/`grupoId`: todos os itens de **uma só** fatura e **todos** os itens em aberto dela → `"Fatura <cartão> MM/AAAA"` e `fatura:<principal>:<AAAA-MM>` (idêntico ao R7); só alguns itens de uma fatura → `"Fatura <cartão> MM/AAAA (parcial)"` e `fatura:<principal>:<AAAA-MM>:p<ts>`; itens de várias faturas → `"Fatura <cartão> (itens selecionados)"` e `fatura:<principal>:multi:p<ts>` (`ts` = agora, incrementado até ser único). Nada no portal lê o `grupoId` do pagamento (a exclusão é bloqueada por `natureza`), então o sufixo é só informativo/único.
+- `pagarFatura(cartao, M, Y)` (R7) continua igual e delega a `pagarItensFatura` com os itens em aberto da fatura (erro "Não há valor em aberto nesta fatura." preservado).
+- UI (Cartões): "Pagar fatura" abre modal com atalhos (Pagar toda a fatura do mês / Selecionar itens / Antecipar parcelas futuras), lista de itens em aberto por fatura com checkbox de grupo (estado indeterminado) e subtotal, "Selecionar tudo", "Só esta fatura", "Limpar", total, limite restaurado e saldo da conta após o pagamento (aviso, sem bloquear, se negativo) e confirmação antes de pagar. Abre com os itens da fatura exibida marcados (= comportamento antigo em 1 clique + confirmação).

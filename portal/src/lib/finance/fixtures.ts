@@ -22,6 +22,7 @@ export function cartao(over: Partial<Cartao> = {}): Cartao {
     diaVencimento: 5,
     contaId: 1,
     cartaoPrincipalId: null,
+    limiteProprio: null,
       ...over,
   };
 }

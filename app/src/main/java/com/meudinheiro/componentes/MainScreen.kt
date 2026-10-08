@@ -341,6 +341,7 @@ fun MainScreen(
         val idParaFiltro = contaSelecionadaId?.trim().orEmpty()
         despVM.setFiltro(filtroAtivo.ordinal)
         despVM.setContaSelecionada(idParaFiltro)
+        transacaoVM.selecionarConta(idParaFiltro)
 
         if (filtroAtivo == FiltroPeriodo.ESTE_MES) {
             val hoje = Calendar.getInstance()
@@ -488,7 +489,7 @@ fun MainScreen(
                             label = "TabTransition"
                         ) { targetTab ->
                             val dadosGrafico = remember(despesasFiltradas) {
-                                despesasFiltradas.groupBy { it.categoria }.map { (categoria, despesasDaCategoria) ->
+                                despesasFiltradas.filter { it.natureza != com.meudinheiro.domain.Natureza.AJUSTE }.groupBy { it.categoria }.map { (categoria, despesasDaCategoria) ->
                                     PieChartData(
                                         categoria = categoria,
                                         valor = despesasDaCategoria.sumOf { it.valor },

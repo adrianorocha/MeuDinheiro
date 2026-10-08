@@ -2,10 +2,12 @@
 
 import { CircleCheck, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ConciliacaoLote, type PassoLote, type Pendencia } from "@/components/conciliacao/ConciliacaoLote";
 import { DestinoResumo, rotuloDestino, sugerirDestino } from "@/components/conciliacao/DestinoResumo";
 import { ConfirmarArquivo, lerArquivo, SeletorArquivos, type ArquivoLido } from "@/components/conciliacao/EnvioArquivo";
 import { Revisao } from "@/components/conciliacao/Revisao";
 import { Button } from "@/components/ui/Button";
+import { Segmentado } from "@/components/ui/Field";
 import { Card, ErroBox, PageHeader } from "@/components/ui/Misc";
 import { casar, janelaPadrao, lancamentosDoDestino } from "@/lib/conciliacao/matching";
 import { gerarOfxExemplo } from "@/lib/conciliacao/exemplo";
@@ -19,11 +21,12 @@ import { acoes } from "@/lib/store/actions";
 
 type Passo = 1 | 2 | 3 | 4;
 const PASSOS = ["Arquivo", "Destino", "Revisão", "Resultado"];
+const PASSOS_LOTE = ["Arquivos", "Opções", "Conciliando", "Resultado"];
 
-function Progresso({ passo }: { passo: Passo }) {
+function Progresso({ passo, passos = PASSOS }: { passo: number; passos?: string[] }) {
   return (
     <ol className="mb-4 flex flex-wrap gap-2" aria-label="Etapas">
-      {PASSOS.map((p, i) => (
+      {passos.map((p, i) => (
         <li key={p} aria-current={passo === i + 1 ? "step" : undefined} className={`rounded-full px-3 py-1 text-xs font-medium ${passo === i + 1 ? "bg-primary text-primary-fg" : passo > i + 1 ? "bg-primary-soft text-primary" : "bg-surface-2 text-muted"}`}>
           {i + 1}. {p}
         </li>
@@ -38,6 +41,9 @@ export default function ConciliacaoPage() {
   const notificar = useNotificar();
   const lote = useUltimoLote((s) => s.ultimo);
 
+  const [modo, setModo] = useState<"lote" | "um">("lote");
+  const [passoLote, setPassoLote] = useState<PassoLote>(1);
+  const [pend, setPend] = useState<Pendencia[]>([]);
   const [passo, setPasso] = useState<Passo>(1);
   const [fila, setFila] = useState<File[]>([]);
   const [lido, setLido] = useState<ArquivoLido | null>(null);
@@ -71,6 +77,27 @@ export default function ConciliacaoPage() {
       setErro(e instanceof Error ? e.message : "Não foi possível ler o arquivo.");
       await proximoDaFila(resto);
     }
+  }
+
+  function irParaUmPorUm(files: File[]) {
+    setModo("um");
+    setPend([]);
+    void proximoDaFila(files);
+  }
+
+  function abrirPendencias(lista: Pendencia[]) {
+    const [p, ...resto] = lista;
+    if (!p) return;
+    setPend(resto);
+    setErro(null);
+    setFila([]);
+    setLido({ nome: `${p.nome} (pendências)`, texto: "" });
+    setExtrato(p.extrato);
+    setDestino(p.destino);
+    setJanela(janelaPadrao(p.destino));
+    setTolerancia(2);
+    setPasso(3);
+    setModo("um");
   }
 
   function aoPronto(a: ArquivoExtrato) {
@@ -122,6 +149,22 @@ export default function ConciliacaoPage() {
   return (
     <>
       <PageHeader titulo="Conciliação de extratos" descricao="Compare o extrato do banco com seus lançamentos, concilie e crie o que faltar" />
+      <div className="mb-4 max-w-md">
+        <Segmentado
+          rotulo="Modo de conciliação"
+          valor={modo}
+          onChange={setModo}
+          opcoes={[
+            { valor: "lote", rotulo: "Conciliar em lote" },
+            { valor: "um", rotulo: "Revisar um por um" },
+          ]}
+        />
+      </div>
+      <div hidden={modo !== "lote"}>
+        <Progresso passo={passoLote} passos={PASSOS_LOTE} />
+        <ConciliacaoLote onPasso={setPassoLote} onRevisarUmPorUm={irParaUmPorUm} onRevisarPendencias={abrirPendencias} />
+      </div>
+      <div hidden={modo !== "um"}>
       <Progresso passo={passo} />
       {erro && (
         <div className="mb-4">
@@ -167,7 +210,11 @@ export default function ConciliacaoPage() {
             <Button onClick={() => relatorio && baixarArquivo(relatorio.nome, relatorio.csv, "text/csv;charset=utf-8")} disabled={!relatorio}>
               Exportar relatório CSV
             </Button>
-            {fila.length > 0 ? (
+            {pend.length > 0 ? (
+              <Button variante="primary" onClick={() => abrirPendencias(pend)}>
+                Próxima pendência ({pend.length})
+              </Button>
+            ) : fila.length > 0 ? (
               <Button variante="primary" onClick={() => void proximoDaFila(fila)}>
                 Próximo arquivo ({fila.length})
               </Button>
@@ -180,6 +227,7 @@ export default function ConciliacaoPage() {
           <p className="mt-3 text-xs text-muted">O botão de desfazer vale enquanto esta aba estiver aberta. Depois, use &quot;Desfazer conciliação&quot; em cada lançamento (Lançamentos).</p>
         </Card>
       )}
+      </div>
     </>
   );
 }

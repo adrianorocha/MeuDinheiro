@@ -75,4 +75,15 @@ class BackupJsonTest {
     fun `arquivo vazio e rejeitado`() {
         BackupJson.fromJson("")
     }
+
+    @Test fun `ida e volta do backup preserva limiteProprio do cartao`() {
+        val c = com.meudinheiro.data.Cartao(id = 2, nome = "V", finalCartao = "1", tipo = "CRÉDITO", limiteDisponivel = 0.0,
+            limiteTotal = 100.0, diaFechamento = 1, diaVencimento = 1, contaId = 1, cartaoPrincipalId = 1, limiteProprio = 33.5)
+        val volta = BackupJson.fromJson(BackupJson.toJson(BackupDto(cartoes = listOf(c, c.copy(id = 3, limiteProprio = null)))))
+        assertEquals(33.5, volta.cartoes!![0].limiteProprio!!, 0.0)
+        assertNull(volta.cartoes!![1].limiteProprio)
+        // backup antigo (sem o campo) continua legível
+        val antigo = BackupJson.fromJson("""{"cartoes":[{"id":1,"nome":"Visa","finalCartao":"1","tipo":"CRÉDITO","limiteDisponivel":1.0,"limiteTotal":1.0,"diaFechamento":1,"diaVencimento":1,"contaId":1}]}""")
+        assertNull(antigo.cartoes!!.single().limiteProprio)
+    }
 }

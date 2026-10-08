@@ -420,13 +420,13 @@ describe("R18 cartões virtuais", () => {
     expect(r.ds.cartoes.map((x) => x.limiteDisponivel)).toEqual([1900, 1900]);
     expect(r.ds.despesas.find((d) => d.cartaoId === v.id)!.conta).toBe("222");
   });
-  it("editar o virtual não altera os campos herdados nem o vínculo", () => {
+  it("editar o virtual não altera os campos herdados", () => {
     const ds = comVirtual();
     const v = ds.cartoes.find((x) => x.cartaoPrincipalId === 10)!;
     const r = ok(editarCartao(ds, v.id, { nome: "Novo nome", limiteTotal: 5 }));
     const v2 = r.ds.cartoes.find((x) => x.id === v.id)!;
     expect([v2.nome, v2.limiteTotal]).toEqual(["Novo nome", 1000]);
-    expect(editarCartao(ds, v.id, { cartaoPrincipalId: null }).ok).toBe(false);
+    expect(editarCartao(ds, v.id, { cartaoPrincipalId: null }).ok).toBe(true); // R42: vínculo editável
   });
   it("excluir virtual com compra em aberto é bloqueado; pago migra para o principal", () => {
     let ds = comVirtual();
@@ -448,5 +448,47 @@ describe("R18 cartões virtuais", () => {
     expect(r.ds.cartoes).toHaveLength(0);
     expect(r.ds.despesas.some((d) => d.cartaoId)).toBe(false);
     expect(r.ds.despesas.some((d) => d.natureza === "PAGAMENTO_FATURA")).toBe(true);
+  });
+});
+
+describe("R41 limiteProprio", () => {
+  const c = ctx(dt(2025, 3, 10));
+  const novoV = (extra: object = {}) => ({ nome: "V", finalCartao: "0002", tipo: "x", limiteTotal: 1, diaFechamento: 1, diaVencimento: 1, contaId: 1, cartaoPrincipalId: 10, ...extra });
+
+  it("cria virtual com teto próprio e valida limites", () => {
+    const r = ok(criarCartao(base(), novoV({ limiteProprio: 400 }), c));
+    expect(r.cartao.limiteProprio).toBe(400);
+    expect(ok(criarCartao(base(), novoV(), c)).cartao.limiteProprio).toBeNull();
+    expect(ok(criarCartao(base(), novoV({ limiteProprio: 0 }), c)).cartao.limiteProprio).toBeNull();
+    for (const v of [-5, 1000.01]) {
+      const e = criarCartao(base(), novoV({ limiteProprio: v }), c);
+      expect(e.ok).toBe(false);
+      if (!e.ok) expect(e.erro).toContain("limite próprio");
+    }
+  });
+
+  it("editar o físico propaga herdados sem sobrescrever limiteProprio do virtual", () => {
+    const v = ok(criarCartao(base(), novoV({ limiteProprio: 400 }), c));
+    const r = ok(editarCartao(v.ds, 10, { limiteTotal: 800, limiteProprio: 600 }));
+    const virt = r.ds.cartoes.find((x) => x.cartaoPrincipalId === 10)!;
+    expect(virt.limiteProprio).toBe(400);
+    expect(virt.limiteTotal).toBe(800);
+    expect(r.ds.cartoes.find((x) => x.id === 10)!.limiteProprio).toBe(600);
+  });
+
+  it("baixar o limite do físico abaixo do limiteProprio de um virtual dá erro", () => {
+    const v = ok(criarCartao(base(), novoV({ limiteProprio: 400 }), c));
+    expect(editarCartao(v.ds, 10, { limiteTotal: 300 }).ok).toBe(false);
+  });
+
+  it("editar virtual altera/limpa limiteProprio", () => {
+    const v = ok(criarCartao(base(), novoV({ limiteProprio: 400 }), c));
+    const a = ok(editarCartao(v.ds, v.cartao.id, { limiteProprio: 500 }));
+    expect(a.ds.cartoes.find((x) => x.id === v.cartao.id)!.limiteProprio).toBe(500);
+    const b = ok(editarCartao(v.ds, v.cartao.id, { nome: "Z" }));
+    expect(b.ds.cartoes.find((x) => x.id === v.cartao.id)!.limiteProprio).toBe(400);
+    const l = ok(editarCartao(v.ds, v.cartao.id, { limiteProprio: null }));
+    expect(l.ds.cartoes.find((x) => x.id === v.cartao.id)!.limiteProprio).toBeNull();
+    expect(editarCartao(v.ds, v.cartao.id, { limiteProprio: 5000 }).ok).toBe(false);
   });
 });
