@@ -58,6 +58,10 @@ class CartoesViewModel(private val repository: MainRepository) : ViewModel() {
     val cartoes: StateFlow<List<CartaoComConta>> = repository.getTodosOsCartoes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** Todas as despesas (para o disponível do grupo por cartão no seletor e para checar compras em aberto de virtuais). */
+    val todasDespesas: StateFlow<List<Despesa>> = repository.todasDespesasFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val contasDisponiveis: StateFlow<List<ContaSaldo>> = repository.getTodasContas()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

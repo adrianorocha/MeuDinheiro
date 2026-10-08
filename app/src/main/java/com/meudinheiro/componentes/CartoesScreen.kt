@@ -22,6 +22,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -100,7 +102,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.domain.CartoesUi
 import com.meudinheiro.domain.Financas
+import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.Haptics // Nosso motor de vibração
 import com.meudinheiro.viewModel.CartoesViewModel
@@ -134,9 +138,20 @@ data class EstadoFatura(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CartoesScreen(
-    viewModel: CartoesViewModel = viewModel(factory = CartoesViewModelFactory(LocalContext.current))
+    viewModel: CartoesViewModel = viewModel(factory = CartoesViewModelFactory(LocalContext.current)),
+    /** Para o botão "Nova compra" (diálogo de despesa). Sem [contaViewModel] o botão não aparece. */
+    contaViewModel: ContaSaldoViewModel? = null,
+    categorias: List<String> = emptyList(),
+    getPicCategoria: (String) -> String = { "" },
+    historico: List<Despesa> = emptyList()
 ) {
     val context = LocalContext.current
+    val todasDespesas by viewModel.todasDespesas.collectAsState()
+    var showNovaCompra by remember { mutableStateOf(false) }
+    var avisoExclusao by remember { mutableStateOf<String?>(null) }
+    var virtualParaExcluir by remember { mutableStateOf<CartaoComConta?>(null) }
+    // Depois de salvar: (id editado | null, ids que já existiam) -> foca no cartão salvo/criado.
+    var focoAposSalvar by remember { mutableStateOf<Pair<Int?, List<CartaoComConta>>?>(null) }
     val listaCartoes by viewModel.cartoes.collectAsState()
     val listaContas by viewModel.contasDisponiveis.collectAsState()
     val comprasEmitidas by viewModel.comprasDoCartao.collectAsState()
@@ -158,6 +173,45 @@ fun CartoesScreen(
     val comprasDoFoco = comprasEmitidas.takeIf { it.principalId != null && it.principalId == listaCartoes.getOrNull(paginaAtual)?.idDoGrupo }
     val despesasDoCartaoAtual = comprasDoFoco?.credito ?: emptyList()
     val debitosDoGrupo = comprasDoFoco?.debito ?: emptyList()
+
+    fun solicitarExclusao(c: CartaoComConta) {
+        if (c.ehVirtual) {
+            val msg = CartoesUi.bloqueioExclusaoVirtual(c.id, c.nomeCartao, todasDespesas)
+            if (msg != null) avisoExclusao = msg else virtualParaExcluir = c
+        } else {
+            val ids = listaCartoes.filter { it.idDoGrupo == c.id }.map { it.id }.toSet()
+            val abertas = todasDespesas.count { it.cartaoId in ids && !it.pago }
+            if (abertas > 0) {
+                avisoExclusao = "O cartão \"${c.nomeCartao}\" (ou um virtual dele) tem $abertas compra(s) em aberto. Pague as faturas antes de excluí-lo."
+            } else viewModel.removerCartao(c)
+        }
+    }
+
+    // Filtro por cartão do grupo: virtual focado => já filtrado nele; físico => "Todos".
+    val cartaoFocadoAgora = listaCartoes.getOrNull(paginaAtual)
+    val grupoFocado = remember(listaCartoes, cartaoFocadoAgora?.idDoGrupo) {
+        listaCartoes.filter { it.idDoGrupo == cartaoFocadoAgora?.idDoGrupo }.sortedBy { it.ehVirtual }
+    }
+    var filtroBruto by remember(cartaoFocadoAgora?.id) { mutableStateOf(CartoesUi.filtroInicial(cartaoFocadoAgora)) }
+    val filtro = CartoesUi.filtroValido(filtroBruto, grupoFocado)
+
+    // Após salvar, leva o carrossel ao cartão salvo (novo: o id que não existia antes).
+    LaunchedEffect(listaCartoes, focoAposSalvar) {
+        val pendente = focoAposSalvar ?: return@LaunchedEffect
+        if (listaCartoes == pendente.second) return@LaunchedEffect // o salvamento ainda não chegou à lista
+        val idsAntes = pendente.second.map { it.id }.toSet()
+        val alvo = pendente.first ?: listaCartoes.firstOrNull { it.id !in idsAntes }?.id
+        val idx = listaCartoes.indexOfFirst { it.id == alvo }
+        focoAposSalvar = null
+        if (idx >= 0) pagerState.animateScrollToPage(idx)
+    }
+    // Se o salvamento falhar (a lista nunca muda), não deixa o foco pendente para uma alteração futura.
+    LaunchedEffect(focoAposSalvar) {
+        if (focoAposSalvar != null) {
+            kotlinx.coroutines.delay(5000)
+            focoAposSalvar = null
+        }
+    }
 
     var visivel by remember { mutableStateOf(false) }
 
@@ -284,7 +338,8 @@ fun CartoesScreen(
                                     cartao,
                                     nomePrincipal = cartao.cartaoPrincipalId?.let { pid ->
                                         listaCartoes.firstOrNull { it.id == pid }?.nomeCartao ?: "(cartão físico não encontrado)"
-                                    }
+                                    },
+                                    nVirtuais = listaCartoes.count { it.cartaoPrincipalId == cartao.id }
                                 )
                             }
                         }
@@ -299,7 +354,7 @@ fun CartoesScreen(
                                 cartao = cartaoFocado,
                                 onDelete = {
                                     Haptics.vibrar(context, "alerta")
-                                    viewModel.removerCartao(cartaoFocado)
+                                    solicitarExclusao(cartaoFocado)
                                 },
                                 onEditar = {
                                     Haptics.vibrar(context, "clique")
@@ -321,7 +376,33 @@ fun CartoesScreen(
 
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
-                            if (!fatura.carregando) PainelLimiteCompartilhado(cartaoFocado, listaCartoes, despesasDoCartaoAtual)
+                            if (!fatura.carregando) PainelLimiteCompartilhado(
+                                cartaoFocado, listaCartoes, despesasDoCartaoAtual,
+                                onSelecionar = { alvo ->
+                                    val idx = listaCartoes.indexOfFirst { it.id == alvo.id }
+                                    if (idx >= 0 && idx != pagerState.currentPage) {
+                                        Haptics.vibrar(context, "clique")
+                                        escopo.launch { pagerState.animateScrollToPage(idx) }
+                                    }
+                                },
+                                onEditar = { alvo -> Haptics.vibrar(context, "clique"); cartaoEmEdicao = alvo },
+                                onExcluir = { alvo -> Haptics.vibrar(context, "alerta"); solicitarExclusao(alvo) }
+                            )
+                        }
+
+                        if (contaViewModel != null && categorias.isNotEmpty()) {
+                            item {
+                                val alvoCompra = grupoFocado.firstOrNull { it.id == filtro } ?: cartaoFocado
+                                Button(
+                                    onClick = { Haptics.vibrar(context, "clique"); showNovaCompra = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = DeepSpaceBlue),
+                                    modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 12.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Nova compra no ${alvoCompra.nomeCartao}", fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
                         }
 
                         item {
@@ -342,11 +423,38 @@ fun CartoesScreen(
                             )
                         }
 
+                        val creditoVisivel = CartoesUi.filtrarCredito(fatura.lista, filtro)
+                        val debitosVisiveis = CartoesUi.filtrarDebitos(fatura.debitos, filtro)
+
+                        if (!fatura.carregando && grupoFocado.size > 1) {
+                            item {
+                                FiltroCartoesChips(
+                                    grupo = grupoFocado, filtro = filtro,
+                                    onFiltro = { Haptics.vibrar(context, "clique"); filtroBruto = it }
+                                )
+                                if (filtro != null && fatura.lista.isNotEmpty()) {
+                                    Text(
+                                        "Mostrando ${creditoVisivel.size} de ${fatura.lista.size} · subtotal ${formatarMoedaBR(CartoesUi.subtotal(creditoVisivel), false)} (a fatura continua única: ${formatarMoedaBR(fatura.total, false)})",
+                                        color = Color.White.copy(0.5f), fontSize = 11.sp,
+                                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         if (fatura.carregando) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(top = 20.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(color = NeonCyan, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                                 }
+                            }
+                        } else if (fatura.lista.isNotEmpty() && creditoVisivel.isEmpty()) {
+                            item {
+                                Text(
+                                    "Nenhuma compra deste cartão nesta fatura", color = Color.White.copy(0.3f),
+                                    textAlign = TextAlign.Center, fontSize = 14.sp,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp, start = 24.dp, end = 24.dp)
+                                )
                             }
                         } else if (fatura.lista.isEmpty()) {
                             item {
@@ -361,14 +469,18 @@ fun CartoesScreen(
                                 )
                             }
                         } else {
-                            items(fatura.lista, key = { it.id }) { despesa ->
+                            items(creditoVisivel, key = { it.id }) { despesa ->
                                 Box(modifier = Modifier.padding(horizontal = 24.dp)) {
-                                    ItemExtratoNeon(despesa = despesa, cartao = cartaoFocado)
+                                    ItemExtratoNeon(
+                                        despesa = despesa,
+                                        cartao = CartoesUi.cartaoDaCompra(despesa, listaCartoes) ?: cartaoFocado,
+                                        mostrarOrigem = grupoFocado.size > 1
+                                    )
                                 }
                             }
                         }
 
-                        if (!fatura.carregando && fatura.debitos.isNotEmpty()) {
+                        if (!fatura.carregando && debitosVisiveis.isNotEmpty()) {
                             item {
                                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -385,9 +497,13 @@ fun CartoesScreen(
                                     )
                                 }
                             }
-                            items(fatura.debitos, key = { "debito-${it.id}" }) { despesa ->
+                            items(debitosVisiveis, key = { "debito-${it.id}" }) { despesa ->
                                 Box(modifier = Modifier.padding(horizontal = 24.dp)) {
-                                    ItemExtratoNeon(despesa = despesa, cartao = cartaoFocado)
+                                    ItemExtratoNeon(
+                                        despesa = despesa,
+                                        cartao = CartoesUi.cartaoDaCompra(despesa, listaCartoes) ?: cartaoFocado,
+                                        mostrarOrigem = grupoFocado.size > 1
+                                    )
                                 }
                             }
                         }
@@ -432,8 +548,56 @@ fun CartoesScreen(
                     todosCartoes = listaCartoes,
                     onDismiss = { showBottomSheet = false }
                 ) { novo ->
+                    focoAposSalvar = null to listaCartoes
                     viewModel.salvarCartao(novo)
                 }
+            }
+            if (showNovaCompra && contaViewModel != null) {
+                val focoCompra = listaCartoes.getOrNull(paginaAtual)
+                val alvoCompra = grupoFocado.firstOrNull { it.id == filtro } ?: focoCompra
+                if (alvoCompra != null) {
+                    AddDespesaDialog(
+                        categorias = categorias,
+                        contaSelecionada = alvoCompra.numeroConta,
+                        cartoesDisponiveis = listaCartoes,
+                        getPicCategoria = getPicCategoria,
+                        viewModel = contaViewModel,
+                        cartoesViewModel = viewModel,
+                        parentScope = escopo,
+                        onDismiss = { showNovaCompra = false },
+                        historico = historico,
+                        formaPagamentoInicial = "CARTAO",
+                        cartaoInicialId = alvoCompra.id
+                    )
+                }
+            }
+            avisoExclusao?.let { msg ->
+                AlertDialog(
+                    onDismissRequest = { avisoExclusao = null },
+                    confirmButton = { TextButton(onClick = { avisoExclusao = null }) { Text("Entendi", color = NeonCyan) } },
+                    title = { Text("Não é possível excluir", color = Color.White) },
+                    text = { Text(msg, color = Color.White.copy(0.8f)) },
+                    containerColor = DeepSpaceBlue
+                )
+            }
+            virtualParaExcluir?.let { v ->
+                AlertDialog(
+                    onDismissRequest = { virtualParaExcluir = null },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.removerCartao(v); virtualParaExcluir = null }) {
+                            Text("Excluir", color = Color(0xFFFF5252))
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = { virtualParaExcluir = null }) { Text("Cancelar", color = Color.White.copy(0.7f)) } },
+                    title = { Text("Excluir cartão virtual?", color = Color.White) },
+                    text = {
+                        Text(
+                            "\"${v.nomeCartao}\" •••• ${v.finalCartao} será removido. O histórico de compras passa para o cartão físico.",
+                            color = Color.White.copy(0.8f)
+                        )
+                    },
+                    containerColor = DeepSpaceBlue
+                )
             }
             cartaoEmEdicao?.let { editando ->
                 FormularioCartaoBottomSheet(
@@ -442,6 +606,7 @@ fun CartoesScreen(
                     cartaoEdicao = editando,
                     onDismiss = { cartaoEmEdicao = null }
                 ) { alterado ->
+                    focoAposSalvar = editando.id to listaCartoes
                     viewModel.salvarCartao(alterado)
                 }
             }
@@ -459,7 +624,7 @@ fun CartoesScreen(
 // 🚀 O CARTÃO HOLOGRÁFICO (SENSORIZADO)
 // ============================================================================
 @Composable
-fun CartaoFisicoHolografico(cartao: CartaoComConta, nomePrincipal: String? = null) {
+fun CartaoFisicoHolografico(cartao: CartaoComConta, nomePrincipal: String? = null, nVirtuais: Int = 0) {
     val context = LocalContext.current
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
 
@@ -553,8 +718,15 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta, nomePrincipal: String? = nul
                                 letterSpacing = 1.sp
                             )
                             Text(if (cartao.ehVirtual) "VIRTUAL · ${cartao.tipo}" else cartao.tipo, color = corBorda, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            val comLimite = Financas.tipoDeCartao(cartao.tipo) != "DEBITO" && cartao.limiteTotal > 0.0
+                            val dispGrupo = if (comLimite) " · disponível do grupo ${formatarMoedaBR(cartao.limiteDisponivel, false)}" else ""
                             if (cartao.ehVirtual && nomePrincipal != null) {
-                                Text("Compartilha o saldo de $nomePrincipal", color = Color.White.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                Text("Compartilha o saldo de $nomePrincipal$dispGrupo", color = Color.White.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                            } else if (!cartao.ehVirtual && nVirtuais > 0) {
+                                Text(
+                                    (if (nVirtuais == 1) "1 virtual compartilha este saldo" else "$nVirtuais virtuais compartilham este saldo") + dispGrupo,
+                                    color = Color.White.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace
+                                )
                             }
                         }
                         Text("🏦 ${cartao.nomeConta}", color = Color.White.copy(0.5f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
@@ -744,7 +916,14 @@ fun ResumoFaturaBottomSheet(fatura: EstadoFatura, cartao: CartaoComConta, onDism
 // R41 — limite compartilhado do grupo + saldo PRÓPRIO de cada cartão (físico e virtuais)
 // ============================================================================
 @Composable
-fun PainelLimiteCompartilhado(focado: CartaoComConta, todos: List<CartaoComConta>, despesasDoGrupo: List<Despesa>) {
+fun PainelLimiteCompartilhado(
+    focado: CartaoComConta, todos: List<CartaoComConta>, despesasDoGrupo: List<Despesa>,
+    /** Tocar na linha leva o carrossel até o cartão. */
+    onSelecionar: (CartaoComConta) -> Unit = {},
+    /** Editar/excluir por linha de cartão VIRTUAL (o físico usa os botões do cartão focado). */
+    onEditar: ((CartaoComConta) -> Unit)? = null,
+    onExcluir: ((CartaoComConta) -> Unit)? = null
+) {
     val grupo = todos.filter { it.idDoGrupo == focado.idDoGrupo }.sortedBy { it.ehVirtual }
     val principal = grupo.firstOrNull { !it.ehVirtual } ?: return
     if (Financas.tipoDeCartao(principal.tipo) == "DEBITO" || principal.limiteTotal <= 0.0) return
@@ -776,13 +955,27 @@ fun PainelLimiteCompartilhado(focado: CartaoComConta, todos: List<CartaoComConta
             ComprometimentoLimite(principal, grupo, despesasDoGrupo, disponivelGrupo)
             saldos.forEach { (c, s) ->
                 HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = Color.White.copy(0.1f))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${c.nome} •••• ${c.finalCartao}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
+                val ehFocado = c.id == focado.id
+                val real = grupo.first { it.id == c.id }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { onSelecionar(real) }
+                ) {
+                    Text("${c.nome} •••• ${c.finalCartao}", color = if (ehFocado) NeonCyan else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
                     if (c.ehVirtual) {
                         Text(
                             "VIRTUAL", color = DeepSpaceBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(6.dp)).background(NeonPurple.copy(alpha = 0.9f)).padding(horizontal = 6.dp, vertical = 2.dp)
                         )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (c.ehVirtual) {
+                        if (onEditar != null) IconButton(onClick = { onEditar(real) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.Edit, "Editar ${c.nome}", tint = NeonPurple, modifier = Modifier.size(18.dp))
+                        }
+                        if (onExcluir != null) IconButton(onClick = { onExcluir(real) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.DeleteSweep, "Excluir ${c.nome}", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -861,4 +1054,36 @@ private fun LegendaLimite(cor: Color, rotulo: String, valor: Double) {
         Text(rotulo, color = Color.White.copy(0.6f), fontSize = 11.sp, modifier = Modifier.weight(1f))
         Text(formatarMoedaBR(valor, false), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
+}
+
+/** Chips "Todos | <cada cartão do grupo>" que filtram os lançamentos da fatura (a fatura continua única, R18). */
+@Composable
+private fun FiltroCartoesChips(grupo: List<CartaoComConta>, filtro: Int?, onFiltro: (Int?) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ChipFiltroCartao("Todos os cartões", filtro == null) { onFiltro(null) }
+        grupo.forEach { k ->
+            ChipFiltroCartao(
+                (if (k.ehVirtual) "${k.nomeCartao} · virtual" else k.nomeCartao) + " ••${k.finalCartao}",
+                filtro == k.id
+            ) { onFiltro(k.id) }
+        }
+    }
+}
+
+@Composable
+private fun ChipFiltroCartao(texto: String, ativo: Boolean, onClick: () -> Unit) {
+    Text(
+        texto,
+        color = if (ativo) NeonCyan else Color.White.copy(0.7f),
+        fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(if (ativo) NeonCyan.copy(alpha = 0.15f) else Color.Transparent)
+            .border(1.dp, if (ativo) NeonCyan else Color.White.copy(0.2f), CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    )
 }

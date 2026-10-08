@@ -660,7 +660,13 @@ fun MainScreen(
                                     }
                                 }
 
-                                2 -> CartoesScreen(viewModel = cartaoVM)
+                                2 -> CartoesScreen(
+                                    viewModel = cartaoVM,
+                                    contaViewModel = contaVM,
+                                    categorias = categoriasDisponiveis,
+                                    getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
+                                    historico = todasDespesas
+                                )
                                 3 -> CofrinhosTab(viewModel = metaVM, isPrivate = isPrivate, snackbarHostState = snackbarHostState, userName = nome ?: "Viajante")
                                 4 -> InvestimentosTab(viewModel = investimentoVM, isPrivate = isPrivate)
                                 5 -> SecaoAgendamentosAtivos(viewModel = contaVM)

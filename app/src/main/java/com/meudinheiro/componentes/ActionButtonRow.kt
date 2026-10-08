@@ -83,6 +83,7 @@ import com.meudinheiro.R
 import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.domain.CartoesUi
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.funcoes.SuccessAnimation
 import com.meudinheiro.funcoes.formatarMoedaBR
@@ -556,15 +557,25 @@ fun AddDespesaDialog(
     cartoesViewModel: CartoesViewModel,
     parentScope: CoroutineScope,
     onDismiss: () -> Unit,
-    historico: List<Despesa> = emptyList()
+    historico: List<Despesa> = emptyList(),
+    /** "CONTA" (padrão) ou "CARTAO": a tela de cartões abre já no cartão. */
+    formaPagamentoInicial: String = "CONTA",
+    /** Cartão pré-selecionado (ex.: o filtrado/focado na tela de cartões). */
+    cartaoInicialId: Int? = null
 ) {
     val currentContext = LocalContext.current
     val scrollState = rememberScrollState()
     val contaAtual by rememberUpdatedState(contaSelecionada.trim())
     var mostrarSucesso by remember { mutableStateOf(false) }
 
-    var formaPagamento by remember { mutableStateOf("CONTA") } // "CONTA" ou "CARTAO"
-    var cartaoSelecionadoId by remember { mutableStateOf<Int?>(cartoesDisponiveis.firstOrNull()?.id) }
+    var formaPagamento by remember { mutableStateOf(formaPagamentoInicial) } // "CONTA" ou "CARTAO"
+    var cartaoSelecionadoId by remember {
+        mutableStateOf<Int?>(
+            cartaoInicialId?.takeIf { id -> cartoesDisponiveis.any { it.id == id } } ?: cartoesDisponiveis.firstOrNull()?.id
+        )
+    }
+    // Compras de todos os cartões: saldo/disponível do GRUPO por opção do seletor e aviso de limite.
+    val comprasDosCartoes by cartoesViewModel.todasDespesas.collectAsState()
     // R42: só cartão MÚLTIPLO deixa escolher; CRÉDITO/DÉBITO são fixos pelo tipo do cartão.
     var modalidadePedida by remember { mutableStateOf(Financas.Modalidade.CREDITO) }
 
@@ -608,6 +619,15 @@ fun AddDespesaDialog(
     val cartaoMultiplo = formaPagamento == "CARTAO" && tipoCartaoEscolhido == "MULTIPLO"
     val compraNoDebito = formaPagamento == "CARTAO" && cartaoEscolhido != null &&
         Financas.modalidadeDaCompra(cartaoEscolhido.paraCartao(), modalidadePedida) == Financas.Modalidade.DEBITO
+
+    // Aviso (não bloqueante): compra de crédito acima do limite próprio / disponível do grupo.
+    val avisoLimite = if (formaPagamento == "CARTAO" && cartaoEscolhido != null) {
+        val valorCompra = ((valorTexto.toDoubleOrNull() ?: 0.0) / 100.0) * (cotacaoTexto.replace(",", ".").toDoubleOrNull() ?: 1.0)
+        val dominio = cartoesDisponiveis.map { it.paraCartao() }
+        CartoesUi.avisoDeLimite(
+            Financas.saldoDoCartao(cartaoEscolhido.paraCartao(), dominio, comprasDosCartoes), valorCompra, compraNoDebito
+        )
+    } else null
 
     // Débito sai direto da conta: não parcela.
     LaunchedEffect(compraNoDebito) {
@@ -679,8 +699,13 @@ fun AddDespesaDialog(
                                     cartoes = cartoesFiltrados,
                                     selecionadoId = cartaoSelecionadoId,
                                     onSelect = { cartaoSelecionadoId = it },
-                                    erro = erros["cartao"]
+                                    erro = erros["cartao"],
+                                    todosCartoes = cartoesDisponiveis,
+                                    despesas = comprasDosCartoes
                                 )
+                                avisoLimite?.let {
+                                    Text(it, color = Color(0xFFFFB74D), fontSize = 12.sp)
+                                }
                                 if (cartaoMultiplo) {
                                     ModalidadeSelector(modalidadePedida) { modalidadePedida = it }
                                 }
@@ -1179,10 +1204,15 @@ fun CartaoDropdownSection(
     cartoes: List<CartaoComConta>,
     selecionadoId: Int?,
     onSelect: (Int) -> Unit,
-    erro: String?
+    erro: String?,
+    /** Todos os cartões (para achar o físico dos virtuais e o grupo no cálculo do disponível). */
+    todosCartoes: List<CartaoComConta> = cartoes,
+    /** Compras dos cartões, para o "Disponível" por opção (R41). Vazio = não mostra valores. */
+    despesas: List<Despesa> = emptyList()
 ) {
     var expandido by remember { mutableStateOf(false) }
     val cartaoAtual = cartoes.find { it.id == selecionadoId }
+    val dominio = remember(todosCartoes) { todosCartoes.map { it.paraCartao() } }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         ExposedDropdownMenuBox(
@@ -1214,10 +1244,25 @@ fun CartaoDropdownSection(
                     cartoes.forEach { cartao ->
                         androidx.compose.material3.DropdownMenuItem(
                             text = {
-                                Text(
-                                    "${cartao.nomeCartao} - Final ${cartao.finalCartao}",
-                                    color = Color.White
-                                )
+                                Column {
+                                    Text("${cartao.nomeCartao} •••• ${cartao.finalCartao}", color = Color.White)
+                                    cartao.cartaoPrincipalId?.let { pid ->
+                                        val fisico = todosCartoes.firstOrNull { it.id == pid }?.nomeCartao ?: "cartão físico"
+                                        Text("Virtual de $fisico", color = Color(0xFFB388FF), fontSize = 11.sp)
+                                    }
+                                    if (Financas.tipoDeCartao(cartao.tipo) == "DEBITO") {
+                                        Text("Débito: sai da conta", color = Color.White.copy(0.6f), fontSize = 11.sp)
+                                    } else {
+                                        val s = remember(cartao, dominio, despesas) {
+                                            Financas.saldoDoCartao(cartao.paraCartao(), dominio, despesas)
+                                        }
+                                        Text(
+                                            "Disponível " + formatarMoedaBR(s.disponivelGrupo, false) +
+                                                (s.limiteProprio?.let { " · limite próprio " + formatarMoedaBR(it, false) } ?: ""),
+                                            color = NeonCyan.copy(0.8f), fontSize = 11.sp
+                                        )
+                                    }
+                                }
                             },
                             onClick = {
                                 onSelect(cartao.id)

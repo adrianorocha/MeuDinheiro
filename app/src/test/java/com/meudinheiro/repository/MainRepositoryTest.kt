@@ -1090,4 +1090,36 @@ class MainRepositoryTest {
         exige<RegraFinanceiraException> { runBlocking { repo.ajustarSaldoConta("999", 10.0) } }
         exige<RegraFinanceiraException> { runBlocking { repo.ajustarSaldoConta("111", Double.NaN) } }
     }
+
+    // ------------------------------------------------ trocar o vínculo físico <-> virtual (edição pelo app)
+
+    @Test fun `trocar o fisico de um virtual move o cartao de grupo e herda os dados do novo fisico`() = runBlocking {
+        repo.salvarConta(conta("111", 0.0)); repo.salvarConta(conta("222", 0.0))
+        val a = novoCartao("111", limite = 1000.0)
+        val b = novoCartao("222", limite = 3000.0, fecha = 10, vence = 20)
+        val v = novoVirtual(a)
+        val atual = db.cartaoDao().getCartaoPorId(v)!!
+        repo.salvarCartao(atual.copy(cartaoPrincipalId = b))
+        val novo = db.cartaoDao().getCartaoPorId(v)!!
+        assertEquals(b, novo.cartaoPrincipalId)
+        assertEquals(contaId("222"), novo.contaId)
+        assertEquals(3000.0, novo.limiteTotal, 0.0)
+        assertEquals(10, novo.diaFechamento)
+        assertEquals(listOf(b, v).sorted(), db.cartaoDao().obterGrupo(b).map { it.id }.sorted())
+        assertEquals(listOf(a), db.cartaoDao().obterGrupo(a).map { it.id })
+    }
+
+    @Test fun `virtual vira fisico independente e fisico com virtuais nao vira virtual`() = runBlocking {
+        repo.salvarConta(conta("111", 0.0))
+        val a = novoCartao("111", limite = 1000.0)
+        val v = novoVirtual(a)
+        val outro = novoCartao("111", limite = 500.0)
+        // físico com virtuais não pode virar virtual de outro
+        exige<RegraFinanceiraException> { runBlocking { repo.salvarCartao(db.cartaoDao().getCartaoPorId(a)!!.copy(cartaoPrincipalId = outro)) } }
+        // virtual -> físico independente (sem limite próprio)
+        repo.salvarCartao(db.cartaoDao().getCartaoPorId(v)!!.copy(cartaoPrincipalId = null, limiteProprio = 100.0))
+        val liberado = db.cartaoDao().getCartaoPorId(v)!!
+        assertNull(liberado.cartaoPrincipalId); assertNull(liberado.limiteProprio)
+        assertEquals(listOf(v), db.cartaoDao().obterGrupo(v).map { it.id })
+    }
 }

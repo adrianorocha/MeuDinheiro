@@ -46,7 +46,7 @@ import java.util.Locale
 
 
 @Composable
-fun ItemExtratoNeon(despesa: Despesa, cartao: CartaoComConta) {
+fun ItemExtratoNeon(despesa: Despesa, cartao: CartaoComConta, mostrarOrigem: Boolean = false) {
     val context = LocalContext.current
 
     // Mapeamento de estilo baseado na categoria (String que vem do banco)
@@ -106,6 +106,25 @@ fun ItemExtratoNeon(despesa: Despesa, cartao: CartaoComConta) {
                 color = Color.White.copy(alpha = 0.5f),
                 fontSize = 12.sp
             )
+            if (mostrarOrigem) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${cartao.nomeCartao} •••• ${cartao.finalCartao}",
+                        color = NeonCyan.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (cartao.ehVirtual) {
+                        Text(
+                            "VIRTUAL", color = Color(0xFF131E29), fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 6.dp).clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF7000FF).copy(alpha = 0.9f)).padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // Valor Formatado
