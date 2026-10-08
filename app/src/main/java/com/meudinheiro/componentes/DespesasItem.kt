@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,7 +62,11 @@ fun DespesasItem(
     onDuplicar: ((DespesasDomain) -> Unit)? = null,
     onRepetir: ((DespesasDomain, Int, Int, com.meudinheiro.domain.Analises.UnidadeRepeticao) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
-    nomeCartao: String? = null
+    nomeCartao: String? = null,
+    /** Menu completo de ações (⋮ e toque longo): ver [LancamentoAcoesHost]. Sem ele, mantém o diálogo antigo. */
+    onAcoes: ((DespesasDomain) -> Unit)? = null,
+    /** Pede a confirmação de exclusão (swipe para a esquerda) em vez de excluir direto. */
+    onPedirExclusao: ((DespesasDomain) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
@@ -95,8 +100,13 @@ fun DespesasItem(
                 SwipeToDismissBoxValue.EndToStart -> {
                     // 🔴 ARRASTO PARA EXCLUIR (ESQUERDA)
                     Haptics.vibrar(context, "alerta")
-                    onRemover(item)
-                    true // O Laser corta o card
+                    if (onPedirExclusao != null) {
+                        onPedirExclusao(item) // confirmação (parcelado: só esta × todas); o card volta ao lugar
+                        false
+                    } else {
+                        onRemover(item)
+                        true // O Laser corta o card
+                    }
                 }
                 else -> false
             }
@@ -129,7 +139,8 @@ fun DespesasItem(
                 isPrivate = isPrivate,
                 onTogglePago = onTogglePago,
                 onClick = onClick,
-                onLongClick = { showDialog = true }
+                onLongClick = { if (onAcoes != null) onAcoes(item) else showDialog = true },
+                onMais = onAcoes?.let { f -> { f(item) } }
             )
         }
     )
@@ -284,7 +295,8 @@ fun CardItemContent(
     isPrivate: Boolean,
     onTogglePago: ((DespesasDomain) -> Unit)?,
     onClick: (() -> Unit)?,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onMais: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val dataFormatada = remember(item.data) { DateUtils.formatarData(Date(item.data)) }
@@ -411,6 +423,11 @@ fun CardItemContent(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
+                }
+            }
+            if (onMais != null) {
+                IconButton(onClick = onMais, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = "Mais ações", tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                 }
             }
         }

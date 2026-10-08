@@ -276,7 +276,7 @@ object Financas {
      */
     fun parcelar(
         modelo: Despesa, n: Int, agora: Long,
-        grupoId: String = UUID.randomUUID().toString(),
+        grupoId: String = "parc:" + UUID.randomUUID(),
         aPartirDe: Int = 1
     ): List<Despesa> {
         require(n >= 1) { "Número de parcelas inválido" }
@@ -604,6 +604,89 @@ object Financas {
         }
         val v = t.toDoubleOrNull() ?: return null
         return if (v.isFinite()) Dinheiro.arredondar(v) else null
+    }
+
+    // ------------------------------------------------------------ R40 antecipação de pagamento
+
+    /** Resultado de [antecipar]: [substituidos] (mesmo id, atualizados), [novos] (id 0, parte paga de um parcial). */
+    data class ResultadoAntecipacao(
+        val substituidos: List<Despesa>,
+        val novos: List<Despesa>,
+        val pagos: List<Despesa>,
+        val economia: Double,
+        val restante: Double
+    )
+
+    private fun dataCurta(ms: Long) = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale("pt", "BR")).format(java.util.Date(ms))
+    private fun moedaVirgula(c: Long) = Dinheiro.reais(c).let { String.format(java.util.Locale.US, "%.2f", it).replace('.', ',') }
+
+    /** `true` se o lançamento pode entrar numa antecipação: despesa comum, em conta e em aberto. */
+    fun antecipavel(d: Despesa): Boolean =
+        d.natureza == Natureza.NORMAL && d.tipo == TipoDespesa.DEBITO && !d.pago && (d.cartaoId == null || d.cartaoId == 0)
+
+    /**
+     * R40 — paga adiantado [itens] (na ordem recebida). Dívida quitada E = [valorPago] + [desconto], consumida na
+     * ordem; o desconto é rateado em centavos (o último leva o resto). Quitado por inteiro: `valor = pago`, pago na
+     * [data], descrição guarda o vencimento original. Parcial: o último é dividido (parte paga nasce com id 0).
+     * Lança [IllegalArgumentException] (mensagem exibível) em entrada inválida.
+     */
+    fun antecipar(itens: List<Despesa>, valorPago: Double, desconto: Double, data: Long): ResultadoAntecipacao {
+        require(itens.isNotEmpty()) { "Selecione ao menos um lançamento." }
+        itens.forEach {
+            require(it.natureza == Natureza.NORMAL && it.tipo == TipoDespesa.DEBITO) { "Só despesas comuns podem ser antecipadas." }
+            require(!it.pago) { "\"${it.descricao}\" já está pago." }
+            require(it.cartaoId == null || it.cartaoId == 0) { "Compras de cartão são pagas pela fatura; antecipe o pagamento da fatura." }
+        }
+        require(itens.all { it.conta == itens[0].conta }) { "Os lançamentos devem ser da mesma conta." }
+        require(valorPago.isFinite() && desconto.isFinite()) { "Valor inválido." }
+        val pagoC = Dinheiro.centavos(valorPago)
+        val descC = Dinheiro.centavos(desconto)
+        require(pagoC > 0) { "Informe o valor pago, maior que zero." }
+        require(descC >= 0) { "O desconto não pode ser negativo." }
+        val quitadoC = pagoC + descC
+        val devidoC = itens.sumOf { Dinheiro.centavos(it.valor) }
+        require(quitadoC <= devidoC) { "O valor pago mais o desconto excede o que está em aberto nos lançamentos selecionados." }
+
+        var sobra = quitadoC
+        val partes = ArrayList<Pair<Despesa, Long>>()
+        for (d in itens) {
+            if (sobra <= 0) break
+            val q = minOf(sobra, Dinheiro.centavos(d.valor))
+            partes.add(d to q)
+            sobra -= q
+        }
+        var descRestante = descC
+        val calculo = partes.mapIndexed { i, (d, quitado) ->
+            val desc = if (i == partes.lastIndex) descRestante else Math.floorDiv(descC * quitado, quitadoC)
+            descRestante -= desc
+            Triple(d, quitado, desc)
+        }
+        require(calculo.none { (_, q, desc) -> q - desc <= 0 }) { "O desconto é grande demais para ser distribuído entre os lançamentos." }
+
+        val mes = mesDe(data)
+        val ano = anoDe(data)
+        val substituidos = ArrayList<Despesa>()
+        val novos = ArrayList<Despesa>()
+        val pagos = ArrayList<Despesa>()
+        for ((d, quitado, desc) in calculo) {
+            val pagoItem = quitado - desc
+            val valorItem = Dinheiro.reais(pagoItem)
+            val base = d.copy(valor = valorItem, valorOriginal = valorItem, data = java.util.Date(data), mes = mes, ano = ano, pago = true)
+            if (quitado == Dinheiro.centavos(d.valor)) {
+                val sufixo = if (desc > 0) " (antecipada de ${dataCurta(d.dataMs)}, desc. ${moedaVirgula(desc)})" else " (antecipada de ${dataCurta(d.dataMs)})"
+                val novo = base.copy(descricao = d.descricao + sufixo)
+                substituidos.add(novo); pagos.add(novo)
+            } else {
+                val resto = Dinheiro.centavos(d.valor) - quitado
+                substituidos.add(d.copy(valor = Dinheiro.reais(resto), valorOriginal = Dinheiro.reais(resto)))
+                val parte = base.copy(
+                    id = 0, fitid = null, conciliadoEm = null,
+                    descricao = d.descricao + " (adiantamento" + (if (desc > 0) ", desc. ${moedaVirgula(desc)}" else "") + ")"
+                )
+                novos.add(parte); pagos.add(parte)
+            }
+        }
+        return ResultadoAntecipacao(substituidos, novos, pagos, Dinheiro.reais(descC), Dinheiro.reais(devidoC - quitadoC))
     }
 
     // ------------------------------------------------------------ investimentos

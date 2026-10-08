@@ -148,6 +148,7 @@ fun CartoesScreen(
     val context = LocalContext.current
     val todasDespesas by viewModel.todasDespesas.collectAsState()
     var showNovaCompra by remember { mutableStateOf(false) }
+    var alvoLancamento by remember { mutableStateOf<AlvoLancamento?>(null) }
     var avisoExclusao by remember { mutableStateOf<String?>(null) }
     var virtualParaExcluir by remember { mutableStateOf<CartaoComConta?>(null) }
     // Depois de salvar: (id editado | null, ids que já existiam) -> foca no cartão salvo/criado.
@@ -474,7 +475,8 @@ fun CartoesScreen(
                                     ItemExtratoNeon(
                                         despesa = despesa,
                                         cartao = CartoesUi.cartaoDaCompra(despesa, listaCartoes) ?: cartaoFocado,
-                                        mostrarOrigem = grupoFocado.size > 1
+                                        mostrarOrigem = grupoFocado.size > 1,
+                                        onAcoes = contaViewModel?.let { { alvoLancamento = AlvoLancamento(despesa.id) } }
                                     )
                                 }
                             }
@@ -502,7 +504,8 @@ fun CartoesScreen(
                                     ItemExtratoNeon(
                                         despesa = despesa,
                                         cartao = CartoesUi.cartaoDaCompra(despesa, listaCartoes) ?: cartaoFocado,
-                                        mostrarOrigem = grupoFocado.size > 1
+                                        mostrarOrigem = grupoFocado.size > 1,
+                                        onAcoes = contaViewModel?.let { { alvoLancamento = AlvoLancamento(despesa.id) } }
                                     )
                                 }
                             }
@@ -570,6 +573,13 @@ fun CartoesScreen(
                         cartaoInicialId = alvoCompra.id
                     )
                 }
+            }
+            // Menu de ações das compras da fatura e da seção de débitos (editar, excluir, duplicar, repetir…).
+            if (contaViewModel != null) {
+                LancamentoAcoesHost(
+                    alvo = alvoLancamento, onFechar = { alvoLancamento = null }, viewModel = contaViewModel,
+                    categorias = categorias, getPicCategoria = getPicCategoria
+                )
             }
             avisoExclusao?.let { msg ->
                 AlertDialog(

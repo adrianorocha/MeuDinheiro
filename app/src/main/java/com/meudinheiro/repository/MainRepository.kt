@@ -24,8 +24,10 @@ import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.TransferenciaAgendada
 import com.meudinheiro.domain.Analises
+import com.meudinheiro.domain.ConferenciaSaldos
 import com.meudinheiro.domain.Dinheiro
 import com.meudinheiro.domain.Financas
+import com.meudinheiro.domain.LancamentoAcoes
 import com.meudinheiro.domain.WidgetResumo
 import com.meudinheiro.domain.Natureza
 import com.meudinheiro.domain.centavosAssinados
@@ -43,6 +45,19 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+
+/** Uma correção de saldo de conta aplicada por [MainRepository.recalcularSaldos]. */
+data class CorrecaoConta(val conta: String, val banco: String, val antes: Double, val depois: Double)
+
+/** Uma correção do limite disponível de um cartão (o limite é do grupo; cada cartão do grupo é gravado). */
+data class CorrecaoCartao(val cartaoId: Int, val nome: String, val antes: Double, val depois: Double)
+
+data class ResultadoRecalculo(val contas: List<CorrecaoConta>, val cartoes: List<CorrecaoCartao>) {
+    val saldosCorrigidos: Int get() = contas.size
+    val limitesCorrigidos: Int get() = cartoes.size
+    val totalCorrecoes: Int get() = contas.size + cartoes.size
+    val nenhumaDiferenca: Boolean get() = totalCorrecoes == 0
+}
 
 /** Violação de uma regra financeira (saldo insuficiente, valor inválido…). A mensagem é exibível ao usuário. */
 class RegraFinanceiraException(message: String) : Exception(message)
@@ -113,6 +128,41 @@ class MainRepository(
             val limite = Financas.limiteDisponivel(principal, despesas.filter { it.cartaoId in ids }, ids)
             cartoes.filter { it.id in ids && it.limiteDisponivel != limite }.forEach { cartaoDao.atualizarLimite(it.id, limite) }
         }
+    }
+
+    /** Conferência somente leitura: compara os caches gravados com o que o extrato calcula (nada é alterado). */
+    suspend fun conferirSaldos(inicio: Long? = null, fim: Long? = null): ConferenciaSaldos.Relatorio =
+        withContext(Dispatchers.IO) {
+            ConferenciaSaldos.auditar(
+                contaSaldoDao.obterTodasStatic(), cartaoDao.obterTodasStatic(), despesaDao.obterTodasStatic(), agora(), inicio, fim
+            )
+        }
+
+    /**
+     * Recalcula saldos das contas (R3) e limites dos cartões (R4/R18) a partir do extrato, em uma transação,
+     * e atualiza o snapshot patrimonial. Não apaga nem altera lançamentos. Idempotente: a 2ª chamada devolve 0 correções.
+     */
+    suspend fun recalcularSaldos(): ResultadoRecalculo = withContext(Dispatchers.IO) {
+        val resultado = db.withTransaction {
+            val rel = ConferenciaSaldos.auditar(
+                contaSaldoDao.obterTodasStatic(), cartaoDao.obterTodasStatic(), despesaDao.obterTodasStatic(), agora()
+            )
+            val contas = rel.contas.filter { it.divergente }.map {
+                contaSaldoDao.atualizarSaldo(it.conta, it.saldoCalculado)
+                CorrecaoConta(it.conta, it.banco, it.saldoGravado, it.saldoCalculado)
+            }
+            val cartoes = rel.cartoes.flatMap { g ->
+                g.gravados.filter { it.limiteGravado != g.limiteCalculado }.map {
+                    cartaoDao.atualizarLimite(it.cartaoId, g.limiteCalculado)
+                    CorrecaoCartao(it.cartaoId, it.nome, it.limiteGravado, g.limiteCalculado)
+                }
+            }
+            atualizarSnapshotPatrimonial()
+            ResultadoRecalculo(contas, cartoes)
+        }
+        // O Room já reemite os Flows ao gravar; o sinal avisa também quem escuta o repositório.
+        avisarQueHouveMudanca()
+        resultado
     }
 
     /** Recalcula os caches afetados por [lancamentos] (conta e/ou cartão de cada um). */
@@ -234,24 +284,34 @@ class MainRepository(
     suspend fun atualizarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) = db.withTransaction {
         val antigo = despesaDao.obterDespesaPorId(despesa.id)
             ?: throw RegraFinanceiraException("Lançamento não encontrado.")
+        if (antigo.natureza in LancamentoAcoes.BLOQUEADAS_EDICAO) throw RegraFinanceiraException(LancamentoAcoes.MSG_NAO_EDITAVEL)
         // R42: só reavalia a modalidade quando o cartão foi trocado (dados antigos não são migrados).
         val trocouCartao = despesa.cartaoId?.takeIf { it != 0 } != null && despesa.cartaoId != antigo.cartaoId
-        val novo = validar(if (trocouCartao) comModalidade(despesa, modalidade) else despesa)
+        var base = if (trocouCartao) comModalidade(despesa, modalidade) else despesa
+        // Trocou para outro cartão (crédito): a compra volta a ficar em aberto, quitada só pela fatura.
+        if (trocouCartao && base.cartaoId != null) base = base.copy(pago = false)
+        // Mover o lançamento de débito para outra conta desfaz o vínculo com o cartão (R42b).
+        if (Financas.cartaoDeDebito(antigo) != null && base.cartaoId == null && base.conta != antigo.conta &&
+            base.grupoId == antigo.grupoId) base = base.copy(grupoId = null)
+        if (antigo.natureza == Natureza.SALDO_INICIAL) base = base.copy(pago = true)
+        val novo = validar(base)
         despesaDao.inserirDespesa(novo)
         recalcularAfetados(listOf(antigo, novo))
         atualizarSnapshotPatrimonial()
     }
 
-    /** R11 — exclui o lançamento (e o par, se for transferência) e recalcula os derivados. */
-    suspend fun excluirLancamento(id: Long) = db.withTransaction {
-        val d = despesaDao.obterDespesaPorId(id) ?: return@withTransaction
-        if (d.natureza == Natureza.PAGAMENTO_FATURA) {
-            throw RegraFinanceiraException(
-                "O pagamento de fatura não pode ser excluído. Para reabrir a fatura, marque as compras como não pagas."
-            )
-        }
+    /**
+     * R11 — exclui o lançamento (e o par, se for transferência) e recalcula os derivados. Com [grupoParcelas] e
+     * lançamento de parcelamento (`parc:`), exclui todas as parcelas do grupo. Retorna quantos foram removidos.
+     */
+    suspend fun excluirLancamento(id: Long, grupoParcelas: Boolean = false): Int = db.withTransaction {
+        val d = despesaDao.obterDespesaPorId(id) ?: return@withTransaction 0
+        LancamentoAcoes.motivoExclusaoBloqueada(d.natureza)?.let { throw RegraFinanceiraException(it) }
         val afetados = if (d.natureza == Natureza.TRANSFERENCIA && d.grupoId != null) {
             despesaDao.obterDoGrupo(d.grupoId).also { despesaDao.excluirPorGrupo(d.grupoId) }
+        } else if (grupoParcelas && LancamentoAcoes.ehGrupoParcelas(d.natureza, d.grupoId)) {
+            despesaDao.obterDoGrupo(d.grupoId!!).filter { it.natureza == Natureza.NORMAL }
+                .also { lista -> lista.forEach { despesaDao.excluirPorId(it.id) } }
         } else {
             despesaDao.excluirPorId(id)
             listOf(d)
@@ -260,16 +320,48 @@ class MainRepository(
         afetados.filter { it.natureza != Natureza.SALDO_INICIAL }.forEach { lixeiraDao.inserir(paraLixeira(it)) }
         recalcularAfetados(afetados)
         atualizarSnapshotPatrimonial()
+        afetados.size
     }
 
     /** R12 — alterna pago/pendente. Em compra de cartão só o limite muda; em conta, o saldo. */
     suspend fun alternarPago(id: Long, pago: Boolean) = db.withTransaction {
         val d = despesaDao.obterDespesaPorId(id) ?: return@withTransaction
+        if (d.natureza != Natureza.NORMAL && d.natureza != Natureza.AJUSTE) throw RegraFinanceiraException(LancamentoAcoes.MSG_NAO_ALTERNAVEL)
         if (d.pago == pago) return@withTransaction
         despesaDao.atualizarPago(id, pago)
         recalcularAfetados(listOf(d))
         atualizarSnapshotPatrimonial()
     }
+
+    /** R40 — lançamentos em aberto que podem ser antecipados junto com [id] (mesmo parcelamento/repetição, mesma conta). */
+    suspend fun antecipaveisDoGrupo(id: Long): List<Despesa> {
+        val d = despesaDao.obterDespesaPorId(id) ?: return emptyList()
+        if (!Financas.antecipavel(d)) return emptyList()
+        val g = d.grupoId
+        val mesmoGrupo = g != null && (LancamentoAcoes.ehGrupoParcelas(d.natureza, g) || g.startsWith("rep:"))
+        val lista = if (mesmoGrupo) despesaDao.obterDoGrupo(g!!) else listOf(d)
+        return lista.filter { Financas.antecipavel(it) && it.conta == d.conta }.sortedWith(compareBy({ it.dataMs }, { it.id }))
+    }
+
+    /**
+     * R40 — paga adiantado [ids] (ordem de consumo), com [desconto] opcional; [data] padrão = agora. Atômico.
+     * Devolve a economia (desconto) e o restante em aberto.
+     */
+    suspend fun anteciparPagamento(ids: List<Long>, valorPago: Double, desconto: Double = 0.0, data: Long? = null): Financas.ResultadoAntecipacao =
+        db.withTransaction {
+            val itens = ids.distinct().map { despesaDao.obterDespesaPorId(it) ?: throw RegraFinanceiraException("Lançamento não encontrado.") }
+            if (itens.isNotEmpty() && contaSaldoDao.obterPorNumero(itens[0].conta) == null) throw RegraFinanceiraException("Conta não encontrada.")
+            val r = try {
+                Financas.antecipar(itens, valorPago, desconto, data ?: agora())
+            } catch (e: IllegalArgumentException) {
+                throw RegraFinanceiraException(e.message ?: "Antecipação inválida.")
+            }
+            r.substituidos.forEach { despesaDao.inserirDespesa(it) }
+            r.novos.forEach { despesaDao.inserirDespesa(normalizar(it)) }
+            recalcularAfetados(itens)
+            atualizarSnapshotPatrimonial()
+            r
+        }
 
     /* ======================= LIXEIRA (R31) ======================= */
 
@@ -316,9 +408,9 @@ class MainRepository(
 
     // Nomes legados (mantidos para não quebrar chamadas existentes).
     suspend fun inserirDespesa(despesa: Despesa) { registrarLancamento(despesa) }
-    suspend fun excluirDespesa(id: Int) = excluirLancamento(id.toLong())
-    suspend fun excluirDespesaComRestituicao(id: Int) = excluirLancamento(id.toLong())
-    suspend fun marcarDespesaComoPaga(id: Int, pago: Boolean) = alternarPago(id.toLong(), pago)
+    suspend fun excluirDespesa(id: Long) = excluirLancamento(id)
+    suspend fun excluirDespesaComRestituicao(id: Long) = excluirLancamento(id)
+    suspend fun marcarDespesaComoPaga(id: Long, pago: Boolean) = alternarPago(id, pago)
     suspend fun atualizarStatusPago(id: Long, status: Boolean) = alternarPago(id, status)
     suspend fun recalcularSaldoTotal(contaNome: String) = db.withTransaction { recalcularConta(contaNome) }
 

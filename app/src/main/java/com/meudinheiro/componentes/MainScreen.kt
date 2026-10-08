@@ -179,6 +179,7 @@ fun MainScreen(
     var isMenuOpen by remember { mutableStateOf(false) }
     var showAddContaDialog by remember { mutableStateOf(false) }
     var showExtratoScreen by remember { mutableStateOf(false) }
+    var alvoLancamento by remember { mutableStateOf<AlvoLancamento?>(null) }
     var showAddDespesaDialog by remember { mutableStateOf(false) }
     var showAddOrcamentoDialog by remember { mutableStateOf(false) }
     var showRecorrenciaDialog by remember { mutableStateOf(false) }
@@ -192,6 +193,7 @@ fun MainScreen(
 
     var showScanner by remember { mutableStateOf(false) }
     var showFerramentas by remember { mutableStateOf(false) }
+    var showConferencia by remember { mutableStateOf(false) }
 
     // Atalho do launcher "Nova despesa": abre direto o formulário de lançamento.
     LaunchedEffect(com.meudinheiro.AtalhosApp.novaDespesaPedida) {
@@ -404,6 +406,9 @@ fun MainScreen(
                         onToolsClick = { showFerramentas = true },
                         receitaTotal = dashboardState.receitaGlobal,
                         despesaTotal = dashboardState.despesaGlobal,
+                        despesaPaga = dashboardState.despesaPagaGlobal,
+                        despesaAPagar = dashboardState.despesaPendenteGlobal,
+                        onConferirSaldos = { showConferencia = true },
                         isPrivateMode = isPrivate,
                         onTogglePrivate = { scope.launch { userPrefs.togglePrivateMode() } }
                     )
@@ -573,7 +578,10 @@ fun MainScreen(
                                                         getReceitaConta = { id -> contaVM.obterReceitaPorConta(id) },
                                                         getDespesaConta = { id -> contaVM.obterDespesaPorConta(id) }
                                                     )
-                                                    TransacoesRecentesSection(transacoes = listaTransacoes, isPrivate = isPrivate)
+                                                    TransacoesRecentesSection(
+                                                        transacoes = listaTransacoes, isPrivate = isPrivate,
+                                                        onAcoes = { id -> alvoLancamento = AlvoLancamento(id.toLong()) }
+                                                    )
                                                 }
                                             }
                                         }
@@ -654,7 +662,9 @@ fun MainScreen(
                                                 onRemover = { despesa -> contaVM.removerDespesa(despesa) },
                                                 onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) },
                                                 onDuplicar = { contaVM.duplicarDespesa(it) },
-                                                onRepetir = { item, n, intervalo, unidade -> contaVM.repetirDespesa(item, n, intervalo, unidade) }
+                                                onRepetir = { item, n, intervalo, unidade -> contaVM.repetirDespesa(item, n, intervalo, unidade) },
+                                                onAcoes = { alvoLancamento = AlvoLancamento(it.id.toLong()) },
+                                                onPedirExclusao = { alvoLancamento = AlvoLancamento(it.id.toLong(), excluirDireto = true) }
                                             )
                                         }
                                     }
@@ -865,6 +875,10 @@ fun MainScreen(
             )
         }
 
+        if (showConferencia) {
+            ConferenciaSaldosScreen(repository = repository, isPrivate = isPrivate, onBack = { showConferencia = false })
+        }
+
         if (showFerramentas) {
             FerramentasScreen(
                 repository = repository,
@@ -879,9 +893,20 @@ fun MainScreen(
                 despesasVM = despVM,
                 categorias = categoriasDisponiveis,
                 isPrivate = isPrivate,
-                onBack = { showExtratoScreen = false }
+                onBack = { showExtratoScreen = false },
+                contaViewModel = contaVM,
+                getPicCategoria = { repository.getPicCategoria(it) }
             )
         }
+
+        // Menu de ações dos lançamentos (listas de conta, últimas movimentações): pago, antecipar, duplicar, repetir, editar, excluir.
+        LancamentoAcoesHost(
+            alvo = alvoLancamento,
+            onFechar = { alvoLancamento = null },
+            viewModel = contaVM,
+            categorias = categoriasDisponiveis,
+            getPicCategoria = { repository.getPicCategoria(it) }
+        )
 
         // A Explosão de Partículas Neon fica por cima de absolutamente tudo
         if (mostrarCelebracao) {

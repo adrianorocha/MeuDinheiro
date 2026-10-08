@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -104,6 +105,21 @@ fun PendenciasScreen(
     LaunchedEffect(daysAhead, onlyCredit) {
         carregarDados()
     }
+
+    // Menu de ações (editar, excluir, duplicar, repetir, antecipar, pago/pendente) + retorno das operações.
+    var alvoLancamento by remember { mutableStateOf<AlvoLancamento?>(null) }
+    val categoriasMenu = remember { repository.categorias.map { it.title } }
+    LaunchedEffect(Unit) {
+        contaVM.uiEvent.collect { msg ->
+            val partes = msg.split(" | ")
+            android.widget.Toast.makeText(context, partes.getOrElse(1) { msg }, android.widget.Toast.LENGTH_LONG).show()
+            carregarDados()
+        }
+    }
+    LancamentoAcoesHost(
+        alvo = alvoLancamento, onFechar = { alvoLancamento = null }, viewModel = contaVM,
+        categorias = categoriasMenu, getPicCategoria = { repository.getPicCategoria(it) }
+    )
 
     Box(
         modifier = Modifier
@@ -209,6 +225,7 @@ fun PendenciasScreen(
                     items(listaPendencias, key = { it.id }) { item ->
                         PendenciaItem(
                             item = item,
+                            onAcoes = { alvoLancamento = AlvoLancamento(item.id) },
                             onBaixar = {
                                 scope.launch {
                                     try {
@@ -230,7 +247,8 @@ fun PendenciasScreen(
 @Composable
 fun PendenciaItem(
     item: Despesa,
-    onBaixar: () -> Unit
+    onBaixar: () -> Unit,
+    onAcoes: (() -> Unit)? = null
 ) {
     val hoje = remember { java.util.Date() }
     val isAtrasada = item.data.before(hoje)
@@ -324,6 +342,11 @@ fun PendenciaItem(
                             color = SuccessColor
                         )
                     }
+                }
+            }
+            if (onAcoes != null) {
+                IconButton(onClick = onAcoes, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = "Mais ações", tint = TextWhite.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                 }
             }
         }

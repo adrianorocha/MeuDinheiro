@@ -3,6 +3,7 @@ package com.meudinheiro.componentes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -38,7 +42,9 @@ private val NeonRed = Color(0xFFFF8A80)
 @Composable
 fun TransacoesRecentesSection(
     transacoes: List<TransacaoModel>,
-    isPrivate: Boolean
+    isPrivate: Boolean,
+    /** Abre o menu de ações do lançamento (toque longo ou ⋮); recebe o id do lançamento. */
+    onAcoes: ((Long) -> Unit)? = null
 ) {
     // Só renderiza a seção INTEIRA se houver transações
     if (transacoes.isNotEmpty()) {
@@ -79,7 +85,7 @@ fun TransacoesRecentesSection(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     transacoes.forEachIndexed { index, transacao ->
-                        TransacaoItem(transacao = transacao, isPrivate = isPrivate)
+                        TransacaoItem(transacao = transacao, isPrivate = isPrivate, onAcoes = onAcoes)
                         if (index < transacoes.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
@@ -101,14 +107,17 @@ fun TransacoesRecentesSection(
         }
     }
 }
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun TransacaoItem(transacao: TransacaoModel, isPrivate: Boolean) {
+private fun TransacaoItem(transacao: TransacaoModel, isPrivate: Boolean, onAcoes: ((Long) -> Unit)? = null) {
     val isDespesa = transacao.valor < 0
     val corValor = if (isDespesa) NeonRed else NeonGreen
     val sinal = if (isDespesa) "" else "+"
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            if (onAcoes != null) Modifier.combinedClickable(onClick = {}, onLongClick = { onAcoes(transacao.id) }) else Modifier
+        ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // ÍCONE DA CATEGORIA COM GLOW
@@ -163,6 +172,11 @@ private fun TransacaoItem(transacao: TransacaoModel, isPrivate: Boolean) {
                 color = TextWhite.copy(alpha = 0.3f),
                 fontSize = 11.sp
             )
+        }
+        if (onAcoes != null) {
+            IconButton(onClick = { onAcoes(transacao.id) }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "Mais ações", tint = TextWhite.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+            }
         }
     }
 }

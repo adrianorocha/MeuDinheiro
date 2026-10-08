@@ -2,7 +2,7 @@ package com.meudinheiro.componentes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.LocalHospital
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Share
@@ -46,7 +47,12 @@ import java.util.Locale
 
 
 @Composable
-fun ItemExtratoNeon(despesa: Despesa, cartao: CartaoComConta, mostrarOrigem: Boolean = false) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun ItemExtratoNeon(
+    despesa: Despesa, cartao: CartaoComConta, mostrarOrigem: Boolean = false,
+    /** Menu de ações do lançamento (toque longo e ⋮): ver [LancamentoAcoesHost]. */
+    onAcoes: (() -> Unit)? = null
+) {
     val context = LocalContext.current
 
     // Mapeamento de estilo baseado na categoria (String que vem do banco)
@@ -63,9 +69,10 @@ fun ItemExtratoNeon(despesa: Despesa, cartao: CartaoComConta, mostrarOrigem: Boo
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .clickable{
-                compartilharComprovante(context, despesa, cartao.nomeCartao, cartao.nomeConta)
-            }
+            .combinedClickable(
+                onClick = { compartilharComprovante(context, despesa, cartao.nomeCartao, cartao.nomeConta) },
+                onLongClick = onAcoes
+            )
             .clip(RoundedCornerShape(16.dp))
             .background(CardGlass.copy(alpha = 0.4f))
             .border(0.5.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
@@ -149,6 +156,11 @@ fun ItemExtratoNeon(despesa: Despesa, cartao: CartaoComConta, mostrarOrigem: Boo
                 tint = NeonCyan.copy(0.5f), // Ciano sutil para não brigar com o valor
                 modifier = Modifier.size(16.dp) // Ícone pequeno e elegante
             )
+        }
+        if (onAcoes != null) {
+            IconButton(onClick = onAcoes, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "Mais ações", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+            }
         }
     }
 }

@@ -63,6 +63,9 @@ import java.util.concurrent.TimeUnit
 data class DashboardFinanceiroState(
     val receitaGlobal: Double = 0.0,
     val despesaGlobal: Double = 0.0,
+    /** Parte de [despesaGlobal] já paga e parte ainda a pagar (pendentes, parcelas futuras, cartão em aberto). */
+    val despesaPagaGlobal: Double = 0.0,
+    val despesaPendenteGlobal: Double = 0.0,
     val dadosPorConta: Map<String, Pair<Double, Double>> = emptyMap()
 )
 
@@ -93,7 +96,11 @@ class ContaSaldoViewModel(
             val porConta = lista.groupBy { it.conta }.mapValues { (_, itens) ->
                 Financas.kpisPeriodo(itens, null, null).let { it.receitasRealizadas to it.despesasTotal }
             }
-            DashboardFinanceiroState(global.receitasRealizadas, global.despesasTotal, porConta)
+            DashboardFinanceiroState(
+                receitaGlobal = global.receitasRealizadas, despesaGlobal = global.despesasTotal,
+                despesaPagaGlobal = global.despesasPagas, despesaPendenteGlobal = global.despesasPendentes,
+                dadosPorConta = porConta
+            )
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, DashboardFinanceiroState())
 
@@ -200,10 +207,16 @@ class ContaSaldoViewModel(
         }
     }
 
-    fun removerDespesa(item: DespesasDomain) {
+    fun removerDespesa(item: DespesasDomain) = excluirLancamento(item.id.toLong(), false)
+
+    /** R11/R31 — exclui o lançamento; com [grupoParcelas], todas as parcelas do parcelamento. */
+    fun excluirLancamento(id: Long, grupoParcelas: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.excluirLancamento(item.id.toLong())
+                val n = repository.excluirLancamento(id, grupoParcelas)
+                if (n > 0) _uiEvent.tryEmit(
+                    "Exclusão | " + (if (n > 1) "$n lançamentos excluídos" else "Lançamento excluído") + ". Ficam 30 dias na Lixeira. | Sucesso"
+                )
             } catch (e: Exception) {
                 avisarErro("Exclusão", e)
             }
@@ -215,9 +228,17 @@ class ContaSaldoViewModel(
             _uiEvent.tryEmit("Cartão | Compras do cartão são quitadas pelo pagamento da fatura (aba Cartões). | Erro")
             return
         }
+        alternarPago(item.id.toLong(), !item.pago)
+    }
+
+    /** R12 — marca como pago/pendente (só lançamentos de conta; compra de cartão é paga pela fatura). */
+    fun alternarPago(id: Long, pago: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.alternarPago(item.id.toLong(), !item.pago)
+                val d = repository.obterDespesaPorId(id) ?: throw RegraFinanceiraException("Lançamento não encontrado.")
+                if (d.cartaoId != null && d.cartaoId != 0) throw RegraFinanceiraException(com.meudinheiro.domain.LancamentoAcoes.MSG_CARTAO_FATURA)
+                repository.alternarPago(id, pago)
+                _uiEvent.tryEmit("Pagamento | " + (if (pago) "Marcado como pago." else "Marcado como pendente.") + " | Sucesso")
             } catch (e: Exception) {
                 avisarErro("Pagamento", e)
             }
@@ -225,10 +246,12 @@ class ContaSaldoViewModel(
     }
 
     /** R23 — duplica o lançamento para hoje (em aberto). */
-    fun duplicarDespesa(item: DespesasDomain) {
+    fun duplicarDespesa(item: DespesasDomain) = duplicarLancamento(item.id.toLong())
+
+    fun duplicarLancamento(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.duplicarLancamento(item.id.toLong())
+                repository.duplicarLancamento(id)
                 _uiEvent.tryEmit("Duplicar | Lançamento duplicado para hoje (em aberto). | Sucesso")
             } catch (e: Exception) {
                 avisarErro("Duplicar", e)
@@ -237,13 +260,51 @@ class ContaSaldoViewModel(
     }
 
     /** R23 — cria [n] repetições futuras (em aberto). */
-    fun repetirDespesa(item: DespesasDomain, n: Int, intervalo: Int, unidade: com.meudinheiro.domain.Analises.UnidadeRepeticao) {
+    fun repetirDespesa(item: DespesasDomain, n: Int, intervalo: Int, unidade: com.meudinheiro.domain.Analises.UnidadeRepeticao) =
+        repetirLancamento(item.id.toLong(), n, intervalo, unidade)
+
+    fun repetirLancamento(id: Long, n: Int, intervalo: Int, unidade: com.meudinheiro.domain.Analises.UnidadeRepeticao) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val criados = repository.repetirLancamento(item.id.toLong(), n, intervalo, unidade)
+                val criados = repository.repetirLancamento(id, n, intervalo, unidade)
                 _uiEvent.tryEmit("Repetir | $criados lançamentos criados em aberto. | Sucesso")
             } catch (e: Exception) {
                 avisarErro("Repetir", e)
+            }
+        }
+    }
+
+    /** R11/R42 — grava a edição completa de um lançamento (conta ou cartão). */
+    fun editarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.atualizarLancamento(despesa, modalidade)
+                _uiEvent.tryEmit("Edição | Lançamento atualizado. | Sucesso")
+            } catch (e: Exception) {
+                avisarErro("Edição", e)
+            }
+        }
+    }
+
+    suspend fun obterLancamento(id: Long): Despesa? = repository.obterDespesaPorId(id)
+
+    suspend fun antecipaveisDoGrupo(id: Long): List<Despesa> = repository.antecipaveisDoGrupo(id)
+
+    /** R40 — antecipa o pagamento dos lançamentos [ids] (ordem de consumo), com [desconto] opcional. */
+    fun anteciparPagamento(ids: List<Long>, valorPago: Double, desconto: Double, data: Long?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val r = repository.anteciparPagamento(ids, valorPago, desconto, data)
+                val pago = com.meudinheiro.funcoes.formatarMoedaBR(valorPago, false)
+                _uiEvent.tryEmit(
+                    "Antecipação | " + when {
+                        r.economia > 0 -> "Pago $pago e abatido ${com.meudinheiro.funcoes.formatarMoedaBR(r.economia, false)} de desconto."
+                        r.restante > 0 -> "Pago $pago adiantado. Restam ${com.meudinheiro.funcoes.formatarMoedaBR(r.restante, false)} em aberto."
+                        else -> "Pago $pago adiantado."
+                    } + " | Sucesso"
+                )
+            } catch (e: Exception) {
+                avisarErro("Antecipação", e)
             }
         }
     }

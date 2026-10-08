@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.DespesasViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,8 +50,12 @@ fun ExtratoScreen(
     despesasVM: DespesasViewModel,
     categorias: List<String>,
     isPrivate: Boolean,
-    onBack: () -> Unit // Este parâmetro será usado no botão
+    onBack: () -> Unit, // Este parâmetro será usado no botão
+    /** Com o ViewModel de contas, cada item ganha o menu de ações (editar, excluir, duplicar, repetir, antecipar…). */
+    contaViewModel: ContaSaldoViewModel? = null,
+    getPicCategoria: (String) -> String = { "" }
 ) {
+    var alvo by remember { mutableStateOf<AlvoLancamento?>(null) }
     val despesas by despesasVM.despesasFiltradas.collectAsState()
     val mesAtual by despesasVM.mesSelecionado.collectAsState()
     val anoAtual by despesasVM.anoSelecionado.collectAsState()
@@ -170,13 +175,22 @@ fun ExtratoScreen(
                         DespesasItem(
                             item = item,
                             isPrivate = isPrivate,
-                            onRemover = { /* Ação de remover */ },
-                            onTogglePago = { /* Ação de pagar */ }
+                            onRemover = { contaViewModel?.removerDespesa(it) },
+                            onTogglePago = contaViewModel?.let { vm -> { d -> vm.alternarStatusDespesa(d) } },
+                            onAcoes = contaViewModel?.let { { d -> alvo = AlvoLancamento(d.id.toLong()) } },
+                            onPedirExclusao = contaViewModel?.let { { d -> alvo = AlvoLancamento(d.id.toLong(), excluirDireto = true) } }
                         )
                     }
                 }
             }
         }
+    }
+
+    if (contaViewModel != null) {
+        LancamentoAcoesHost(
+            alvo = alvo, onFechar = { alvo = null }, viewModel = contaViewModel,
+            categorias = categorias, getPicCategoria = getPicCategoria
+        )
     }
 }
 
