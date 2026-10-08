@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,7 +57,7 @@ import com.meudinheiro.ui.theme.NeonGreen
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS }
+private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA }
 
 private val TextoClaro = Color(0xFFE0E1DD)
 private val CardFundo = Color(0xFF1B263B)
@@ -73,6 +74,7 @@ fun FerramentasScreen(repository: MainRepository, userPrefs: UserPreferences, is
         Tela.PLANEJAMENTO -> PlanejamentoScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.LIXEIRA -> LixeiraScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.BACKUPS -> BackupsAutomaticosScreen(repository, userPrefs) { tela = Tela.HUB }
+        Tela.CONFERENCIA -> ConferenciaSaldosScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.HUB -> Hub(repository, isPrivate, onBack) { tela = it }
     }
 }
@@ -122,6 +124,7 @@ private fun Hub(repository: MainRepository, isPrivate: Boolean, onBack: () -> Un
                 item { Atalho(Icons.Default.Assessment, "Relatórios", "Filtre por período, cartão, categoria… e exporte PDF, PNG ou CSV") { abrir(Tela.RELATORIOS) } }
                 item { Atalho(Icons.Default.Insights, "Planejamento", "Reserva de emergência, 50/30/20, assinaturas, metas com prazo e simulador") { abrir(Tela.PLANEJAMENTO) } }
                 item { Atalho(Icons.Default.DeleteSweep, "Lixeira", if (lixeira.isEmpty()) "Lançamentos excluídos ficam 30 dias" else "${lixeira.size} item(ns) que podem ser restaurados") { abrir(Tela.LIXEIRA) } }
+                item { Atalho(Icons.Default.FactCheck, "Conferência de saldos", "Compare saldos e limites gravados com o extrato e recalcule se houver diferença") { abrir(Tela.CONFERENCIA) } }
                 item { Atalho(Icons.Default.Backup, "Backups automáticos", "Cópia semanal no aparelho, com restauração") { abrir(Tela.BACKUPS) } }
             } else if (busca.vazio) {
                 item { Text("Nada encontrado para \"$termo\".", color = Color.White.copy(0.7f), modifier = Modifier.padding(top = 16.dp)) }

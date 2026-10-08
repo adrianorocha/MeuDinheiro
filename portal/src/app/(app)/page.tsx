@@ -30,11 +30,12 @@ const ROTULO_SAUDE: Record<StatusSaude, { texto: string; tom: "pos" | "warn" | "
   PERIGO: { texto: "Perigo", tom: "neg" },
 };
 
-function Kpi({ rotulo, children, destaque }: { rotulo: string; children: React.ReactNode; destaque?: boolean }) {
+function Kpi({ rotulo, children, destaque, legenda }: { rotulo: string; children: React.ReactNode; destaque?: boolean; legenda?: React.ReactNode }) {
   return (
     <Card className={destaque ? "border-primary/40 bg-primary-soft" : ""}>
       <p className="text-xs font-medium text-muted">{rotulo}</p>
       <p className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">{children}</p>
+      {legenda && <p className="mt-1 text-xs text-muted">{legenda}</p>}
     </Card>
   );
 }
@@ -142,7 +143,14 @@ export default function DashboardPage() {
         <Kpi rotulo="Receitas">
           <Money valor={kpis.receitasRealizadas} />
         </Kpi>
-        <Kpi rotulo="Despesas">
+        <Kpi
+          rotulo="Despesas"
+          legenda={
+            <>
+              pagas <Money valor={kpis.despesasPagas} /> · a pagar <Money valor={kpis.despesasPendentes} />
+            </>
+          }
+        >
           <Money valor={kpis.despesasTotal} />
         </Kpi>
         <Kpi rotulo="Resultado">
@@ -157,6 +165,12 @@ export default function DashboardPage() {
           No período: <Money valor={kpis.receitasPrevistas} /> de receitas previstas e <Money valor={kpis.despesasPendentes} /> de despesas pendentes.
         </p>
       )}
+      <p className="mt-1 text-xs text-muted">
+        Receitas só contam o que já foi recebido e Despesas incluem o pendente, então Receitas − Despesas não é o saldo.{" "}
+        <Link href="/conferencia/" className="font-medium text-primary hover:underline">
+          Conferir saldos
+        </Link>
+      </p>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card aria-labelledby="t-previsao">

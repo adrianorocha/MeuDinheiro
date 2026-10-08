@@ -34,7 +34,7 @@ class TransacaoViewModel(despesaDao: DespesaDao, contaDao: ContaSaldoDao) : View
         Financas.ultimasDaConta(despesas, conta, System.currentTimeMillis())
             .map { d ->
                 TransacaoModel(
-                    id = d.id.toInt(),
+                    id = d.id,
                     descricao = d.descricao,
                     valor = if (d.tipo == TipoDespesa.CREDITO) d.valor else -d.valor,
                     bancoNome = bancoPorConta[d.conta].orEmpty(),

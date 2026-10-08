@@ -164,6 +164,8 @@ object Notificacoes {
                 Intent(app, PagarBoletoReceiver::class.java).apply {
                     action = "PAGAR_BOLETO"
                     putExtra("ID_BOLETO", aviso.despesaId.toInt())
+                    putExtra("ID_DESPESA", aviso.despesaId)
+                    putExtra("ID_NOTIF", aviso.id)
                 },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )

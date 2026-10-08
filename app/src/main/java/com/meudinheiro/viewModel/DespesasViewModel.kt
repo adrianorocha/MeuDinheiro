@@ -120,10 +120,10 @@ class DespesasViewModel(private val repository: MainRepository) : ViewModel() {
         }
     }
 
-    fun removerDespesaComRestituicao(id: Int) {
+    fun removerDespesaComRestituicao(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             // O Flow de despesas reemite sozinho; saldo/limite são recalculados na mesma transação.
-            runCatching { repository.excluirLancamento(id.toLong()) }
+            runCatching { repository.excluirLancamento(id) }
         }
     }
 

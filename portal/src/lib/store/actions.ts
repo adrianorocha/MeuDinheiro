@@ -45,6 +45,7 @@ import {
   type NovoCartao,
   type NovoLancamento,
 } from "../finance/operations";
+import { auditarSaldos, recalcularSaldos } from "../finance/conferencia";
 import { round2 } from "../finance/money";
 import type { Categoria, DespesaFixa, Investimento, Meta } from "../finance/types";
 import { aplicarConciliacao, desfazerConciliacao, desfazerLote, type Plano, type PlanoInverso } from "../conciliacao/plano";
@@ -171,6 +172,14 @@ export const acoes = {
   excluirDespesaFixa: (id: number) =>
     exec()((ds) => ({ ok: true as const, ds: { ...ds, despesasFixas: removerItem(ds.despesasFixas, id) } })),
   processarFixas: () => exec()((ds, ctx) => processarDespesasFixas(ds, ctx)),
+
+  // conferência de saldos (R45)
+  conferirSaldos: () => auditarSaldos(useStore.getState().ds, Date.now()),
+  recalcularSaldos: () =>
+    exec()((ds) => {
+      const r = recalcularSaldos(ds);
+      return { ok: true as const, ds: r.ds, correcoes: r.correcoes };
+    }),
 
   // categorias
   salvarCategoria: (dados: { nome: string; pic: string }, id?: number) =>

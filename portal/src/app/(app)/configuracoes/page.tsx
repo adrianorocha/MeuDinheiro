@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, FlaskConical, LogOut, Trash2, Upload } from "lucide-react";
+import { Download, FlaskConical, LogOut, Scale, Trash2, Upload } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Compartilhar } from "@/components/config/Compartilhar";
@@ -165,6 +166,17 @@ export default function ConfiguracoesPage() {
             <Button icone={<FlaskConical size={16} aria-hidden />} disabled={modo !== "local"} onClick={() => (temDados ? setDemo(true) : carregarDemo())}>
               Carregar dados de exemplo
             </Button>
+          </div>
+        </Card>
+
+        <Card aria-labelledby="t-conf">
+          <CardTitulo id="t-conf">Conferência de saldos</CardTitulo>
+          <p className="text-sm text-muted">Compare os saldos e limites gravados com o extrato, veja a composição de cada saldo e recalcule se algo destoar.</p>
+          <div className="mt-3">
+            <Link href="/conferencia/" className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium hover:bg-surface-2">
+              <Scale size={16} aria-hidden />
+              Abrir conferência
+            </Link>
           </div>
         </Card>
 

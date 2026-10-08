@@ -78,6 +78,10 @@ fun HeaderSection(
     onToolsClick: (() -> Unit)? = null,
     receitaTotal: Double = 0.0,
     despesaTotal: Double = 0.0,
+    /** Partes de [despesaTotal]: já pago × a pagar (pendentes, parcelas futuras, cartão em aberto). Nulos = sem legenda. */
+    despesaPaga: Double? = null,
+    despesaAPagar: Double? = null,
+    onConferirSaldos: (() -> Unit)? = null,
     isPrivateMode: Boolean = false,
     onTogglePrivate: () -> Unit = {}
 ) {
@@ -196,7 +200,9 @@ fun HeaderSection(
 
             // --- Resumo Global ---
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (onConferirSaldos != null) Modifier.clickable(onClick = onConferirSaldos) else Modifier),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 MiniSummaryItem(
@@ -218,7 +224,10 @@ fun HeaderSection(
                     valorTexto = formatarMoedaBR(despesaTotal, isPrivateMode),
                     color = Color(0xFFEF5350),
                     iconUp = false,
-                    isAlert = orcamentoNegativo && !isPrivateMode
+                    isAlert = orcamentoNegativo && !isPrivateMode,
+                    legenda = if (despesaPaga != null && despesaAPagar != null)
+                        "pagas ${formatarMoedaBR(despesaPaga, isPrivateMode)} · a pagar ${formatarMoedaBR(despesaAPagar, isPrivateMode)}"
+                    else null
                 )
             }
         }
@@ -231,7 +240,8 @@ private fun MiniSummaryItem(
     valorTexto: String, // Recebe a String formatada
     color: Color,
     iconUp: Boolean,
-    isAlert: Boolean = false
+    isAlert: Boolean = false,
+    legenda: String? = null
 ) {
     val finalColor = if (isAlert) Color(0xFFFF5252) else color
     val backgroundColor =
@@ -265,6 +275,15 @@ private fun MiniSummaryItem(
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                 color = if (isAlert) finalColor else TextWhite
             )
+            if (legenda != null) {
+                Text(
+                    text = legenda,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    color = TextWhite.copy(alpha = 0.55f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
