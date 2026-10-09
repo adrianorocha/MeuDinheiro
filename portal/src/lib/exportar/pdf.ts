@@ -1,4 +1,5 @@
-import type { Documento } from "../finance/relatorios";
+import { fromCents } from "../finance/money";
+import { COLUNAS_DETALHE, type Documento } from "../finance/relatorios";
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -6,6 +7,8 @@ export function formatarCelula(v: string | number, coluna: number, doc: Document
   if (typeof v === "number") return doc.colunasMoeda.includes(coluna) ? brl.format(v) : String(v).replace(".", ",");
   return v;
 }
+
+type CelulaPdf = string | { content: string; colSpan?: number; styles?: Record<string, unknown> };
 
 /** PDF A4 multipágina: cabeçalho com filtros, totais, gráfico de barras e tabela. Roda 100% no navegador. */
 export async function gerarPdf(doc: Documento, geradoEm: Date = new Date()): Promise<Blob> {
@@ -93,27 +96,90 @@ export async function gerarPdf(doc: Documento, geradoEm: Date = new Date()): Pro
     y += 4;
   }
 
-  autoTable(pdf, {
-    startY: y,
-    head: [doc.colunas],
-    body: doc.linhas.map((l) => l.map((v, i) => formatarCelula(v, i, doc))),
-    styles: { fontSize: 8, cellPadding: 1.6 },
-    headStyles: { fillColor: [15, 118, 110], textColor: 255 },
-    alternateRowStyles: { fillColor: [244, 248, 248] },
-    columnStyles: Object.fromEntries(doc.colunasMoeda.map((i) => [i, { halign: "right" as const }])),
-    margin: { left: margem, right: margem, bottom: 16 },
-    didDrawPage: () => {
-      pdf.setFontSize(8);
-      pdf.setTextColor(120, 130, 135);
-      pdf.text(doc.titulo, margem, pdf.internal.pageSize.getHeight() - 8);
-    },
-  });
+  const rodape = () => {
+    pdf.setFontSize(8);
+    pdf.setTextColor(120, 130, 135);
+    pdf.text(doc.titulo, margem, pdf.internal.pageSize.getHeight() - 8);
+  };
+
+  if (doc.detalhamento && doc.detalhamento.secoes.length > 0) {
+    // R48: itens que compõem cada total, com subtotais em centavos (cabeçalho repetido a cada página).
+    const det = doc.detalhamento;
+    const fmt = (c: number) => brl.format(fromCents(c));
+    if (y + 40 > pdf.internal.pageSize.getHeight() - 20) {
+      pdf.addPage();
+      y = 18;
+    }
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.setTextColor(30, 40, 40);
+    pdf.text("Detalhamento dos lançamentos", margem, y);
+    y += 3;
+    for (const sec of det.secoes) {
+      const corpo: CelulaPdf[][] = [];
+      if (sec.titulo) {
+        corpo.push([{ content: sec.titulo.toUpperCase(), colSpan: 6, styles: { fontStyle: "bold", fillColor: [220, 236, 234], textColor: [15, 80, 74] } }]);
+      }
+      for (const g of sec.grupos) {
+        corpo.push([{ content: `${g.titulo} (${g.linhas.length})`, colSpan: 6, styles: { fontStyle: "bold", fillColor: [238, 245, 245] } }]);
+        for (const l of g.linhas) {
+          corpo.push([new Date(l.data).toLocaleDateString("pt-BR"), l.descricao, l.parcela, l.origem, l.situacao, fmt(l.centavos)]);
+        }
+        corpo.push([
+          { content: `Subtotal · ${g.titulo}`, colSpan: 5, styles: { fontStyle: "bold", halign: "right" } },
+          { content: fmt(g.subtotal), styles: { fontStyle: "bold", halign: "right" } },
+        ]);
+      }
+      if (sec.titulo) {
+        corpo.push([
+          { content: `Total de ${sec.titulo.toLowerCase()}`, colSpan: 5, styles: { fontStyle: "bold", halign: "right", fillColor: [220, 236, 234] } },
+          { content: fmt(sec.total), styles: { fontStyle: "bold", halign: "right", fillColor: [220, 236, 234] } },
+        ]);
+      }
+      autoTable(pdf, {
+        startY: y + 2,
+        head: [[...COLUNAS_DETALHE]],
+        body: corpo,
+        showHead: "everyPage",
+        rowPageBreak: "avoid",
+        styles: { fontSize: 8, cellPadding: 1.6, overflow: "linebreak" },
+        headStyles: { fillColor: [15, 118, 110], textColor: 255 },
+        columnStyles: { 0: { cellWidth: 20 }, 2: { cellWidth: 14, halign: "center" }, 3: { cellWidth: 34 }, 4: { cellWidth: 18 }, 5: { halign: "right", cellWidth: 26 } },
+        margin: { left: margem, right: margem, bottom: 16 },
+        didDrawPage: rodape,
+      });
+      y = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+    }
+    if (y + 12 > pdf.internal.pageSize.getHeight() - 20) {
+      pdf.addPage();
+      rodape();
+      y = 18;
+    }
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10);
+    pdf.setTextColor(15, 31, 31);
+    pdf.text(det.secoes.length > 1 ? "Resultado (receitas - despesas)" : "Total", margem, y + 5);
+    pdf.text(fmt(det.total), largura - margem, y + 5, { align: "right" });
+  } else {
+    autoTable(pdf, {
+      startY: y,
+      head: [doc.colunas],
+      body: doc.linhas.map((l) => l.map((v, i) => formatarCelula(v, i, doc))),
+      styles: { fontSize: 8, cellPadding: 1.6 },
+      headStyles: { fillColor: [15, 118, 110], textColor: 255 },
+      alternateRowStyles: { fillColor: [244, 248, 248] },
+      columnStyles: Object.fromEntries(doc.colunasMoeda.map((i) => [i, { halign: "right" as const }])),
+      margin: { left: margem, right: margem, bottom: 16 },
+      didDrawPage: rodape,
+    });
+  }
 
   const total = pdf.getNumberOfPages();
   for (let i = 1; i <= total; i++) {
     pdf.setPage(i);
     pdf.setFontSize(8);
     pdf.setTextColor(120, 130, 135);
+    pdf.text(`Emitido em ${geradoEm.toLocaleString("pt-BR")}`, largura / 2, pdf.internal.pageSize.getHeight() - 8, { align: "center" });
     pdf.text(`Página ${i} de ${total}`, largura - margem, pdf.internal.pageSize.getHeight() - 8, { align: "right" });
   }
   return pdf.output("blob");

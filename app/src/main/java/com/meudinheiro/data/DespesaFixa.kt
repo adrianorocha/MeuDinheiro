@@ -16,5 +16,9 @@ data class DespesaFixa(
     val diaVencimento: Int, // Dia do mês (1 a 31) que deve ser lançada
     val ultimaDataLancamento: Date? = null, // Para saber se já lançamos neste mês
     /** Origem do pagamento: preenchido = cada ocorrência é uma compra neste cartão (físico ou virtual); nulo = débito na [conta]. */
-    val cartaoId: Int? = null
+    val cartaoId: Int? = null,
+    /** R47 — recorrência pausada (dados antigos = não pausada). */
+    val pausada: Boolean = false,
+    /** R47 — retomada automática quando `agora >= pausadaAte`; nulo = só retoma manualmente. */
+    val pausadaAte: Date? = null
 )

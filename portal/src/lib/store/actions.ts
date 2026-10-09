@@ -32,6 +32,8 @@ import {
   pagarItensFatura,
   marcarItensFaturaComoPagos,
   type PagamentoItensFatura,
+  pausarRecorrencia,
+  retomarRecorrencia,
   processarDespesasFixas,
   removerItem,
   transferir,
@@ -173,6 +175,9 @@ export const acoes = {
     exec()((ds) => editarDespesaFixa(ds, id, patch)),
   excluirDespesaFixa: (id: number) =>
     exec()((ds) => ({ ok: true as const, ds: { ...ds, despesasFixas: removerItem(ds.despesasFixas, id) } })),
+  // R47 - pausar/retomar recorrência
+  pausarRecorrencia: (id: number, ate?: number | null) => exec()((ds, ctx) => pausarRecorrencia(ds, id, ate, ctx)),
+  retomarRecorrencia: (id: number) => exec()((ds, ctx) => retomarRecorrencia(ds, id, ctx)),
   processarFixas: () => exec()((ds, ctx) => processarDespesasFixas(ds, ctx)),
 
   // conferência de saldos (R45)

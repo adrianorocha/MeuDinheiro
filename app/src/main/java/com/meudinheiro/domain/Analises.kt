@@ -219,7 +219,7 @@ object Analises {
         Texto.normalizar(descricao.replace(SUFIXO_PARCELA, " ")).replace(Regex("[^a-z ]"), " ").replace(Regex("\\s+"), " ").trim()
 
     fun assinaturas(hoje: Long, despesas: List<Despesa>, fixas: List<DespesaFixa>): List<Assinatura> {
-        val doFixas = fixas.filter { it.tipo == TipoDespesa.DEBITO }.map {
+        val doFixas = fixas.filter { it.tipo == TipoDespesa.DEBITO && !Financas.recorrenciaPausada(it, hoje) }.map { // R47: pausadas ficam fora
             Assinatura(it.descricao, Dinheiro.arredondar(it.valor), it.ultimaDataLancamento?.time, it.categoria, OrigemAssinatura.FIXA)
         }
         val chavesFixas = fixas.map { chaveAssinatura(it.descricao) }.toSet()

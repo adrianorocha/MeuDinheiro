@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -608,6 +609,15 @@ fun AddDespesaDialog(
 
     var observacao by remember { mutableStateOf(if (codigoBarras.isNotEmpty()) "Boleto: $codigoBarras" else "") }
 
+    // R49: escanear cupom fiscal / boleto / PIX preenche valor (e descrição/data) para o usuário revisar.
+    var mostrarScannerCupom by remember { mutableStateOf(false) }
+    val permissaoCameraCupom = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { concedida ->
+        if (concedida) mostrarScannerCupom = true
+        else Toast.makeText(currentContext, "Permissão de câmera negada", Toast.LENGTH_SHORT).show()
+    }
+
     val cartoesFiltrados = remember(contaAtual, cartoesDisponiveis) {
         cartoesDisponiveis.filter { cartao ->
             cartao.numeroConta.trim().equals(contaAtual, ignoreCase = true)
@@ -661,6 +671,28 @@ fun AddDespesaDialog(
             cartaoSelecionadoId = cartoesFiltrados.firstOrNull()?.id
         }
     }
+    if (mostrarScannerCupom) {
+        Dialog(
+            onDismissRequest = { mostrarScannerCupom = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                ScannerCupomScreen(
+                    onResult = { c ->
+                        valorTexto = c.valorCentavos.toString()
+                        moedaSelecionada = "BRL"
+                        cotacaoTexto = "1.00"
+                        if (descricao.isBlank() && !c.descricao.isNullOrBlank()) descricao = c.descricao
+                        c.dataMs?.let { dataMillis.value = it }
+                        erros = erros - "valor" - "desc"
+                        mostrarScannerCupom = false
+                    },
+                    onClose = { mostrarScannerCupom = false }
+                )
+            }
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -737,6 +769,23 @@ fun AddDespesaDialog(
                                         )
                                     }
                                 }
+                            }
+
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    val ok = androidx.core.content.ContextCompat.checkSelfPermission(
+                                        currentContext, android.Manifest.permission.CAMERA
+                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (ok) mostrarScannerCupom = true
+                                    else permissaoCameraCupom.launch(android.Manifest.permission.CAMERA)
+                                },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Icon(
+                                    Icons.Default.QrCodeScanner,
+                                    contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp)
+                                )
+                                Text("  Escanear cupom", color = NeonCyan, fontSize = 13.sp)
                             }
 
                             ValueSection(

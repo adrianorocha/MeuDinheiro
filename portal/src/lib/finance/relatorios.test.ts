@@ -8,7 +8,9 @@ import {
   filtroPadrao,
   gerarRelatorio,
   MODELOS,
+  parcelaDaDescricao,
   periodoRapido,
+  resumirParaImagem,
 } from "./relatorios";
 
 const ds = dataset({
@@ -112,5 +114,90 @@ describe("R20 modelos e exportação", () => {
     expect(p.linhas[0][0]).toBe("A");
     expect(p.totais.find((t) => t.rotulo === "Variação")?.valor).toContain("10,00");
     expect(documentoPatrimonio({ patrimonio: [] }).grafico).toBeNull();
+  });
+});
+
+describe("R48 detalhamento: subtotais fecham com o total", () => {
+  const dsD = dataset({
+    contas: [conta()],
+    cartoes: [cartao({ id: 10 })],
+    despesas: [
+      desp({ id: 1, descricao: "Mercado (1/3)", categoria: "Alimentação", valor: 0.1, data: dt(2025, 9, 3) }),
+      desp({ id: 2, descricao: "Mercado (2/3)", categoria: "Alimentação", valor: 0.2, data: dt(2025, 9, 4) }),
+      desp({ id: 3, descricao: "Padaria", categoria: "Alimentação", valor: 33.33, data: dt(2025, 9, 2) }),
+      desp({ id: 4, descricao: "Gasolina", categoria: "Transporte", valor: 150.07, cartaoId: 10, pago: false, data: dt(2025, 9, 9) }),
+      desp({ id: 5, descricao: "Estorno", categoria: "Transporte", valor: 20.01, tipo: "CREDITO", cartaoId: 10, data: dt(2025, 9, 10) }),
+      desp({ id: 6, descricao: "Salário", categoria: "Salário", valor: 5000, tipo: "CREDITO", data: dt(2025, 9, 1) }),
+      desp({ id: 7, descricao: "Ajuste", categoria: "Ajuste", valor: 99, natureza: "AJUSTE", data: dt(2025, 9, 6) }),
+      desp({ id: 8, descricao: "Sem cat", categoria: "  ", valor: 7.77, data: dt(2025, 9, 7) }),
+    ],
+  });
+
+  it("para todos os tipos e agrupamentos o total do detalhamento = total do relatório", () => {
+    for (const tipo of ["DESPESA", "RECEITA", "TODOS"] as const) {
+      for (const agr of ["categoria", "mes", "conta"] as const) {
+        const f = { ...filtroPadrao(SET.inicio, SET.fim), tipo };
+        const r = gerarRelatorio(dsD, f);
+        const doc = documentoDeResultado("T", f, r, dsD, { agruparPor: agr });
+        const det = doc.detalhamento!;
+        expect(det.total).toBe(Math.round(r.total * 100));
+        expect(det.quantidade).toBe(r.quantidade);
+        for (const s of det.secoes) {
+          expect(s.total).toBe(s.grupos.reduce((a, g) => a + g.subtotal, 0));
+          for (const g of s.grupos) expect(g.subtotal).toBe(g.linhas.reduce((a, l) => a + l.centavos, 0));
+        }
+      }
+    }
+  });
+
+  it("AJUSTE continua fora; estorno de cartão abate; parcela, ordem por data e sem categoria", () => {
+    const f = filtroPadrao(SET.inicio, SET.fim);
+    const det = documentoDeResultado("T", f, gerarRelatorio(dsD, f), dsD).detalhamento!;
+    const linhas = det.secoes[0].grupos.flatMap((g) => g.linhas);
+    expect(linhas.some((l) => l.id === 7)).toBe(false);
+    expect(det.secoes).toHaveLength(1);
+    expect(det.secoes[0].titulo).toBeNull();
+    expect(det.secoes[0].grupos.find((g) => g.titulo === "Transporte")?.subtotal).toBe(15007 - 2001);
+    expect(det.secoes[0].grupos.some((g) => g.titulo === "Sem categoria")).toBe(true);
+    const alim = det.secoes[0].grupos.find((g) => g.titulo === "Alimentação")!;
+    expect(alim.linhas.map((l) => l.id)).toEqual([3, 1, 2]);
+    expect(alim.linhas.map((l) => l.parcela)).toEqual(["", "1/3", "2/3"]);
+    expect(alim.linhas[1].descricao).toBe("Mercado");
+  });
+
+  it("tipo TODOS separa receitas e despesas; detalhar=false não gera detalhamento; CSV igual", () => {
+    const f = { ...filtroPadrao(SET.inicio, SET.fim), tipo: "TODOS" as const };
+    const r = gerarRelatorio(dsD, f);
+    expect(documentoDeResultado("T", f, r, dsD).detalhamento!.secoes.map((s) => s.titulo)).toEqual(["Receitas", "Despesas"]);
+    expect(documentoDeResultado("T", f, r, dsD, { detalhar: false }).detalhamento).toBeNull();
+    expect(csvDeDocumento(documentoDeResultado("T", f, r, dsD))).toBe(csvDeDocumento(documentoDeResultado("T", f, r, dsD, { detalhar: false })));
+  });
+
+  it("fatura: itens da fatura fecham com o total da fatura", () => {
+    const d = documentoFatura(ds, 11, 9, 2025)!;
+    expect(d.detalhamento!.quantidade).toBe(d.linhas.length);
+    const total = Number(d.totais[0].valor.replace(/[^\d,-]/g, "").replace(",", "."));
+    expect(d.detalhamento!.total).toBe(Math.round(total * 100));
+    expect(documentoFatura(ds, 11, 9, 2025, { detalhar: false })!.detalhamento).toBeNull();
+  });
+
+  it("resumo para imagem limita itens e conta os restantes", () => {
+    const muitos = Array.from({ length: 12 }, (_, i) => desp({ id: 100 + i, descricao: `Item ${i + 1}`, categoria: "Lazer", valor: i + 1, data: dt(2025, 9, i + 1) }));
+    const f = filtroPadrao(SET.inicio, SET.fim);
+    const base = dataset({ contas: [conta()], despesas: muitos });
+    const r = gerarRelatorio(base, f);
+    const sec = documentoDeResultado("T", f, r, base).detalhamento!.secoes[0];
+    const res = resumirParaImagem(sec, 5);
+    expect(res.gruposOmitidos).toBe(0);
+    expect(res.grupos[0].linhas).toHaveLength(5);
+    expect(res.grupos[0].restantes).toBe(7);
+    expect(res.grupos[0].subtotal).toBe(Math.round(r.total * 100));
+    expect(res.grupos[0].linhas.map((l) => l.id).sort()).toEqual([107, 108, 109, 110, 111]);
+  });
+
+  it("parcelaDaDescricao", () => {
+    expect(parcelaDaDescricao("Sofá (3/10)")).toEqual({ base: "Sofá", i: 3, n: 10 });
+    expect(parcelaDaDescricao("Compra 3/10")).toBeNull();
+    expect(parcelaDaDescricao("X (1/1)")).toBeNull();
   });
 });

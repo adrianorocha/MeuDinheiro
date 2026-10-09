@@ -62,6 +62,10 @@ export interface DespesaFixa {
   ultimaDataLancamento: number | null;
   /** Cartão (físico ou virtual) usado como forma de pagamento; null = conta (R16). */
   cartaoId: number | null;
+  /** R47 - recorrência pausada (ausente em dados antigos = não pausada). */
+  pausada?: boolean;
+  /** R47 - epoch ms da retomada automática; null/ausente = até retomar manualmente. */
+  pausadaAte?: number | null;
 }
 
 export interface Categoria {

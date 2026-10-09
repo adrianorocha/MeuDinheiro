@@ -84,6 +84,7 @@ export default function RelatoriosPage() {
   const [mesRef, setMesRef] = useState(hoje);
   const [anoIR, setAnoIR] = useState(hoje.ano);
   const [exportando, setExportando] = useState<string | null>(null);
+  const [detalhar, setDetalhar] = useState(true);
 
   const catsDisponiveis = useMemo(() => {
     const m = new Map<string, string>();
@@ -103,7 +104,7 @@ export default function RelatoriosPage() {
     if (modelo === "patrimonio") return { doc: documentoPatrimonio(ds), resultado: null };
     if (modelo === "fatura") {
       const c = ds.cartoes.find((x) => x.id === cartaoFatura);
-      return { doc: c ? documentoFatura(ds, c.id, mesRef.mes, mesRef.ano) : null, resultado: null };
+      return { doc: c ? documentoFatura(ds, c.id, mesRef.mes, mesRef.ano, { detalhar }) : null, resultado: null };
     }
     let f: FiltroRelatorio;
     let titulo = "Relatório de lançamentos";
@@ -123,8 +124,8 @@ export default function RelatoriosPage() {
       f = { ...filtroPadrao(intervalo.inicio, intervalo.fim), contas, cartoes, categorias, tipo, pago: pago === "" ? null : pago === "pago", texto };
     }
     const r = gerarRelatorio(ds, f);
-    return { doc: documentoDeResultado(titulo, f, r, ds), resultado: r };
-  }, [ds, modelo, cartaoFatura, mesRef, contaExtrato, intervalo, anoIR, categorias, contas, cartoes, tipo, pago, texto]);
+    return { doc: documentoDeResultado(titulo, f, r, ds, { detalhar, agruparPor: modelo === "extrato" ? "mes" : "categoria" }), resultado: r };
+  }, [ds, detalhar, modelo, cartaoFatura, mesRef, contaExtrato, intervalo, anoIR, categorias, contas, cartoes, tipo, pago, texto]);
 
   async function exportar(formato: "pdf" | "png" | "csv") {
     if (!doc) return;
@@ -142,6 +143,7 @@ export default function RelatoriosPage() {
   }
 
   const usaFiltros = modelo === "personalizado" || modelo === "categoria";
+  const temDetalhamento = modelo !== "patrimonio";
   const usaPeriodo = usaFiltros || modelo === "extrato";
   const fmtCelula = (v: string | number, i: number) => (typeof v === "number" && privado ? MASCARA : doc ? formatarCelula(v, i, doc) : String(v));
 
@@ -231,6 +233,16 @@ export default function RelatoriosPage() {
             </>
           )}
         </div>
+
+        {temDetalhamento && (
+          <label className="mt-4 flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 accent-primary" checked={detalhar} onChange={(e) => setDetalhar(e.target.checked)} />
+            <span>
+              Incluir detalhamento dos lançamentos
+              <span className="block text-xs text-muted">PDF lista todos os itens de cada grupo com subtotais; a imagem (PNG) mostra só os maiores. O CSV sempre leva todas as linhas.</span>
+            </span>
+          </label>
+        )}
 
         {usaFiltros && (
           <div className="mt-4 space-y-3">

@@ -116,7 +116,7 @@ object FirestoreMapper {
         "id" to f.id, "descricao" to f.descricao, "valor" to f.valor, "conta" to f.conta,
         "categoria" to f.categoria, "pic" to f.pic, "tipo" to f.tipo.name,
         "diaVencimento" to f.diaVencimento, "ultimaDataLancamento" to f.ultimaDataLancamento?.time,
-        "cartaoId" to f.cartaoId
+        "cartaoId" to f.cartaoId, "pausada" to f.pausada, "pausadaAte" to f.pausadaAte?.time
     )
 
     fun fixaFromDoc(d: Doc) = DespesaFixa(
@@ -125,7 +125,9 @@ object FirestoreMapper {
         tipo = runCatching { TipoDespesa.valueOf(d.str("tipo")) }.getOrDefault(TipoDespesa.DEBITO),
         diaVencimento = d.int("diaVencimento", 1).coerceIn(1, 31),
         ultimaDataLancamento = d.longOuNulo("ultimaDataLancamento")?.let { Date(it) },
-        cartaoId = d.intOuNulo("cartaoId")?.takeIf { it != 0 }
+        cartaoId = d.intOuNulo("cartaoId")?.takeIf { it != 0 },
+        pausada = d.bool("pausada"),
+        pausadaAte = d.longOuNulo("pausadaAte")?.let { Date(it) }
     )
 
     fun toDoc(c: Categoria): Doc = mapOf("id" to c.id, "nome" to c.nome, "pic" to c.pic)

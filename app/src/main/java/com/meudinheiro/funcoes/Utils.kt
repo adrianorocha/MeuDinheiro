@@ -154,19 +154,17 @@ fun compartilharComprovante(
     context: Context,
     despesa: Despesa,
     nomeCartao: String?,
-    nomeConta: String
-
+    nomeConta: String,
+    extras: ComprovanteExtras = ComprovanteExtras()
 ) {
-    // 1. Gera o Bitmap (Usando a função Ultra Premium que criamos)
-    val bitmap = gerarBitmapComprovanteUltraPremium(context, despesa, nomeCartao, nomeConta)
+    // 1. Gera o bitmap do comprovante (R48: layout limpo, altura dinâmica)
+    val bitmap = gerarBitmapComprovanteUltraPremium(context, despesa, nomeCartao, nomeConta, extras)
 
     // 2. Salva temporariamente na pasta de cache
     val imagesFolder = File(context.cacheDir, "images")
     imagesFolder.mkdirs()
     val file = File(imagesFolder, "comprovante_${despesa.id}.png")
-    val stream = FileOutputStream(file)
-    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-    stream.close()
+    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
 
     // 3. Pega a URI segura via FileProvider
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -177,227 +175,17 @@ fun compartilharComprovante(
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "Compartilhar Recibo Blu Macaw"))
+    context.startActivity(Intent.createChooser(intent, "Compartilhar comprovante"))
 }
 
+/** Nome mantido por compatibilidade; o desenho vive em [desenharComprovante] e o conteúdo em [montarComprovante]. */
 fun gerarBitmapComprovanteUltraPremium(
     ctx: Context,
     despesa: Despesa,
     cartaoNome: String?,
-    contaNome: String
-): Bitmap {
-    val width = 850 // Ligeiramente mais largo para elegância
-    val height = 1500 // Mais altura para os detalhes refinados
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(bitmap)
-
-    // Cores Ultra Premium (Sincronizadas com o App)
-    val colorBackground = android.graphics.Color.parseColor("#0D1B2A")
-    val colorCard = android.graphics.Color.parseColor("#1B263B")
-    val colorNeonCyan = android.graphics.Color.parseColor("#00E5FF")
-    val colorNeonGreen = android.graphics.Color.parseColor("#69F0AE")
-    val colorLabelText = android.graphics.Color.parseColor("#8E9BAE")
-    val colorValueText = android.graphics.Color.WHITE
-    val colorDivider = android.graphics.Color.parseColor("#3A4B66")
-
-    canvas.drawColor(colorBackground)
-
-    // 2. Fundo do "Cartão" com Efeito Holográfico Suave
-    val paintCard = android.graphics.Paint().apply {
-        color = colorCard
-        isAntiAlias = true
-        // Efeito de sombra suave para profundidade
-        setShadowLayer(30f, 0f, 15f, android.graphics.Color.parseColor("#99000000"))
-    }
-    val cardRect = android.graphics.RectF(40f, 40f, width - 40f, height - 40f)
-    canvas.drawRoundRect(cardRect, 32f, 32f, paintCard)
-
-    // --- PAINTS ---
-    val paintAmount = android.graphics.Paint().apply {
-        color = colorValueText
-        textSize = 90f // Valor enorme e imponente
-        typeface = android.graphics.Typeface.create(
-            android.graphics.Typeface.DEFAULT,
-            android.graphics.Typeface.BOLD
-        )
-        textAlign = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-        // Brilho suave no valor
-        setShadowLayer(15f, 0f, 0f, colorNeonCyan)
-    }
-
-    val paintLabel = android.graphics.Paint().apply {
-        color = colorLabelText
-        textSize = 28f
-        textAlign = android.graphics.Paint.Align.LEFT
-        isAntiAlias = true
-    }
-
-    val paintValue = android.graphics.Paint().apply {
-        color = colorValueText
-        textSize = 30f
-        typeface = android.graphics.Typeface.create(
-            android.graphics.Typeface.DEFAULT,
-            android.graphics.Typeface.BOLD
-        )
-        textAlign = android.graphics.Paint.Align.RIGHT
-        isAntiAlias = true
-    }
-
-    val paintBrand = android.graphics.Paint().apply {
-        color = colorNeonCyan
-        textSize = 20f
-        typeface = android.graphics.Typeface.create(
-            android.graphics.Typeface.DEFAULT,
-            android.graphics.Typeface.BOLD
-        )
-        textAlign = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-    }
-
-    val paintSubtitle = android.graphics.Paint().apply {
-        color = colorLabelText
-        textSize = 22f
-        textAlign = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-    }
-    // --- DESENHO DO CONTEÚDO ---
-
-    // 🏆 BRANDING NO TOPO (Logotipo e Nome)
-    val logoDrawable = androidx.core.content.ContextCompat.getDrawable(ctx, R.drawable.meu_dinheiro)
-    logoDrawable?.let {
-        val logoSize = 60
-        it.setBounds(
-            (width / 2) - (logoSize / 2),
-            100,
-            (width / 2) + (logoSize / 2),
-            100 + logoSize
-        )
-        // Opcional: Aplicar filtro de cor Neon Cyan no logotipo
-        androidx.core.graphics.drawable.DrawableCompat.setTint(it, colorNeonCyan)
-        it.draw(canvas)
-    }
-
-    val paintTitle = android.graphics.Paint(paintBrand)
-        .apply { textSize = 26f; color = android.graphics.Color.WHITE }
-    canvas.drawText("Blu Macaw Lab's", width / 2f, 190f, paintBrand)
-    canvas.drawText("Comprovante Detalhado", width / 2f, 230f, paintTitle)
-
-    // 💰 VALOR IMPONENTE
-    canvas.drawText(formatarMoedaBR(despesa.valor, false), width / 2f, 380f, paintAmount)
-
-    // ✅ STATUS TAG PREMIUM
-    val paintStatus = android.graphics.Paint(paintValue).apply {
-        color = colorNeonGreen
-        textSize = 24f
-        textAlign = android.graphics.Paint.Align.CENTER
-    }
-    canvas.drawText(
-        if (despesa.pago) "PAGAMENTO CONFIRMADO" else "AGUARDANDO PAGAMENTO",
-        width / 2f,
-        440f,
-        paintStatus
-    )
-
-    // LINHA DIVISORA ELEGANTE
-    val paintDivider = android.graphics.Paint().apply {
-        color = colorDivider
-        strokeWidth = 2f
-        isAntiAlias = true
-    }
-    canvas.drawLine(80f, 500f, width - 80f, 500f, paintDivider)
-
-    // --- DETALHES ---
-    var startY = 580f
-    val lineSpacing = 80f // Mais espaço para clareza
-    val leftX = 80f
-    val rightX = width - 80f
-
-    // Função auxiliar para desenhar linha com Ícone e Detalhe
-    fun drawDetailLine(
-        canvas: android.graphics.Canvas,
-        label: String,
-        value: String,
-        y: Float,
-        iconDrawable: android.graphics.drawable.Drawable?
-    ) {
-        // Desenha Ícone sutil
-        iconDrawable?.let {
-            val iSize = 35
-            it.setBounds(
-                leftX.toInt(),
-                (y - iSize + 5).toInt(),
-                (leftX + iSize).toInt(),
-                (y + 5).toInt()
-            )
-            androidx.core.graphics.drawable.DrawableCompat.setTint(it, colorLabelText)
-            it.draw(canvas)
-        }
-        canvas.drawText(label, leftX + 50f, y, paintLabel)
-        canvas.drawText(value, rightX, y, paintValue)
-    }
-
-    val dataFormatada =
-        SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.getDefault()).format(despesa.data)
-    drawDetailLine(canvas, "Data do Pagamento", dataFormatada, startY, null)
-
-    startY += lineSpacing
-    // Detalhe inteligente: Mostra Cartão se for crédito, ou Conta se for débito
-    if (cartaoNome != null) {
-        drawDetailLine(canvas, "Cartão de Crédito", cartaoNome, startY, null)
-    } else {
-        drawDetailLine(canvas, "Origem do Saldo", contaNome, startY, null)
-    }
-
-    startY += lineSpacing
-    val authId =
-        "MD-${despesa.id.toString().padStart(6, '0')}-${despesa.data.time.toString().takeLast(4)}"
-    drawDetailLine(canvas, "Autenticação MD", authId, startY, null)
-
-    // SEGUNDA DIVISORA
-    canvas.drawLine(80f, startY + 80f, width - 80f, startY + 80f, paintDivider)
-
-    // --- QR CODE ---
-    val textoQR = "{\"app\":\"BluMacaw\",\"id\":${despesa.id},\"valor\":${despesa.valor}}"
-    val qrSize = 340
-    val qrBitmap = gerarBitmapQRCode(textoQR, qrSize)
-
-    val qrLeft = (width - qrSize) / 2f
-    val qrTop = startY + 120f
-    val qrBgRect = android.graphics.RectF(
-        qrLeft - 10f,
-        qrTop - 10f,
-        qrLeft + qrSize + 10f,
-        qrTop + qrSize + 10f
-    )
-    val paintQrBg =
-        android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
-    canvas.drawRoundRect(qrBgRect, 16f, 16f, paintQrBg)
-
-    canvas.drawBitmap(qrBitmap, qrLeft, qrTop, null)
-
-    paintSubtitle.textSize = 20f
-    canvas.drawText(
-        "Escaneie para validar a autenticidade",
-        width / 2f,
-        qrTop + qrSize + 60f,
-        paintSubtitle
-    )
-
-    val paintBrand2 = android.graphics.Paint().apply {
-        color = android.graphics.Color.parseColor("#00E5FF")
-        textSize = 18f
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textAlign = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-    }
-
-    // BRANDING FINAL
-    canvas.drawText("Gerado por Meu Dinheiro", width / 2f, height - 80f, paintBrand2)
-
-    return bitmap
-
-}
+    contaNome: String,
+    extras: ComprovanteExtras = ComprovanteExtras()
+): Bitmap = desenharComprovante(ctx, montarComprovante(despesa, cartaoNome, contaNome, extras))
 
 fun gerarBitmapQRCode(
     conteudo: String,

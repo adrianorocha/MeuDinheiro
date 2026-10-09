@@ -1,14 +1,26 @@
-import type { Documento } from "../finance/relatorios";
+import { fromCents } from "../finance/money";
+import { resumirParaImagem, type Documento } from "../finance/relatorios";
 
 const PALETA = ["#0f766e", "#0e7490", "#6366f1", "#d97706", "#be185d", "#65a30d", "#7c3aed", "#64748b"];
 
 /** Imagem-resumo (título, filtros, totais e gráfico de categorias) desenhada em canvas, sem dependências. */
-export async function gerarPng(doc: Documento, geradoEm: Date = new Date()): Promise<Blob> {
+export async function gerarPng(doc: Documento, geradoEm: Date = new Date(), maxPorGrupo = 5): Promise<Blob> {
   const largura = 1200;
   const dados = doc.grafico?.dados.slice(0, 8) ?? [];
   const linhasFiltro = doc.filtros.length;
   const linhasTotais = Math.ceil(doc.totais.length / 3);
-  const altura = 150 + linhasFiltro * 26 + linhasTotais * 96 + (dados.length > 0 ? 70 + dados.length * 44 : 0) + 60;
+  // R48: detalhamento resumido (maiores itens por grupo); PDF e CSV levam tudo.
+  const secoes = (doc.detalhamento?.secoes ?? []).map((sec) => ({ sec, res: resumirParaImagem(sec, maxPorGrupo) }));
+  let alturaDet = 0;
+  if (secoes.length > 0) {
+    alturaDet += 80;
+    for (const { sec, res } of secoes) {
+      if (sec.titulo) alturaDet += 44;
+      for (const g of res.grupos) alturaDet += 50 + g.linhas.length * 38 + (g.restantes > 0 ? 34 : 0) + 12;
+      if (res.gruposOmitidos > 0) alturaDet += 40;
+    }
+  }
+  const altura = 150 + linhasFiltro * 26 + linhasTotais * 96 + (dados.length > 0 ? 70 + dados.length * 44 : 0) + alturaDet + 60;
 
   const escala = 2;
   const canvas = document.createElement("canvas");
@@ -81,6 +93,60 @@ export async function gerarPng(doc: Documento, geradoEm: Date = new Date()): Pro
       ctx.fillText(brl.format(d.valor), 48 + rotuloW + bw + 10, y + 25);
       y += 44;
     });
+  }
+
+  if (secoes.length > 0) {
+    const brl2 = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+    const fmt = (c: number) => brl2.format(fromCents(c));
+    y += 6;
+    ctx.fillStyle = "#0f1f1f";
+    ctx.font = fonte("700", 24);
+    ctx.fillText("Detalhamento", 48, y);
+    y += 40;
+    for (const { sec, res } of secoes) {
+      if (sec.titulo) {
+        ctx.fillStyle = "#0f766e";
+        ctx.font = fonte("700", 17);
+        ctx.fillText(sec.titulo.toUpperCase(), 48, y);
+        y += 44;
+      }
+      for (const g of res.grupos) {
+        ctx.fillStyle = "#0f1f1f";
+        ctx.font = fonte("600", 19);
+        ctx.fillText(g.titulo, 48, y, 640);
+        ctx.textAlign = "right";
+        ctx.fillText(fmt(g.subtotal), largura - 48, y);
+        ctx.textAlign = "left";
+        y += 10;
+        ctx.fillStyle = "#d5e0e0";
+        ctx.fillRect(48, y, largura - 96, 2);
+        y += 30;
+        for (const l of g.linhas) {
+          ctx.font = fonte("400", 16);
+          ctx.fillStyle = "#4d6265";
+          ctx.fillText(new Date(l.data).toLocaleDateString("pt-BR"), 48, y);
+          ctx.fillStyle = "#33474a";
+          ctx.fillText(l.parcela ? `${l.descricao} (${l.parcela})` : l.descricao, 170, y, 680);
+          ctx.textAlign = "right";
+          ctx.fillText(fmt(l.centavos), largura - 48, y);
+          ctx.textAlign = "left";
+          y += 38;
+        }
+        if (g.restantes > 0) {
+          ctx.font = fonte("400", 15);
+          ctx.fillStyle = "#4d6265";
+          ctx.fillText(`… e mais ${g.restantes} lançamento${g.restantes > 1 ? "s" : ""}`, 170, y);
+          y += 34;
+        }
+        y += 12;
+      }
+      if (res.gruposOmitidos > 0) {
+        ctx.font = fonte("400", 15);
+        ctx.fillStyle = "#4d6265";
+        ctx.fillText(`… e mais ${res.gruposOmitidos} grupo${res.gruposOmitidos > 1 ? "s" : ""} (veja o PDF ou o CSV)`, 48, y);
+        y += 40;
+      }
+    }
   }
 
   return new Promise<Blob>((resolve, reject) => {

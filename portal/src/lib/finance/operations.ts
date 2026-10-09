@@ -1101,6 +1101,45 @@ export function criarDespesaFixa(ds: Dataset, input: NovaDespesaFixa, ctx: Ctx):
 
 const MAX_MESES_CATCHUP = 12;
 
+/** R47 - pausada de fato = marcada como pausada e ainda dentro do prazo (se houver). */
+export function recorrenciaPausada(regra: Pick<DespesaFixa, "pausada" | "pausadaAte">, agora: number): boolean {
+  return !!regra.pausada && (regra.pausadaAte == null || agora < regra.pausadaAte);
+}
+
+/** R47 - data (ms) da última ocorrência da regra com data <= `agora`. */
+export function ultimaOcorrenciaAte(regra: Pick<DespesaFixa, "diaVencimento">, agora: number): number {
+  const { mes, ano } = mesAnoDe(agora);
+  const deste = new Date(ano, mes - 1, clampDia(regra.diaVencimento, mes, ano)).getTime();
+  if (deste <= agora) return deste;
+  const ant = normalizaMes(mes - 1, ano);
+  return new Date(ant.ano, ant.mes - 1, clampDia(regra.diaVencimento, ant.mes, ant.ano)).getTime();
+}
+
+/** R47 - retoma sem recuperar o período pausado: só ocorrências futuras voltam a ser lançadas. */
+function retomada(regra: DespesaFixa, agora: number): DespesaFixa {
+  const ult = ultimaOcorrenciaAte(regra, agora);
+  return { ...regra, ultimaDataLancamento: Math.max(regra.ultimaDataLancamento ?? 0, ult), pausada: false, pausadaAte: null };
+}
+
+/** R47 - pausa a recorrência (opcionalmente até `ate`, que deve ser futuro). Não altera nada já lançado. */
+export function pausarRecorrencia(ds: Dataset, id: number, ate: number | null | undefined, ctx: Ctx): Op {
+  const atual = ds.despesasFixas.find((f) => f.id === id);
+  if (!atual) return erro("Recorrência não encontrada.");
+  const limite = ate ?? null;
+  if (limite !== null && (!Number.isFinite(limite) || limite <= ctx.agora)) return erro("A data de retomada deve ser futura.");
+  const novo: DespesaFixa = { ...atual, pausada: true, pausadaAte: limite };
+  return finaliza({ ...ds, despesasFixas: ds.despesasFixas.map((f) => (f.id === id ? novo : f)) }, {});
+}
+
+/** R47 - retoma manualmente; os meses pausados não são recuperados. */
+export function retomarRecorrencia(ds: Dataset, id: number, ctx: Ctx): Op {
+  const atual = ds.despesasFixas.find((f) => f.id === id);
+  if (!atual) return erro("Recorrência não encontrada.");
+  if (!atual.pausada) return erro("A recorrência não está pausada.");
+  const novo = retomada(atual, ctx.agora);
+  return finaliza({ ...ds, despesasFixas: ds.despesasFixas.map((f) => (f.id === id ? novo : f)) }, {});
+}
+
 /**
  * R16 - lança as despesas fixas pendentes (catch-up de até 12 meses). Idempotente:
  * o grupoId `fixa:<id>:<AAAA-MM>` evita duplicar um mês já lançado.
@@ -1111,7 +1150,10 @@ export function processarDespesasFixas(ds: Dataset, ctx: Ctx): Op<{ criados: Des
   const usados = new Set(idsDespesas(ds));
   const jaLancados = new Set(ds.despesas.map((d) => d.grupoId).filter((g): g is string => !!g));
   const criados: Despesa[] = [];
-  const fixas = ds.despesasFixas.map((regra) => {
+  const fixas = ds.despesasFixas.map((regraOriginal) => {
+    // R47: pausada de fato não lança nada nem mexe em ultimaDataLancamento; ao vencer o prazo, retoma sem catch-up.
+    if (recorrenciaPausada(regraOriginal, ctx.agora)) return regraOriginal;
+    const regra = regraOriginal.pausada ? retomada(regraOriginal, ctx.agora) : regraOriginal;
     const ultima = regra.ultimaDataLancamento;
     const idxUltima = ultima === null ? null : (() => {
       const u = mesAnoDe(ultima);
@@ -1159,8 +1201,7 @@ export function processarDespesasFixas(ds: Dataset, ctx: Ctx): Op<{ criados: Des
       jaLancados.add(grupoId);
       novaUltima = Math.max(novaUltima ?? 0, data);
     }
-    return novaUltima === ultima ? regra : { ...regra, ultimaDataLancamento: novaUltima };
-  });
+    return novaUltima === ultima ? regra : { ...regra, ultimaDataLancamento: novaUltima };  });
   if (criados.length === 0 && fixas.every((f, i) => f === ds.despesasFixas[i])) return finaliza(ds, { criados });
   return finaliza({ ...ds, despesasFixas: fixas, despesas: [...ds.despesas, ...criados] }, { criados });
 }
@@ -1420,6 +1461,7 @@ export interface AdiantamentoFixa {
 export function adiantarOcorrenciaFixa(ds: Dataset, input: AdiantamentoFixa, ctx: Ctx): Op<ResultadoAntecipacao> {
   const regra = ds.despesasFixas.find((f) => f.id === input.fixaId);
   if (!regra) return erro("Recorrência não encontrada.");
+  if (recorrenciaPausada(regra, ctx.agora)) return erro("Recorrência pausada: retome-a antes de antecipar um mês.");
   if (regra.tipo !== "DEBITO") return erro("Só despesas recorrentes podem ser antecipadas.");
   if (regra.cartaoId) return erro("Recorrência no cartão entra na fatura; antecipe o pagamento da fatura.");
   if (!Number.isInteger(input.mes) || input.mes < 1 || input.mes > 12 || !Number.isInteger(input.ano)) return erro("Mês inválido.");

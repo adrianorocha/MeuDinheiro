@@ -111,6 +111,7 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
     var pago by remember { mutableStateOf<Boolean?>(null) }
     var texto by remember { mutableStateOf("") }
     var internos by remember { mutableStateOf(false) }
+    var detalhar by remember { mutableStateOf(true) }
     var exportando by remember { mutableStateOf(false) }
 
     val (inicio, fim) = remember(periodo, inicioCustom, fimCustom) {
@@ -156,8 +157,8 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
                 val d = descricao(tituloAuto())
                 val arq = withContext(Dispatchers.IO) {
                     when (formato) {
-                        "pdf" -> RelatorioExport.pdf(context, resultado, d) { bancoPorConta[it] ?: it }
-                        "png" -> RelatorioExport.png(context, resultado, d)
+                        "pdf" -> RelatorioExport.pdf(context, resultado, d, detalhar, { id -> cartoes.firstOrNull { it.id == id }?.nome }) { bancoPorConta[it] ?: it }
+                        "png" -> RelatorioExport.png(context, resultado, d, detalhar, { id -> cartoes.firstOrNull { it.id == id }?.nome }, nomeConta = { bancoPorConta[it] ?: it })
                         else -> RelatorioExport.csv(context, resultado, d) { bancoPorConta[it] ?: it }
                     }
                 }
@@ -286,6 +287,7 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
                     )
                     Spacer(Modifier.height(6.dp))
                     FilterChip(selected = internos, onClick = { internos = !internos }, label = { Text("Incluir transferências, aportes e faturas") }, colors = chipColors())
+                    FilterChip(selected = detalhar, onClick = { detalhar = !detalhar }, label = { Text("Incluir detalhamento (PDF/imagem)") }, colors = chipColors())
                 }
             }
 

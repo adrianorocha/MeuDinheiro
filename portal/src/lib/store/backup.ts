@@ -55,6 +55,8 @@ const despesaFixaSchema = z.object({
   diaVencimento: num,
   ultimaDataLancamento: dataCampo.nullish(),
   cartaoId: num.nullish(),
+  pausada: z.boolean().nullish(),
+  pausadaAte: num.nullish(),
 });
 
 const categoriaSchema = z.object({ id: id.optional(), nome: str, pic: str });
@@ -210,6 +212,8 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
     despesasFixas: comIds(b.despesasFixas, gerarInt).map((f) => ({
       ...f,
       cartaoId: f.cartaoId ? f.cartaoId : null,
+      pausada: f.pausada === true,
+      pausadaAte: f.pausada === true && f.pausadaAte ? f.pausadaAte : null,
       ultimaDataLancamento:
         f.ultimaDataLancamento === null || f.ultimaDataLancamento === undefined
           ? null

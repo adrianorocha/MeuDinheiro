@@ -1,6 +1,6 @@
 "use client";
 
-import { FastForward, Pencil, Play, Plus, Repeat, Trash2 } from "lucide-react";
+import { FastForward, Pause, Pencil, Play, Plus, Repeat, Trash2 } from "lucide-react";
 import { SeletorCategoria } from "@/components/ui/SeletorCategoria";
 import { picDaCategoria } from "@/lib/catalogo";
 import { useState } from "react";
@@ -11,8 +11,9 @@ import { Badge, Card, EmptyState, ErroBox, PageHeader } from "@/components/ui/Mi
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
 import { Money } from "@/components/ui/Money";
 import { PicBadge } from "@/components/ui/PicIcon";
+import { recorrenciaPausada } from "@/lib/finance/operations";
 import type { DespesaFixa, Tipo } from "@/lib/finance/types";
-import { formatBRL, formatData, formatMesAno, parseValorBR, valorParaCampo } from "@/lib/format";
+import { deInputData, formatBRL, formatData, formatMesAno, parseValorBR, valorParaCampo } from "@/lib/format";
 import { useAgora, useDataset } from "@/lib/hooks";
 import { acoes } from "@/lib/store/actions";
 import { useStore } from "@/lib/store/store";
@@ -142,12 +143,46 @@ function AdiantarForm({ fixa, onFechar }: { fixa: DespesaFixa; onFechar: () => v
   );
 }
 
+/** R47 — pausa a recorrência, com data de retomada opcional. */
+function PausarForm({ fixa, onFechar }: { fixa: DespesaFixa; onFechar: () => void }) {
+  const avisar = useStore((s) => s.avisar);
+  const [ate, setAte] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+
+  function enviar(e: FormEvent) {
+    e.preventDefault();
+    const limite = ate ? deInputData(ate) : null;
+    if (limite !== null && Number.isNaN(limite)) return setErro("Data inválida.");
+    const r = acoes.pausarRecorrencia(fixa.id, limite);
+    if (!r.ok) return setErro(r.erro);
+    avisar("sucesso", limite ? `Recorrência pausada até ${formatData(limite)}.` : "Recorrência pausada.");
+    onFechar();
+  }
+
+  return (
+    <form onSubmit={enviar} className="flex flex-col gap-4" noValidate>
+      <Input rotulo="Pausar até (opcional)" type="date" value={ate} onChange={(e) => setAte(e.target.value)} dica="Sem data, a recorrência fica pausada até você retomá-la." />
+      <p className="text-xs text-muted">Os meses em que ficar pausada não serão lançados nem recuperados depois. Lançamentos já criados permanecem como estão.</p>
+      {erro && <ErroBox>{erro}</ErroBox>}
+      <RodapeForm onCancelar={onFechar} rotuloEnviar="Pausar" />
+    </form>
+  );
+}
+
 export default function RecorrenciasPage() {
   const ds = useDataset();
   const avisar = useStore((s) => s.avisar);
   const [form, setForm] = useState<{ editar: DespesaFixa | null } | null>(null);
   const [excluir, setExcluir] = useState<DespesaFixa | null>(null);
   const [adiantar, setAdiantar] = useState<DespesaFixa | null>(null);
+  const [pausar, setPausar] = useState<DespesaFixa | null>(null);
+  const agora = useAgora();
+
+  function retomar(f: DespesaFixa) {
+    const r = acoes.retomarRecorrencia(f.id);
+    if (!r.ok) return avisar("erro", r.erro);
+    avisar("sucesso", "Recorrência retomada. Os meses pausados não são recuperados.");
+  }
 
   function processar() {
     const r = acoes.processarFixas();
@@ -177,8 +212,10 @@ export default function RecorrenciasPage() {
       ) : (
         <Card>
           <ul className="divide-y divide-line">
-            {ds.despesasFixas.map((f) => (
-              <li key={f.id} className="flex items-center gap-3 py-3">
+            {ds.despesasFixas.map((f) => {
+              const pausada = recorrenciaPausada(f, agora);
+              return (
+              <li key={f.id} className={`flex items-center gap-3 py-3 ${pausada ? "opacity-60" : ""}`}>
                 <PicBadge pic={ds.categorias.find((c) => c.nome.trim().toLowerCase() === f.categoria.trim().toLowerCase())?.pic || f.pic} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{f.descricao}</p>
@@ -190,9 +227,19 @@ export default function RecorrenciasPage() {
                   </p>
                   <p className="text-xs text-muted">{f.ultimaDataLancamento ? `Último lançamento: ${formatData(f.ultimaDataLancamento)}` : "Ainda não lançada"}</p>
                 </div>
+                {pausada && <Badge tom="warn">{f.pausadaAte ? `Pausada até ${formatData(f.pausadaAte)}` : "Pausada"}</Badge>}
                 <Badge tom={f.tipo === "CREDITO" ? "pos" : "neutro"}>{f.tipo === "CREDITO" ? "Receita" : "Despesa"}</Badge>
                 <Money valor={f.valor} className="text-sm font-semibold" />
-                {f.tipo === "DEBITO" && !f.cartaoId && (
+                {pausada ? (
+                  <IconButton rotulo={`Retomar ${f.descricao}`} onClick={() => retomar(f)}>
+                    <Play size={16} aria-hidden />
+                  </IconButton>
+                ) : (
+                  <IconButton rotulo={`Pausar ${f.descricao}`} onClick={() => setPausar(f)}>
+                    <Pause size={16} aria-hidden />
+                  </IconButton>
+                )}
+                {f.tipo === "DEBITO" && !f.cartaoId && !pausada && (
                   <IconButton rotulo={`Adiantar um mês de ${f.descricao}`} onClick={() => setAdiantar(f)}>
                     <FastForward size={16} aria-hidden />
                   </IconButton>
@@ -204,7 +251,8 @@ export default function RecorrenciasPage() {
                   <Trash2 size={16} aria-hidden />
                 </IconButton>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </Card>
       )}
@@ -213,6 +261,9 @@ export default function RecorrenciasPage() {
       </Modal>
       <Modal aberto={adiantar !== null} onFechar={() => setAdiantar(null)} titulo={`Adiantar: ${adiantar?.descricao ?? ""}`}>
         {adiantar && <AdiantarForm key={adiantar.id} fixa={adiantar} onFechar={() => setAdiantar(null)} />}
+      </Modal>
+      <Modal aberto={pausar !== null} onFechar={() => setPausar(null)} titulo={`Pausar: ${pausar?.descricao ?? ""}`}>
+        {pausar && <PausarForm key={pausar.id} fixa={pausar} onFechar={() => setPausar(null)} />}
       </Modal>
       <Confirmar
         aberto={excluir !== null}

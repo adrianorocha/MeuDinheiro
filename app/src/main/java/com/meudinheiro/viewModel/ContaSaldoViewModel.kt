@@ -378,6 +378,29 @@ class ContaSaldoViewModel(
         viewModelScope.launch(Dispatchers.IO) { _recorrencias.value = repository.obterTodasRecorrencias() }
     }
 
+    /** R47 — pausa a recorrência; [ate] (ms) é a retomada automática opcional. */
+    fun pausarRecorrencia(id: Int, ate: Long?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.pausarRecorrencia(id, ate)
+                carregarRecorrencias()
+            } catch (e: Exception) {
+                avisarErro("Recorrência", e)
+            }
+        }
+    }
+
+    fun retomarRecorrencia(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.retomarRecorrencia(id)
+                carregarRecorrencias()
+            } catch (e: Exception) {
+                avisarErro("Recorrência", e)
+            }
+        }
+    }
+
     fun cancelarRecorrencia(id: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.excluirRecorrencia(id)

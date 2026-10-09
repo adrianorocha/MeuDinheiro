@@ -8,6 +8,7 @@ import {
 } from "./calc";
 import { diasNoMes, fimDoMes, inicioDoDia, inicioDoMes, mesAnoDe, normalizaMes, somaMeses } from "./dates";
 import { fromCents, round2, toCents } from "./money";
+import { recorrenciaPausada } from "./operations";
 import { jaccard, limparDescricao, normalizar, tokensDescricao } from "./texto";
 import type { Cartao, Dataset, Despesa, Meta } from "./types";
 
@@ -209,6 +210,7 @@ export function detectarAssinaturas(ds: Dataset, agora: number): Assinatura[] {
   for (const f of ds.despesasFixas) {
     if (f.tipo !== "DEBITO") continue;
     cobertas.add(chaveRecorrente(f.descricao));
+    if (recorrenciaPausada(f, agora)) continue; // R47: pausada não entra nas projeções
     out.push({
       nome: f.descricao,
       valorMedio: round2(f.valor),

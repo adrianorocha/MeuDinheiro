@@ -45,6 +45,8 @@ export interface ResumoRelatorio {
 
 export interface ResultadoRelatorio extends ResumoRelatorio {
   itens: Despesa[];
+  /** R48 - cada item com sua contribuição (centavos, com sinal) ao total, em ordem de data; base do detalhamento. */
+  itensCent: { d: Despesa; c: number }[];
   anterior: ResumoRelatorio;
   variacaoPercentual: number | null;
 }
@@ -136,6 +138,7 @@ export function gerarRelatorio(ds: Pick<Dataset, "despesas" | "cartoes">, f: Fil
   return {
     ...atual,
     itens: sel.map((s) => s.d).sort((a, b) => b.data - a.data || b.id - a.id),
+    itensCent: [...sel].sort((a, b) => a.d.data - b.d.data || a.d.id - b.d.id),
     anterior,
     variacaoPercentual: anterior.total > 0 ? ((atual.total - anterior.total) / anterior.total) * 100 : null,
   };
@@ -161,6 +164,8 @@ export type Celula = string | number;
 
 export interface Documento {
   titulo: string;
+  /** R48 - itens que compõem os totais (ausente/null = sem detalhamento). Não entra no CSV (que já traz todas as linhas). */
+  detalhamento?: Detalhamento | null;
   filtros: string[];
   totais: { rotulo: string; valor: string }[];
   colunas: string[];
@@ -169,6 +174,131 @@ export interface Documento {
   linhas: Celula[][];
   grafico: { titulo: string; dados: { rotulo: string; valor: number }[] } | null;
   nomeArquivo: string;
+}
+
+// ---------------------------------------------------------------- R48 detalhamento
+
+export type AgruparPor = "categoria" | "mes" | "conta";
+
+export interface LinhaDetalhe {
+  id: number;
+  data: number;
+  descricao: string;
+  /** "i/n" ou vazio */
+  parcela: string;
+  origem: string;
+  situacao: string;
+  /** contribuição ao total, em centavos, com sinal (igual ao R19) */
+  centavos: number;
+}
+
+export interface GrupoDetalhe {
+  titulo: string;
+  /** soma das linhas, em centavos */
+  subtotal: number;
+  linhas: LinhaDetalhe[];
+}
+
+export interface SecaoDetalhe {
+  titulo: string | null;
+  total: number;
+  grupos: GrupoDetalhe[];
+}
+
+export interface Detalhamento {
+  secoes: SecaoDetalhe[];
+  /** soma das seções, em centavos (= total do relatório) */
+  total: number;
+  quantidade: number;
+}
+
+export const COLUNAS_DETALHE = ["Data", "Descrição", "Parcela", "Conta/Cartão", "Situação", "Valor"] as const;
+
+/** Extrai "(i/n)" do fim da descrição; null se não houver. */
+export function parcelaDaDescricao(descricao: string): { base: string; i: number; n: number } | null {
+  const m = /\s*\((\d+)\/(\d+)\)\s*$/.exec(descricao);
+  if (!m) return null;
+  const i = Number(m[1]);
+  const n = Number(m[2]);
+  if (n < 2 || i < 1 || i > n) return null;
+  return { base: descricao.slice(0, m.index).trim(), i, n };
+}
+
+function nomeOrigem(d: Despesa, ds: Pick<Dataset, "contas" | "cartoes">): string {
+  const cid = cartaoIdDe(d);
+  if (cid !== null) return `Cartão ${ds.cartoes.find((c) => c.id === cid)?.nome ?? cid}`;
+  return ds.contas.find((c) => c.conta === d.conta)?.banco ?? d.conta;
+}
+
+/**
+ * R48 - agrupa os itens (já com a contribuição em centavos) em grupos com subtotal. Receitas e despesas ficam em
+ * seções separadas quando tipo é TODOS. Soma dos grupos = total da seção; soma das seções = total do relatório.
+ */
+export function montarDetalhamento(
+  itens: readonly { d: Despesa; c: number }[],
+  tipo: TipoRelatorio,
+  ds: Pick<Dataset, "contas" | "cartoes">,
+  agruparPor: AgruparPor = "categoria",
+): Detalhamento {
+  const secao = (titulo: string | null, lista: readonly { d: Despesa; c: number }[]): SecaoDetalhe => {
+    const mapa = new Map<string, { titulo: string; linhas: LinhaDetalhe[] }>();
+    const ordenadas = [...lista].sort((a, b) => a.d.data - b.d.data || a.d.id - b.d.id);
+    for (const { d, c } of ordenadas) {
+      let chave: string;
+      let nome: string;
+      if (agruparPor === "mes") {
+        const dt = new Date(d.data);
+        chave = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+        nome = `${chave.slice(5)}/${chave.slice(0, 4)}`;
+      } else if (agruparPor === "conta") {
+        nome = nomeOrigem(d, ds);
+        chave = nome;
+      } else {
+        nome = d.categoria.trim() || "Sem categoria";
+        chave = normalizar(nome);
+      }
+      const g = mapa.get(chave) ?? { titulo: nome, linhas: [] };
+      const p = parcelaDaDescricao(d.descricao);
+      g.linhas.push({
+        id: d.id,
+        data: d.data,
+        descricao: p ? p.base : d.descricao,
+        parcela: p ? `${p.i}/${p.n}` : "",
+        origem: nomeOrigem(d, ds),
+        situacao: d.pago ? "Pago" : "Pendente",
+        centavos: c,
+      });
+      mapa.set(chave, g);
+    }
+    const grupos: GrupoDetalhe[] = [...mapa.entries()]
+      .map(([k, g]) => ({ k, titulo: g.titulo, subtotal: g.linhas.reduce((a, l) => a + l.centavos, 0), linhas: g.linhas }))
+      .sort((a, b) => (agruparPor === "mes" ? a.k.localeCompare(b.k) : Math.abs(b.subtotal) - Math.abs(a.subtotal) || a.titulo.localeCompare(b.titulo, "pt-BR")))
+      .map(({ titulo: t, subtotal, linhas }) => ({ titulo: t, subtotal, linhas }));
+    return { titulo, total: grupos.reduce((a, g) => a + g.subtotal, 0), grupos };
+  };
+  const secoes =
+    tipo === "TODOS"
+      ? [secao("Receitas", itens.filter((x) => x.d.tipo === "CREDITO")), secao("Despesas", itens.filter((x) => x.d.tipo === "DEBITO"))]
+      : [secao(null, itens)];
+  const preenchidas = secoes.filter((s) => s.grupos.length > 0);
+  return {
+    secoes: preenchidas,
+    total: preenchidas.reduce((a, s) => a + s.total, 0),
+    quantidade: preenchidas.reduce((a, s) => a + s.grupos.reduce((b, g) => b + g.linhas.length, 0), 0),
+  };
+}
+
+/** Versão para imagem: os maxPorGrupo maiores itens (valor absoluto) de cada grupo + quantos ficaram de fora. */
+export function resumirParaImagem(
+  secao: SecaoDetalhe,
+  maxPorGrupo = 5,
+  maxGrupos = 8,
+): { grupos: { titulo: string; subtotal: number; linhas: LinhaDetalhe[]; restantes: number }[]; gruposOmitidos: number } {
+  const grupos = secao.grupos.slice(0, maxGrupos).map((g) => {
+    const maiores = [...g.linhas].sort((a, b) => Math.abs(b.centavos) - Math.abs(a.centavos)).slice(0, maxPorGrupo).sort((a, b) => a.data - b.data);
+    return { titulo: g.titulo, subtotal: g.subtotal, linhas: maiores, restantes: g.linhas.length - maiores.length };
+  });
+  return { grupos, gruposOmitidos: secao.grupos.length - grupos.length };
 }
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -204,7 +334,9 @@ export function documentoDeResultado(
   f: FiltroRelatorio,
   r: ResultadoRelatorio,
   ds: Pick<Dataset, "contas" | "cartoes">,
+  opcoes: { detalhar?: boolean; agruparPor?: AgruparPor } = {},
 ): Documento {
+  const { detalhar = true, agruparPor = "categoria" } = opcoes;
   const totais = [
     { rotulo: "Lançamentos", valor: String(r.quantidade) },
     { rotulo: "Total", valor: moeda(r.total) },
@@ -223,12 +355,13 @@ export function documentoDeResultado(
     colunasMoeda: [5],
     linhas: r.itens.map((d) => [dia(d.data), d.descricao, d.categoria, origem(d, ds), d.pago ? "Pago" : "Pendente", d.tipo === "CREDITO" ? d.valor : -d.valor]),
     grafico: r.porCategoria.length ? { titulo: "Por categoria", dados: r.porCategoria.slice(0, 10).map((c) => ({ rotulo: c.nome, valor: Math.abs(c.total) })) } : null,
+    detalhamento: detalhar && r.itensCent.length > 0 ? montarDetalhamento(r.itensCent, f.tipo, ds, agruparPor) : null,
     nomeArquivo: slug(titulo),
   };
 }
 
 /** Fatura do cartão (mês de fechamento), com a fatura única do grupo (R18). */
-export function documentoFatura(ds: Dataset, cartaoId: number, mes: number, ano: number): Documento | null {
+export function documentoFatura(ds: Dataset, cartaoId: number, mes: number, ano: number, opcoes: { detalhar?: boolean } = {}): Documento | null {
   const cartao = ds.cartoes.find((c) => c.id === cartaoId);
   if (!cartao) return null;
   const r = resumoFatura(cartao, ds.despesas, mes, ano, ds.cartoes);
@@ -247,6 +380,15 @@ export function documentoFatura(ds: Dataset, cartaoId: number, mes: number, ano:
     colunasMoeda: [5],
     linhas: r.itens.map((d) => [dia(d.data), d.descricao, d.categoria, origem(d, ds), d.pago ? "Paga" : "Em aberto", d.tipo === "CREDITO" ? -d.valor : d.valor]),
     grafico: porCat.size ? { titulo: "Por categoria", dados: [...porCat.entries()].map(([rotulo, c]) => ({ rotulo, valor: fromCents(c) })).filter((x) => x.valor > 0).sort((a, b) => b.valor - a.valor).slice(0, 10) } : null,
+    detalhamento:
+      (opcoes.detalhar ?? true) && r.itens.length > 0
+        ? montarDetalhamento(
+            r.itens.map((d) => ({ d, c: d.tipo === "DEBITO" ? toCents(d.valor) : -toCents(d.valor) })),
+            "DESPESA",
+            ds,
+            "categoria",
+          )
+        : null,
     nomeArquivo: slug(titulo),
   };
 }

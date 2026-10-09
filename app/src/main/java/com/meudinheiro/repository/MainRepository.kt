@@ -845,7 +845,10 @@ class MainRepository(
     /** Lança as ocorrências vencidas (inclusive meses perdidos com o app fechado), sem duplicar. */
     suspend fun processarRecorrencias(): Unit = db.withTransaction {
         val hoje = agora()
-        despesaFixaDao.obterTodas().forEach { regra ->
+        despesaFixaDao.obterTodas().forEach { regraSalva ->
+            // R47: pausada de fato não lança nada nem mexe em ultimaDataLancamento; prazo vencido retoma sem catch-up.
+            if (Financas.recorrenciaPausada(regraSalva, hoje)) return@forEach
+            val regra = if (regraSalva.pausada) Financas.retomar(regraSalva, hoje).also { despesaFixaDao.atualizar(it) } else regraSalva
             val datas = Financas.ocorrenciasPendentes(regra, hoje)
             if (datas.isEmpty()) return@forEach
             // Origem válida? (cartão → conta do cartão; conta → precisa existir). Senão a regra espera, sem perder meses.
@@ -869,6 +872,20 @@ class MainRepository(
             cartaoGerado?.let { recalcularCartao(it) } // a compra no cartão consome limite (R4/R18)
             despesaFixaDao.atualizar(origem.copy(ultimaDataLancamento = Date(datas.last())))
         }
+    }
+
+    /** R47 — pausa a recorrência (até [ate], futuro, ou até retomar). Não altera nada já lançado. */
+    suspend fun pausarRecorrencia(id: Int, ate: Long? = null): Unit = db.withTransaction {
+        val regra = despesaFixaDao.obterPorId(id) ?: throw RegraFinanceiraException("Recorrência não encontrada.")
+        if (ate != null && ate <= agora()) throw RegraFinanceiraException("A data de retomada deve ser futura.")
+        despesaFixaDao.atualizar(regra.copy(pausada = true, pausadaAte = ate?.let { Date(it) }))
+    }
+
+    /** R47 — retoma manualmente; os meses pausados não são recuperados. */
+    suspend fun retomarRecorrencia(id: Int): Unit = db.withTransaction {
+        val regra = despesaFixaDao.obterPorId(id) ?: throw RegraFinanceiraException("Recorrência não encontrada.")
+        if (!regra.pausada) throw RegraFinanceiraException("A recorrência não está pausada.")
+        despesaFixaDao.atualizar(Financas.retomar(regra, agora()))
     }
 
     suspend fun obterTodasRecorrencias(): List<DespesaFixa> = despesaFixaDao.obterTodas()

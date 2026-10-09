@@ -67,6 +67,9 @@ object Relatorios {
         }
     }
 
+    /** R48 — mesma contribuição do R19, exposta para o detalhamento (subtotais fecham com o total). */
+    fun contribuicaoDe(l: Despesa, tipo: TipoRelatorio): Long? = contribuicao(l, tipo)
+
     /** Ids dos cartões do filtro: escolher o físico inclui os virtuais dele (R18). */
     private fun idsDeCartoes(selecionados: Set<Int>, cartoes: List<Cartao>): Set<Int> =
         selecionados.flatMap { id ->

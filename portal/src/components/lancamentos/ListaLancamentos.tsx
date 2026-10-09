@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle, Copy, FastForward, Pencil, Repeat, Trash2, Unlink } from "lucide-react";
+import { Check, Circle, Copy, FastForward, Pencil, Receipt, Repeat, Trash2, Unlink } from "lucide-react";
 import { useState } from "react";
 import { Input, Select } from "@/components/ui/Field";
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
@@ -16,6 +16,7 @@ import { useAgora, useDataset } from "@/lib/hooks";
 import { acoes } from "@/lib/store/actions";
 import { useStore } from "@/lib/store/store";
 import { AntecipacaoModal } from "./AntecipacaoModal";
+import { ComprovanteModal } from "./ComprovanteModal";
 import { LancamentoModal } from "./LancamentoModal";
 
 const ROTULO_NATUREZA: Partial<Record<Despesa["natureza"], string>> = {
@@ -44,6 +45,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
   const [excluindo, setExcluindo] = useState<Despesa | null>(null);
   const [repetindo, setRepetindo] = useState<Despesa | null>(null);
   const [antecipando, setAntecipando] = useState<Despesa | null>(null);
+  const [comprovante, setComprovante] = useState<Despesa | null>(null);
   const [repN, setRepN] = useState("3");
   const [repIntervalo, setRepIntervalo] = useState("1");
   const [repUnidade, setRepUnidade] = useState<UnidadeRepeticao>("MESES");
@@ -159,6 +161,9 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                     </IconButton>
                   </>
                 )}
+                <IconButton rotulo={`Comprovante de ${d.descricao}`} onClick={() => setComprovante(d)}>
+                  <Receipt size={16} aria-hidden />
+                </IconButton>
                 {EDITAVEL.has(d.natureza) && (
                   <IconButton rotulo={`Editar ${d.descricao}`} onClick={() => setEditando(d)}>
                     <Pencil size={16} aria-hidden />
@@ -188,6 +193,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
           <RodapeForm onCancelar={() => setRepetindo(null)} rotuloEnviar="Repetir" />
         </form>
       </Modal>
+      <ComprovanteModal despesa={comprovante} onFechar={() => setComprovante(null)} />
       <AntecipacaoModal aberto={antecipando !== null} onFechar={() => setAntecipando(null)} base={antecipando} />
       <LancamentoModal aberto={editando !== null} onFechar={() => setEditando(null)} editar={editando} />
       <Confirmar

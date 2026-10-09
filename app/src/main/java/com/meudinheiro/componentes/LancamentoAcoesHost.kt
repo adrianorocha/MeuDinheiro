@@ -152,8 +152,16 @@ fun LancamentoAcoesHost(
                         }
                     }
                     LinhaAcao(Icons.Rounded.Share, "Ver comprovante", Color.White.copy(0.8f)) {
-                        val nomeCartao = cartoes.firstOrNull { it.id == despesa.cartaoId }?.nome
-                        compartilharComprovante(context, despesa, nomeCartao, despesa.conta)
+                        val cartaoObj = cartoes.firstOrNull { it.id == (despesa.cartaoId ?: com.meudinheiro.domain.Financas.cartaoDeDebito(despesa)) }
+                        val contaObj = contas.firstOrNull { it.conta == despesa.conta }
+                        compartilharComprovante(
+                            context, despesa, cartaoObj?.nome.takeIf { despesa.cartaoId != null }, despesa.conta,
+                            com.meudinheiro.funcoes.ComprovanteExtras(
+                                conta = contaObj,
+                                cartao = cartaoObj,
+                                contas = contas
+                            )
+                        )
                         onFechar()
                     }
                     if (disponiveis.none { it == Acao.EDITAR }) {

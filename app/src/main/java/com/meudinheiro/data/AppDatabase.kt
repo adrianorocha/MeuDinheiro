@@ -110,13 +110,21 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/** 7 → 8: R47 — pausar recorrência (despesas/receitas fixas), com retomada automática opcional. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE despesas_fixas ADD COLUMN pausada INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE despesas_fixas ADD COLUMN pausadaAte INTEGER")
+    }
+}
+
 @Database(
     entities = [
         Despesa::class, ContaSaldo::class, DespesaFixa::class, Categoria::class, Orcamento::class,
         Meta::class, Investimento::class, Transacao::class, TransferenciaAgendada::class,
         PatrimonioHistorico::class, Cartao::class, SyncMeta::class, Lixeira::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -148,7 +156,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DB_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     // Só em downgrade (APK antigo sobre banco novo). Upgrades NUNCA apagam dados.
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()

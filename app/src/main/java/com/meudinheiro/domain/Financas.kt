@@ -347,6 +347,7 @@ object Financas {
      * Nunca lançadas → só o mês corrente; já lançadas → meses perdidos desde o último (máx. 12).
      */
     fun ocorrenciasPendentes(regra: DespesaFixa, hoje: Long): List<Long> {
+        if (recorrenciaPausada(regra, hoje)) return emptyList() // R47
         val atual = FaturaRef(mesDe(hoje), anoDe(hoje))
         val primeiro = regra.ultimaDataLancamento
             ?.let { FaturaRef(mesDe(it.time), anoDe(it.time)).proxima() }
@@ -362,6 +363,30 @@ object Financas {
             data.takeIf { it <= limite }
         }
     }
+
+    /** R47 — pausada de fato = marcada como pausada e ainda dentro do prazo (se houver). */
+    fun recorrenciaPausada(regra: DespesaFixa, hoje: Long): Boolean =
+        regra.pausada && (regra.pausadaAte == null || hoje < regra.pausadaAte.time)
+
+    /** R47 — data (ms, meio-dia) da última ocorrência da regra com data <= fim do dia de [hoje]. */
+    fun ultimaOcorrenciaAte(regra: DespesaFixa, hoje: Long): Long {
+        val limite = fimDoDia(hoje)
+        var ref = FaturaRef(mesDe(hoje), anoDe(hoje))
+        repeat(2) {
+            val dia = regra.diaVencimento.coerceIn(1, 31).coerceAtMost(diasNoMes(ref.mes, ref.ano))
+            val data = Calendar.getInstance().apply { clear(); set(ref.ano, ref.mes - 1, dia, 12, 0, 0) }.timeInMillis
+            if (data <= limite) return data
+            ref = FaturaRef(if (ref.mes == 1) 12 else ref.mes - 1, if (ref.mes == 1) ref.ano - 1 else ref.ano)
+        }
+        return limite // inalcançável: um dos dois últimos meses sempre tem a ocorrência
+    }
+
+    /** R47 — retoma sem recuperar o período pausado: só ocorrências futuras voltam a ser lançadas. */
+    fun retomar(regra: DespesaFixa, hoje: Long): DespesaFixa = regra.copy(
+        ultimaDataLancamento = java.util.Date(maxOf(regra.ultimaDataLancamento?.time ?: 0L, ultimaOcorrenciaAte(regra, hoje))),
+        pausada = false,
+        pausadaAte = null
+    )
 
     // --------------------------------------------------------- R13 orçamento
 

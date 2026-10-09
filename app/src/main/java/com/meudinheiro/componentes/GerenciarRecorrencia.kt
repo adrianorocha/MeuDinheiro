@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -44,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -54,6 +57,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.meudinheiro.R
 import com.meudinheiro.data.DespesaFixa
+import com.meudinheiro.domain.Financas
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.viewModel.ContaSaldoViewModel
 
@@ -138,6 +146,8 @@ fun GerenciarRecorrenciaDialog(
                                 contas = contas,
                                 cartoes = cartoes,
                                 onAlterarOrigem = { conta, cartaoId -> viewModel.alterarOrigemRecorrencia(item.id, conta, cartaoId) },
+                                onPausar = { ate -> viewModel.pausarRecorrencia(item.id, ate) },
+                                onRetomar = { viewModel.retomarRecorrencia(item.id) },
                                 onCancelar = { viewModel.cancelarRecorrencia(item.id) }
                             )
                         }
@@ -155,10 +165,59 @@ private fun RecorrenciaItem(
     contas: List<com.meudinheiro.data.ContaSaldo>,
     cartoes: List<com.meudinheiro.data.Cartao>,
     onAlterarOrigem: (conta: String?, cartaoId: Int?) -> Unit,
+    onPausar: (ate: Long?) -> Unit,
+    onRetomar: () -> Unit,
     onCancelar: () -> Unit
 ) {
     var showConfirm by remember { mutableStateOf(false) }
     var showOrigem by remember { mutableStateOf(false) }
+    var showPausar by remember { mutableStateOf(false) }
+    var showCalendario by remember { mutableStateOf(false) }
+    var pausarAte by remember { mutableStateOf<Long?>(null) }
+    val pausada = Financas.recorrenciaPausada(item, System.currentTimeMillis()) // R47
+    val formatoData = remember { SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")) }
+
+    if (showCalendario) {
+        CustomCalendarDialog(
+            onDismiss = { showCalendario = false },
+            onDateSelected = { y, m, d ->
+                pausarAte = Calendar.getInstance().apply { clear(); set(y, m, d, 12, 0, 0) }.timeInMillis
+                showCalendario = false
+            }
+        )
+    }
+
+    if (showPausar) {
+        val dataValida = pausarAte?.let { it > System.currentTimeMillis() } ?: true
+        AlertDialog(
+            onDismissRequest = { showPausar = false },
+            containerColor = DialogBg,
+            title = { Text("Pausar '${item.descricao}'?", color = TextWhite) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Os meses em que ficar pausada não serão lançados nem recuperados depois. Lançamentos já criados permanecem como estão.",
+                        color = TextWhite.copy(0.7f)
+                    )
+                    Text("Pausar até (opcional)", color = TextWhite.copy(0.5f), style = MaterialTheme.typography.labelSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { showCalendario = true }) {
+                            Text(pausarAte?.let { formatoData.format(Date(it)) } ?: "Escolher data", color = Color(0xFF00E5FF))
+                        }
+                        if (pausarAte != null) TextButton(onClick = { pausarAte = null }) { Text("Sem data", color = TextWhite.copy(0.7f)) }
+                    }
+                    if (!dataValida) Text("A data de retomada deve ser futura.", color = RedAlert, style = MaterialTheme.typography.labelSmall)
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = dataValida,
+                    onClick = { onPausar(pausarAte); showPausar = false }
+                ) { Text("Pausar") }
+            },
+            dismissButton = { TextButton(onClick = { showPausar = false }) { Text("Voltar", color = TextWhite) } }
+        )
+    }
 
     if (showOrigem) {
         AlertDialog(
@@ -219,6 +278,7 @@ private fun RecorrenciaItem(
     }
 
     Card(
+        modifier = Modifier.alpha(if (pausada) 0.6f else 1f),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
@@ -267,6 +327,14 @@ private fun RecorrenciaItem(
                         color = TextWhite.copy(alpha = 0.6f)
                     )
                 }
+                if (pausada) {
+                    Text(
+                        text = "PAUSADA" + (item.pausadaAte?.let { " · até ${formatoData.format(it)}" } ?: ""),
+                        fontSize = 10.sp,
+                        color = Color(0xFFFFB300),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     text = "$origem  ·  alterar",
                     style = MaterialTheme.typography.labelSmall,
@@ -285,6 +353,22 @@ private fun RecorrenciaItem(
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color = TextWhite
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Surface(
+                    color = Color.White.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.clickable { if (pausada) onRetomar() else { pausarAte = null; showPausar = true } }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(if (pausada) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, null, Modifier.size(12.dp), tint = TextWhite)
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (pausada) "Retomar" else "Pausar", fontSize = 10.sp, color = TextWhite, fontWeight = FontWeight.Bold)
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Surface(
