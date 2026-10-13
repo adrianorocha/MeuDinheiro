@@ -342,3 +342,31 @@ Sem campos novos nem mudança de formato (compatível com o portal). No formulá
 - **NFC-e v2: consulta do total (melhor esforço).** `ConsultaNfceRede` consulta a URL do QR **só se** for `https`, host terminando em `.gov.br`, sem credenciais na URL e porta padrão; timeout de 8 s por operação (15 s total), resposta limitada a 512 KB, em `Dispatchers.IO`, sem cookies, sem enviar nenhum dado do usuário, redirecionamentos tratados manualmente (máx. 3) e **revalidados** (nunca saem de `.gov.br`). O HTML é lido por regex tolerante (prefere "Valor a pagar", depois "Valor total R$"), tratado como texto: nada é executado nem aberto. Cada UF tem layout próprio, usa captcha ou renderiza por JavaScript: pode falhar. Se falhar/sem internet: "Esse cupom não traz o valor no código; digite o valor — chave e emitente foram preenchidos." e o diálogo oferece o campo de valor.
 - **Segurança.** O conteúdo do código é dado não confiável: links nunca são abertos automaticamente, só texto/números são extraídos, tamanho do texto limitado (4 KB).
 - **Limitações.** A chave de acesso e a descrição não são gravadas (não há campo no lançamento); a data só é aplicada quando exata (SAT/NFC-e v1). CNPJ alfanumérico (2026) é aceito na chave (DV módulo 11 com `código ASCII − 48`).
+
+## R50 — Ícones de categoria (`pic`) no app e no portal
+
+`pic` da categoria continua sendo **uma string** (no Firebase, backup e export). Só foram **acrescentadas** chaves; as 15 originais (`fuel`, `restaurant`, `transport`, `shopping`, `cinema`, `health`, `education`, `salary`, `repair_car`, `supermarket`, `gym`, `games`, `drink`, `lunch`, `reserva`) e os dados já gravados renderizam exatamente como antes. Categorias padrão (fixas, não sincronizadas) não mudam.
+
+- **Catálogo único por plataforma, mesmas chaves e rótulos.** App: `domain/IconesCategoria.kt` (`IconesCategoria.GRUPOS`/`MAPA`, `ImageVector` Material Rounded). Portal: `components/ui/picsCatalogo.ts` (`GRUPOS_PICS`, `ICONES_CATALOGO`, lucide-react), reexportado por `PicIcon.tsx` junto com `NOME_PIC`, `PICS_CATEGORIA` e `PicIcon`. Chaves em `snake_case` pt-BR, únicas e sem colisão com os 15 originais nem com drawables do app (bancos/contas, `assinaturas`, `money`, `wallet`…; por isso a chave nova é `assinatura`, singular).
+- **Regra de resolução (nunca quebra a tela).** App (`componentes/IconePic.kt`): 1) drawable com o nome do `pic` (comportamento antigo); 2) catálogo R50 (vetor tingido neon); 3) fallback que cada tela já usava. Portal: mapa `ICONES` (originais + catálogo + aliases como `game`, `ic_savings`, `transferencia`, `credit_card`, `bank`); `pic` vazio -> ícone de etiqueta; `pic` desconhecido não vazio -> ícone neutro (Landmark). Chaves desconhecidas (ex.: `ic_casa`, criadas por versões antigas do app, ou chaves de versões futuras) são preservadas como estão no dado e apenas usam o fallback; no portal, ao editar, o `pic` atual aparece como opção selecionada ("Atual").
+- **Seletores.** App (Configuracao > Minhas Categorias): grade agrupada com busca por rótulo (sem acento). Portal (`SeletorIcone.tsx`): grade agrupada com busca; botões com `aria-label`/`aria-pressed`, foco visível.
+- **Paridade garantida por teste.** App: `IconesCategoriaTest` (lista literal das chaves, unicidade, sem colisão com originais/drawables, todo item no mapa). Portal: `PicIcon.test.ts` (ícone e rótulo para toda chave, sem duplicatas, originais presentes e **comparação com o `.kt` do app**). Ao adicionar um ícone, edite os dois catálogos e a lista literal do teste do app.
+
+Chaves suportadas (grupo: chaves; rótulos nos catálogos):
+
+- **Alimentação:** `mercado`, `padaria`, `cafe`, `pizza`, `delivery`, `bar`, `sorvete`, `fastfood`, `acougue`, `hortifruti`
+- **Casa:** `aluguel`, `condominio`, `luz`, `agua`, `gas`, `internet`, `telefone`, `moveis`, `reforma`, `ferramentas`, `jardim`, `limpeza`, `eletrodomesticos`
+- **Transporte:** `onibus`, `taxi`, `uber`, `estacionamento`, `pedagio`, `manutencao_carro`, `bicicleta`, `metro`
+- **Saúde e bem-estar:** `farmacia`, `dentista`, `exercicio`, `beleza`, `cabelo`, `terapia`, `consulta`, `oculos`
+- **Educação:** `escola`, `livros`, `cursos`, `material_escolar`
+- **Lazer:** `festa`, `musica`, `esporte`, `camera`, `streaming`, `shows`, `parque`
+- **Compras e vestuário:** `roupas`, `calcados`, `eletronicos`, `acessorios`, `compras_online`
+- **Família e pets:** `pet`, `veterinario`, `crianca`, `familia`, `brinquedos`
+- **Trabalho e finanças:** `freelance`, `bonus`, `investimento`, `emprestimo`, `juros`, `renda_extra`, `escritorio`
+- **Serviços e assinaturas:** `assinatura`, `lavanderia`, `correios`, `cartorio`, `advogado`, `contador`, `seguro`, `nuvem`, `aplicativos`
+- **Viagens:** `viagem`, `hotel`, `aviao`, `praia`, `passeios`, `camping`
+- **Presentes e doações:** `presente`, `doacao`, `igreja`, `flores`, `aniversario`
+- **Impostos e taxas:** `imposto`, `ipva`, `iptu`, `taxas_bancarias`, `multa`, `irpf`
+- **Outros:** `outros`, `favorito`, `imprevisto`
+
+Limitação: o app ainda não permite editar o ícone de uma categoria já criada (só criar/excluir); o portal permite.

@@ -1058,12 +1058,7 @@ fun CategoryGridSection(
                 val isSelected = cat == selecionada
                 val corCat = paletaNeon[kotlin.math.abs(cat.hashCode()) % paletaNeon.size]
 
-                val resId = remember(cat) {
-                    val picName = getPicCategoria(cat)
-                    val id =
-                        context.resources.getIdentifier(picName, "drawable", context.packageName)
-                    if (id != 0) id else R.drawable.sim_chip_2
-                }
+                val picName = remember(cat) { getPicCategoria(cat) }
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -1084,11 +1079,11 @@ fun CategoryGridSection(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            painter = painterResource(resId),
-                            contentDescription = cat,
-                            tint = Color.Unspecified,
-                            modifier = Modifier.size(24.dp)
+                        IconePic(
+                            pic = picName,
+                            fallbackRes = R.drawable.sim_chip_2,
+                            size = 24.dp,
+                            contentDescription = cat
                         )
                     }
                     Spacer(Modifier.height(6.dp))

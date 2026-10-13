@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -975,23 +976,10 @@ fun GerenciarCategoriasDialog(
 ) {
     var novoNome by remember { mutableStateOf("") }
     // 🚀 NOVO: Guarda qual ícone está selecionado no momento
-    var iconeSelecionado by remember { mutableStateOf("ic_default") }
+    var iconeSelecionado by remember { mutableStateOf("outros") }
 
     val categorias by viewModel.categorias.collectAsState()
 
-    // 🚀 NOVO: Lista de ícones para o usuário escolher
-    val iconesOpcoes = remember {
-        listOf(
-            "ic_default" to Icons.Default.Category,
-            "ic_casa" to Icons.Default.Home,
-            "ic_carro" to Icons.Default.DirectionsCar,
-            "ic_comida" to Icons.Default.Restaurant,
-            "ic_saude" to Icons.Default.LocalHospital,
-            "ic_lazer" to Icons.Default.SportsEsports,
-            "ic_compras" to Icons.Default.ShoppingCart,
-            "ic_estudo" to Icons.Default.School
-        )
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1008,6 +996,7 @@ fun GerenciarCategoriasDialog(
                     .border(1.dp, TextWhite.copy(0.1f), RoundedCornerShape(24.dp))
             ) {
                 Column(modifier = Modifier
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
                     .padding(24.dp)
                     .fillMaxWidth()) {
                     Text(
@@ -1048,7 +1037,7 @@ fun GerenciarCategoriasDialog(
                                             iconeSelecionado
                                         )
                                         novoNome = ""
-                                        iconeSelecionado = "ic_default" // Reseta a seleção
+                                        iconeSelecionado = "outros" // Reseta a seleção
                                     }
                                 },
                             contentAlignment = Alignment.Center
@@ -1066,47 +1055,16 @@ fun GerenciarCategoriasDialog(
                     Text("Selecione um Ícone:", fontSize = 12.sp, color = TextWhite.copy(0.6f))
                     Spacer(Modifier.height(8.dp))
 
-                    // 🚀 O CARROSSEL DE ÍCONES (LazyRow)
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(iconesOpcoes) { (nomeIcone, vetor) ->
-                            val isSelecionado = iconeSelecionado == nomeIcone
-
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelecionado) NeonCyan.copy(alpha = 0.15f) else TextWhite.copy(
-                                            0.05f
-                                        )
-                                    )
-                                    .border(
-                                        width = if (isSelecionado) 2.dp else 1.dp,
-                                        color = if (isSelecionado) NeonCyan else Color.Transparent,
-                                        shape = CircleShape
-                                    )
-                                    .clickable { iconeSelecionado = nomeIcone },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = vetor,
-                                    contentDescription = nomeIcone,
-                                    tint = if (isSelecionado) NeonCyan else TextWhite.copy(0.5f),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                    }
+                    SeletorIconeCategoria(
+                        selecionado = iconeSelecionado,
+                        onSelecionar = { iconeSelecionado = it }
+                    )
 
                     Spacer(Modifier.height(24.dp))
 
                     // LISTA DAS CATEGORIAS SALVAS
                     LazyColumn(
                         modifier = Modifier
-                            .weight(1f, fill = false)
                             .heightIn(max = 200.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -1122,7 +1080,11 @@ fun GerenciarCategoriasDialog(
                             ) {
                                 // 💡 (Opcional) Aqui você pode fazer o ícone da categoria aparecer na listagem depois,
                                 // buscando na lista de iconesOpcoes usando o cat.icon
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconePic(pic = cat.pic, fallbackRes = com.meudinheiro.R.drawable.sim_chip_2, size = 22.dp)
+                                    Spacer(Modifier.width(10.dp))
                                 Text(cat.title, color = TextWhite, fontWeight = FontWeight.Medium)
+                                }
                                 IconButton(
                                     onClick = { viewModel.excluirCategoria(cat) },
                                     modifier = Modifier.size(24.dp)

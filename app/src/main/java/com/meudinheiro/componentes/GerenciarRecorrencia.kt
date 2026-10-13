@@ -248,11 +248,6 @@ private fun RecorrenciaItem(
     }
     val context = LocalContext.current
 
-    // Tenta pegar o ícone
-    val resId = remember(item.pic) {
-        val id = context.resources.getIdentifier(item.pic, "drawable", context.packageName)
-        if (id != 0) id else R.drawable.sim_chip_2
-    }
 
     if (showConfirm) {
         AlertDialog(
@@ -296,12 +291,7 @@ private fun RecorrenciaItem(
                     .background(Color.White.copy(alpha = 0.1f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    painter = painterResource(resId),
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = Color.Unspecified
-                )
+                IconePic(pic = item.pic, fallbackRes = R.drawable.sim_chip_2, size = 24.dp)
             }
 
             Spacer(modifier = Modifier.width(12.dp))

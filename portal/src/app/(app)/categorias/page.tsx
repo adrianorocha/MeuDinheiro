@@ -4,34 +4,17 @@ import { Pencil, Plus, Tags, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Button, IconButton } from "@/components/ui/Button";
-import { Input, Select } from "@/components/ui/Field";
+import { Input } from "@/components/ui/Field";
 import { Card, EmptyState, ErroBox, PageHeader } from "@/components/ui/Misc";
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
 import { PicBadge, PICS_CATEGORIA } from "@/components/ui/PicIcon";
+import { SeletorIcone } from "@/components/ui/SeletorIcone";
 import { categoriasFaltantes } from "@/lib/catalogo";
 import { normalizaNome } from "@/lib/finance/calc";
 import type { Categoria } from "@/lib/finance/types";
 import { useDataset } from "@/lib/hooks";
 import { acoes } from "@/lib/store/actions";
 import { useStore } from "@/lib/store/store";
-
-const NOME_PIC: Record<string, string> = {
-  fuel: "Combustível",
-  restaurant: "Restaurante",
-  transport: "Transporte",
-  shopping: "Compras",
-  cinema: "Cinema",
-  health: "Saúde",
-  education: "Educação",
-  salary: "Salário",
-  repair_car: "Oficina",
-  supermarket: "Supermercado",
-  gym: "Academia",
-  games: "Jogos",
-  drink: "Bebidas",
-  lunch: "Lanche",
-  reserva: "Reserva",
-};
 
 function CategoriaForm({ editar, onFechar }: { editar: Categoria | null; onFechar: () => void }) {
   const avisar = useStore((s) => s.avisar);
@@ -50,13 +33,7 @@ function CategoriaForm({ editar, onFechar }: { editar: Categoria | null; onFecha
   return (
     <form onSubmit={enviar} className="flex flex-col gap-4" noValidate>
       <Input rotulo="Nome" value={nome} onChange={(e) => setNome(e.target.value)} maxLength={40} required />
-      <Select rotulo="Ícone" value={pic} onChange={(e) => setPic(e.target.value)}>
-        {[...new Set<string>([...PICS_CATEGORIA, pic])].map((p) => (
-          <option key={p} value={p}>
-            {NOME_PIC[p] ?? p}
-          </option>
-        ))}
-      </Select>
+      <SeletorIcone valor={pic} onChange={setPic} />
       {erro && <ErroBox>{erro}</ErroBox>}
       <RodapeForm onCancelar={onFechar} />
     </form>

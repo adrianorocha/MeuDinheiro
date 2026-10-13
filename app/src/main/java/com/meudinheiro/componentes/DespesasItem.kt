@@ -300,10 +300,6 @@ fun CardItemContent(
 ) {
     val context = LocalContext.current
     val dataFormatada = remember(item.data) { DateUtils.formatarData(Date(item.data)) }
-    val resId = remember(item.pic) {
-        val id = context.resources.getIdentifier(item.pic, "drawable", context.packageName)
-        if (id != 0) id else R.drawable.ic_launcher_foreground
-    }
 
     // ==========================================
     // 🚀 INTEGRAÇÃO GHOST MODE: ANIMAÇÃO VISUAL
@@ -350,7 +346,7 @@ fun CardItemContent(
                     .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(painter = painterResource(id = resId), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(24.dp))
+                IconePic(pic = item.pic, fallbackRes = R.drawable.ic_launcher_foreground, size = 24.dp)
             }
 
             Spacer(Modifier.width(12.dp))

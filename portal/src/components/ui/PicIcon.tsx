@@ -20,9 +20,15 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { GRUPOS_PICS, ICONES_CATALOGO } from "./picsCatalogo";
+
+export { GRUPOS_PICS } from "./picsCatalogo";
+export type { GrupoPics } from "./picsCatalogo";
 
 /** `pic` do contrato (nome do drawable do app) -> ícone lucide. */
 const ICONES: Record<string, LucideIcon> = {
+  ...ICONES_CATALOGO,
+  // Originais por último: nunca podem ser sobrescritos pelo catálogo (R50).
   fuel: Fuel,
   restaurant: Utensils,
   transport: Bus,
@@ -62,6 +68,33 @@ export const PICS_CATEGORIA = [
   "lunch",
   "reserva",
 ] as const;
+
+/** Rótulo pt-BR de cada chave de categoria (originais + catálogo R50). */
+export const NOME_PIC: Record<string, string> = {
+  fuel: "Combustível",
+  restaurant: "Restaurante",
+  transport: "Transporte",
+  shopping: "Compras",
+  cinema: "Cinema",
+  health: "Saúde",
+  education: "Educação",
+  salary: "Salário",
+  repair_car: "Oficina",
+  supermarket: "Supermercado",
+  gym: "Academia",
+  games: "Jogos",
+  drink: "Bebidas",
+  lunch: "Lanche",
+  reserva: "Reserva",
+  ...Object.fromEntries(GRUPOS_PICS.flatMap((g) => g.itens.map((i) => [i.chave, i.rotulo]))),
+};
+
+/** Grupo extra com os 15 ícones originais (mesmas chaves do app), exibido primeiro no seletor. */
+export const GRUPO_ORIGINAIS: { id: string; rotulo: string; itens: { chave: string; rotulo: string }[] } = {
+  id: "originais",
+  rotulo: "Padrão",
+  itens: PICS_CATEGORIA.map((chave) => ({ chave, rotulo: NOME_PIC[chave] })),
+};
 
 export function PicIcon({ pic, size = 18, className = "" }: { pic: string; size?: number; className?: string }) {
   const Icone = ICONES[pic] ?? (pic ? Landmark : Tag);
