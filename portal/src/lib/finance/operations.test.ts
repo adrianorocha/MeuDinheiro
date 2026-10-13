@@ -46,6 +46,14 @@ describe("R8 parcelamento", () => {
   it("100/3 => 33.33, 33.33, 33.34", () => {
     expect(dividirParcelas(100, 3)).toEqual([33.33, 33.33, 33.34]);
   });
+  it("arredonda ao centavo mais próximo como o banco (6984,65/3 => 2328,22 x2 e 2328,21)", () => {
+    expect(dividirParcelas(6984.65, 3)).toEqual([2328.22, 2328.22, 2328.21]);
+  });
+  it("total minúsculo nunca zera a última parcela", () => {
+    const p = dividirParcelas(0.02, 4);
+    expect(p.reduce((a, b) => a + Math.round(b * 100), 0)).toBe(2);
+    expect(p[3]).toBeGreaterThan(0);
+  });
   it("soma exata em várias divisões", () => {
     for (const [total, parcelas] of [[100, 7], [0.1, 3], [999.99, 12], [1, 3]] as const) {
       const p = dividirParcelas(total, parcelas);

@@ -283,7 +283,9 @@ object Financas {
         require(aPartirDe in 1..n) { "Parcela atual inválida (1 a $n)" }
         val totalC = Dinheiro.centavos(modelo.valor)
         require(totalC > 0) { "Valor deve ser maior que zero" }
-        val baseC = totalC / n
+        // Como o banco: parcela = total/n arredondado ao centavo mais próximo; a última absorve a diferença.
+        val arredondada = if (n > 1) (totalC + n / 2) / n else totalC
+        val baseC = if (arredondada * (n - 1) < totalC) arredondada else totalC / n // total minúsculo: nunca deixa a última ≤ 0
         val resto = totalC - baseC * n
         val diaOriginal = Calendar.getInstance().apply { timeInMillis = modelo.dataMs }.get(Calendar.DAY_OF_MONTH)
         val noCartao = modelo.cartaoId != null && modelo.cartaoId != 0

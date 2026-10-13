@@ -85,7 +85,7 @@ Vencimento da fatura (M,Y): se `diaVencimento > diaFechamento` → mês M, senã
 Cria 1 despesa `DEBITO, pago, natureza=PAGAMENTO_FATURA, categoria="Cartão", conta=conta do cartão, cartaoId=null, valor=total, grupoId="fatura:{cartaoId}:{Y}-{MM}"`;
 marca os itens como `pago=true`; recalcula saldo (R3) e limite (R4). A despesa de pagamento não pode ser excluída diretamente.
 
-**R8 – Parcelamento.** `n` parcelas: `base = floor(total/n·100)/100`; a última recebe o resto (soma exata).
+**R8 – Parcelamento.** `n` parcelas: `base = round(total/n·100)/100` (centavo mais próximo, como o banco; antes truncava e deixava a parcela 1 centavo abaixo da cobrada); a última recebe a diferença (soma exata). Se o arredondamento deixasse a última ≤ 0 (total minúsculo), usa o truncamento.
 Data da parcela `i` = data inicial + `(i−1)` meses a partir da data **original** (dia limitado ao último dia do mês, sem "deriva").
 Descrição `"<desc> (i/n)"`, `grupoId` comum. `pago`: cartão → `false`; conta → `data <= agora`.
 

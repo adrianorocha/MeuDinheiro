@@ -183,6 +183,19 @@ class FinancasTest {
         assertEquals(1, p.map { it.grupoId }.distinct().size)
     }
 
+    @Test fun `parcelas arredondam ao centavo mais proximo como o banco`() {
+        // 6.984,65 / 3 = 2.328,2166… → o banco cobra 2.328,22 (antes o app truncava em 2.328,21)
+        val p = Financas.parcelar(lanc(6984.65, data = ms(2026, 1, 15)), 3, 0L)
+        assertEquals(listOf(2328.22, 2328.22, 2328.21), p.map { it.valor })
+        assertEquals(6984.65, Dinheiro.somar(p.map { it.valor }), 0.0)
+    }
+
+    @Test fun `total minusculo nunca gera ultima parcela zerada ou negativa`() {
+        val p = Financas.parcelar(lanc(0.02, data = ms(2026, 1, 15)), 4, 0L)
+        assertEquals(0.02, Dinheiro.somar(p.map { it.valor }), 0.0)
+        assertTrue(p.last().valor > 0.0)
+    }
+
     @Test fun `parcelas no dia 31 nao derivam para o dia 28`() {
         val p = Financas.parcelar(lanc(120.0, data = ms(2026, 1, 31)), 4, 0L)
         val dias = p.map { Calendar.getInstance().apply { timeInMillis = it.dataMs }.let { c -> c.get(Calendar.MONTH) + 1 to c.get(Calendar.DAY_OF_MONTH) } }

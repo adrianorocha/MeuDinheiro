@@ -127,10 +127,12 @@ function idsDespesas(ds: Dataset): number[] {
 
 // ------------------------------------------------------------ R8 parcelamento
 
-/** R8 - divide em centavos: parcelas base = floor(total/n), a ultima recebe o resto. */
+/** R8 - divide em centavos: parcela = total/n arredondado ao centavo mais proximo (como o banco); a ultima absorve a diferenca. */
 export function dividirParcelas(total: number, n: number): number[] {
   const totalCents = toCents(total);
-  const base = Math.floor(totalCents / n);
+  const arredondada = n > 1 ? Math.round(totalCents / n) : totalCents;
+  // total minusculo: nunca deixa a ultima parcela <= 0
+  const base = arredondada * (n - 1) < totalCents ? arredondada : Math.floor(totalCents / n);
   const out: number[] = Array.from({ length: n }, () => base);
   out[n - 1] = totalCents - base * (n - 1);
   return out.map(fromCents);
