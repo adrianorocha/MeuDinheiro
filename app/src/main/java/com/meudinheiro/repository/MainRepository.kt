@@ -14,18 +14,30 @@ import com.meudinheiro.data.Lixeira
 import com.meudinheiro.data.CategoriaDomain
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
+import com.meudinheiro.data.Acerto
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.data.Divida
+import com.meudinheiro.data.Pessoa
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.Meta
 import com.meudinheiro.data.Orcamento
+import com.meudinheiro.data.Projeto
+import com.meudinheiro.data.RegraCategoria
 import com.meudinheiro.data.PatrimonioHistorico
 import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.TransferenciaAgendada
 import com.meudinheiro.domain.Analises
 import com.meudinheiro.domain.ConferenciaSaldos
+import com.meudinheiro.domain.ConfigGeral
+import com.meudinheiro.domain.Projetos
+import com.meudinheiro.domain.Regras
+import com.meudinheiro.domain.Tags
+import com.meudinheiro.domain.Texto
 import com.meudinheiro.domain.Dinheiro
+import com.meudinheiro.domain.Dividas
+import com.meudinheiro.domain.Rateios
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.domain.LancamentoAcoes
 import com.meudinheiro.domain.WidgetResumo
@@ -95,6 +107,12 @@ class MainRepository(
     private val transacaoDao = db.transacaoDao()
     private val patrimonioDao = db.patrimonioDao()
     private val lixeiraDao = db.lixeiraDao()
+    private val regraDao = db.regraCategoriaDao()
+    private val projetoDao = db.projetoDao()
+    private val dividaDao = db.dividaDao()
+    private val pessoaDao = db.pessoaDao()
+    private val acertoDao = db.acertoDao()
+    private val configuracaoLocal by lazy { com.meudinheiro.storage.ConfiguracaoLocal(db, UserPreferences(context)) }
 
     private fun agora() = System.currentTimeMillis()
 
@@ -1132,6 +1150,272 @@ class MainRepository(
         return Date(inicio) to Date(fim)
     }
 
+    /* ======================= R55 — REGRAS DE CATEGORIA ======================= */
+
+    fun obterRegrasFlow(): Flow<List<RegraCategoria>> = regraDao.observar()
+    suspend fun obterRegras(): List<RegraCategoria> = regraDao.obterTodasStatic()
+
+    suspend fun salvarRegra(regra: RegraCategoria): Long {
+        val limpa = regra.copy(
+            padrao = regra.padrao.trim(),
+            categoria = regra.categoria.trim(),
+            conta = regra.conta?.trim()?.takeIf { it.isNotEmpty() },
+            tipo = regra.tipo?.takeIf { it == "DEBITO" || it == "CREDITO" }
+        )
+        Regras.validar(limpa.padrao, limpa.categoria, limpa.tipoMatch)?.let { throw RegraFinanceiraException(it) }
+        return regraDao.salvar(if (limpa.id == 0) limpa.copy(criadaEm = agora()) else limpa)
+    }
+
+    suspend fun alternarRegra(id: Int) {
+        val r = regraDao.obterTodasStatic().firstOrNull { it.id == id } ?: throw RegraFinanceiraException("Regra não encontrada.")
+        regraDao.salvar(r.copy(ativa = !r.ativa))
+    }
+
+    suspend fun ajustarPrioridadeRegra(id: Int, delta: Int) {
+        val r = regraDao.obterTodasStatic().firstOrNull { it.id == id } ?: throw RegraFinanceiraException("Regra não encontrada.")
+        regraDao.salvar(r.copy(prioridade = r.prioridade + delta))
+    }
+
+    suspend fun excluirRegra(id: Int) = regraDao.excluir(id)
+
+    /** Categoria da regra vencedora para o lançamento (ou `null`). Regra explícita vence a sugestão heurística (R21). */
+    suspend fun categoriaPorRegras(descricao: String, conta: String?, tipo: TipoDespesa): String? =
+        Regras.categoria(regraDao.obterTodasStatic(), Regras.Entrada(descricao, conta, tipo.name))
+
+    /** R55 — aprendizado leve: depois de trocar a categoria, há 2+ lançamentos iguais com ela? Sugere a regra (nunca cria sozinho). */
+    suspend fun sugerirRegraAprendida(editado: Despesa): Regras.Sugestao? =
+        Regras.sugerirAprendida(despesaDao.obterTodasStatic(), regraDao.obterTodasStatic(), editado)
+
+    suspend fun criarRegraAprendida(s: Regras.Sugestao): Long = regraDao.salvar(Regras.novaRegraAprendida(s, agora()))
+
+    /** Prévia (não altera nada): lançamentos NORMAL cuja categoria mudaria ao aplicar as regras. */
+    suspend fun previaRegrasExistentes(): List<Regras.Mudanca> =
+        Regras.previa(despesaDao.obterTodasStatic(), regraDao.obterTodasStatic())
+
+    /** O necessário para desfazer a aplicação (categoria e ícone anteriores). */
+    data class CategoriaAnterior(val id: Long, val categoria: String, val pic: String)
+
+    /** Aplica a prévia confirmada (só lançamentos NORMAL; categoria não afeta saldo). Devolve o que é preciso para desfazer. */
+    suspend fun aplicarRegrasExistentes(mudancas: List<Regras.Mudanca>): List<CategoriaAnterior> = db.withTransaction {
+        val pics = categoriaDao.obterTodasStatic().associate { Texto.normalizar(it.nome) to it.pic }
+        val anteriores = ArrayList<CategoriaAnterior>()
+        for (m in mudancas) {
+            val d = despesaDao.obterDespesaPorId(m.id) ?: continue
+            if (d.natureza != Natureza.NORMAL) continue
+            anteriores += CategoriaAnterior(d.id, d.categoria, d.pic)
+            despesaDao.inserirDespesa(d.copy(categoria = m.para, pic = pics[Texto.normalizar(m.para)] ?: d.pic))
+        }
+        anteriores
+    }
+
+    suspend fun desfazerRegrasExistentes(anteriores: List<CategoriaAnterior>) = db.withTransaction {
+        for (a in anteriores) {
+            val d = despesaDao.obterDespesaPorId(a.id) ?: continue
+            despesaDao.inserirDespesa(d.copy(categoria = a.categoria, pic = a.pic))
+        }
+    }
+
+    /* ======================= R56 — TAGS E PROJETOS ======================= */
+
+    fun obterProjetosFlow(): Flow<List<Projeto>> = projetoDao.observar()
+
+    suspend fun salvarProjeto(projeto: Projeto): Long {
+        val limpo = projeto.copy(
+            nome = projeto.nome.trim(),
+            tag = Tags.chave(projeto.tag),
+            orcamento = projeto.orcamento?.takeIf { it > 0.0 }?.let { Dinheiro.arredondar(it) },
+            cor = projeto.cor?.takeIf { it.isNotBlank() }
+        )
+        Projetos.validar(limpo.nome, limpo.tag, limpo.orcamento, limpo.inicio, limpo.fim, projetoDao.obterTodasStatic(), limpo.id.takeIf { it != 0 })
+            ?.let { throw RegraFinanceiraException(it) }
+        return projetoDao.salvar(limpo)
+    }
+
+    suspend fun excluirProjeto(id: Int) = projetoDao.excluir(id)
+
+    /* ======================= R58 — DÍVIDAS ======================= */
+
+    fun obterDividasFlow(): Flow<List<Divida>> = dividaDao.observar()
+
+    /** Cria/edita a dívida. Na criação o valor original é o saldo; na edição preserva o original já gravado. */
+    suspend fun salvarDivida(divida: Divida): Long {
+        val saldo = Dinheiro.arredondar(divida.saldoDevedor)
+        val anterior = if (divida.id != 0) dividaDao.obterPorId(divida.id) else null
+        val limpa = divida.copy(
+            nome = divida.nome.trim(),
+            credor = divida.credor?.trim()?.takeIf { it.isNotEmpty() },
+            saldoDevedor = saldo,
+            valorOriginal = divida.valorOriginal?.takeIf { it > 0.0 }?.let { Dinheiro.arredondar(it) } ?: anterior?.valorOriginal ?: saldo,
+            taxaJurosMensal = if (divida.taxaJurosMensal > 0.0) divida.taxaJurosMensal else 0.0,
+            parcelaMinima = divida.parcelaMinima?.takeIf { it > 0.0 }?.let { Dinheiro.arredondar(it) },
+            conta = divida.conta?.trim()?.takeIf { it.isNotEmpty() }
+        )
+        Dividas.validar(limpa.nome, limpa.tipo, limpa.saldoDevedor, limpa.taxaJurosMensal, limpa.parcelaMinima, limpa.parcelasRestantes, limpa.diaVencimento)
+            ?.let { throw RegraFinanceiraException(it) }
+        return dividaDao.salvar(limpa)
+    }
+
+    suspend fun excluirDivida(id: Int) = dividaDao.excluir(id)
+
+    /** Juros do mês (informados pelo usuário) acrescentam ao saldo devedor; nada em conta é alterado. */
+    suspend fun registrarJurosDivida(id: Int, juros: Double) {
+        val d = dividaDao.obterPorId(id) ?: throw RegraFinanceiraException("Dívida não encontrada.")
+        val j = Dinheiro.centavos(juros)
+        if (j <= 0) throw RegraFinanceiraException("Os juros devem ser maiores que zero.")
+        dividaDao.salvar(d.copy(saldoDevedor = Dinheiro.reais(Dinheiro.centavos(d.saldoDevedor) + j), ativa = true))
+    }
+
+    /**
+     * Paga a dívida: lançamento NORMAL de despesa (pago) na conta, `grupoId = "divida:<id>"`, e abate o saldo devedor na MESMA
+     * transação. O saldo da conta já cai pelo lançamento; o saldo devedor é controle próprio. [juros] (opcional) é somado ao
+     * saldo devedor antes de abater. Saldo zero = quitada (`ativa = false`). Devolve o id do lançamento.
+     */
+    suspend fun pagarDivida(dividaId: Int, valor: Double, conta: String, data: Long? = null, categoria: String? = null, juros: Double = 0.0): Long =
+        db.withTransaction {
+            val d = dividaDao.obterPorId(dividaId) ?: throw RegraFinanceiraException("Dívida não encontrada.")
+            if (contaSaldoDao.obterPorNumero(conta) == null) throw RegraFinanceiraException("Conta não encontrada.")
+            val cat = categoria?.trim()?.takeIf { it.isNotEmpty() } ?: Dividas.CATEGORIA
+            val pago = Dinheiro.centavos(valor)
+            val r = Dividas.aplicarPagamento(Dinheiro.centavos(d.saldoDevedor), Dinheiro.centavos(juros), pago)
+            r.erro?.let { throw RegraFinanceiraException(it) }
+            val pic = categoriaDao.obterTodasStatic().firstOrNull { Texto.normalizar(it.nome) == Texto.normalizar(cat) }?.pic ?: "default_pic"
+            val id = registrarLancamento(
+                Despesa(
+                    descricao = "Pagamento: ${d.nome}", valor = Dinheiro.reais(pago), data = Date(data ?: agora()), categoria = cat,
+                    conta = conta, pic = pic, tipo = TipoDespesa.DEBITO, mes = 0, ano = 0, pago = true, grupoId = Dividas.grupoId(d.id)
+                )
+            )
+            dividaDao.salvar(d.copy(saldoDevedor = Dinheiro.reais(r.saldo), ativa = r.saldo > 0))
+            id
+        }
+
+    /* ======================= R59 — PESSOAS, RATEIOS E ACERTOS ======================= */
+
+    fun obterPessoasFlow(): Flow<List<Pessoa>> = pessoaDao.observar()
+    fun obterAcertosFlow(): Flow<List<Acerto>> = acertoDao.observar()
+    fun obterAcertosDaDespesaFlow(despesaId: Long): Flow<List<Acerto>> = acertoDao.observarDaDespesa(despesaId)
+
+    suspend fun salvarPessoa(pessoa: Pessoa): Long {
+        val nome = pessoa.nome.trim()
+        if (nome.isEmpty()) throw RegraFinanceiraException("Informe o nome da pessoa.")
+        val alvo = Texto.normalizar(nome)
+        if (pessoaDao.obterTodasStatic().any { it.id != pessoa.id && Texto.normalizar(it.nome) == alvo }) {
+            throw RegraFinanceiraException("Já existe uma pessoa com esse nome.")
+        }
+        return pessoaDao.salvar(pessoa.copy(nome = nome, contato = pessoa.contato?.trim()?.takeIf { it.isNotEmpty() }))
+    }
+
+    suspend fun excluirPessoa(id: Int) {
+        if (acertoDao.obterTodasStatic().any { it.pessoaId == id }) {
+            throw RegraFinanceiraException("Esta pessoa tem acertos. Exclua os acertos antes de removê-la.")
+        }
+        pessoaDao.excluir(id)
+    }
+
+    /**
+     * "Dividir esta despesa": cria os acertos A_RECEBER do rateio (cotas em centavos, sobra no pagador). O lançamento e os
+     * saldos NÃO mudam. Devolve a parte que fica com você (centavos).
+     */
+    suspend fun dividirDespesa(despesaId: Long, modo: Rateios.Modo, participantes: List<Rateios.Participante>, vocePercentual: Long? = null): Long =
+        db.withTransaction {
+            val d = despesaDao.obterDespesaPorId(despesaId) ?: throw RegraFinanceiraException("Lançamento não encontrado.")
+            if (d.tipo != TipoDespesa.DEBITO || d.natureza != Natureza.NORMAL) throw RegraFinanceiraException("Só despesas comuns podem ser divididas.")
+            val grupo = Rateios.grupoRateio(d.id)
+            if (acertoDao.obterTodasStatic().any { it.grupoRateio == grupo }) {
+                throw RegraFinanceiraException("Este lançamento já foi dividido. Desfaça a divisão antes de dividir de novo.")
+            }
+            val pessoas = pessoaDao.obterTodasStatic().map { it.id }.toSet()
+            if (participantes.any { it.pessoaId !in pessoas }) throw RegraFinanceiraException("Pessoa não encontrada.")
+            when (val r = Rateios.ratear(Dinheiro.centavos(d.valor), modo, participantes, vocePercentual)) {
+                is Rateios.Resultado.Erro -> throw RegraFinanceiraException(r.mensagem)
+                is Rateios.Resultado.Ok -> {
+                    acertoDao.inserirTodas(
+                        r.cotas.map { c ->
+                            Acerto(
+                                pessoaId = c.pessoaId, tipo = Rateios.A_RECEBER, valor = Dinheiro.reais(c.centavos), descricao = d.descricao,
+                                data = d.data.time, despesaId = d.id, quitado = false, quitadoEm = null, grupoRateio = grupo
+                            )
+                        }
+                    )
+                    r.voce
+                }
+            }
+        }
+
+    /** Remove os acertos do rateio (só se nenhum foi quitado). O lançamento não muda. */
+    suspend fun desfazerRateio(despesaId: Long): Int = db.withTransaction {
+        val grupo = Rateios.grupoRateio(despesaId)
+        val doGrupo = acertoDao.obterTodasStatic().filter { it.grupoRateio == grupo }
+        if (doGrupo.isEmpty()) throw RegraFinanceiraException("Este lançamento não foi dividido.")
+        if (doGrupo.any { it.quitado }) throw RegraFinanceiraException("Há acertos já quitados neste rateio; não dá para desfazer a divisão.")
+        acertoDao.excluirDoGrupo(grupo)
+        doGrupo.size
+    }
+
+    /** Lançamento (já pago) para o saldo da conta bater com o banco. */
+    private suspend fun lancarAcerto(descricao: String, valor: Double, data: Long, categoria: String, conta: String, tipo: TipoDespesa): Long {
+        val pic = categoriaDao.obterTodasStatic().firstOrNull { Texto.normalizar(it.nome) == Texto.normalizar(categoria) }?.pic ?: "default_pic"
+        return registrarLancamento(
+            Despesa(descricao = descricao, valor = valor, data = Date(data), categoria = categoria, conta = conta, pic = pic, tipo = tipo, mes = 0, ano = 0, pago = true)
+        )
+    }
+
+    /**
+     * "Emprestei" ([tipo] = A_RECEBER) ou "Devo" (A_PAGAR): acerto avulso. Com [contaLancamento], gera também o lançamento
+     * (saída no "Emprestei", entrada no "Devo") e o vincula como origem. Devolve o id do acerto.
+     */
+    suspend fun criarAcertoAvulso(
+        pessoaId: Int, tipo: String, valor: Double, descricao: String?, data: Long? = null,
+        contaLancamento: String? = null, categoria: String? = null
+    ): Long = db.withTransaction {
+        val pessoa = pessoaDao.obterTodasStatic().firstOrNull { it.id == pessoaId } ?: throw RegraFinanceiraException("Pessoa não encontrada.")
+        if (tipo != Rateios.A_RECEBER && tipo != Rateios.A_PAGAR) throw RegraFinanceiraException("Tipo de acerto inválido.")
+        val centavos = Dinheiro.centavos(valor)
+        if (centavos <= 0) throw RegraFinanceiraException("O valor deve ser maior que zero.")
+        val quando = data ?: agora()
+        val recebe = tipo == Rateios.A_RECEBER
+        val despesaId = contaLancamento?.takeIf { it.isNotBlank() }?.let { conta ->
+            if (contaSaldoDao.obterPorNumero(conta) == null) throw RegraFinanceiraException("Conta não encontrada.")
+            lancarAcerto(
+                if (recebe) "Empréstimo para ${pessoa.nome}" else "Empréstimo de ${pessoa.nome}", Dinheiro.reais(centavos), quando,
+                categoria?.trim()?.takeIf { it.isNotEmpty() } ?: Rateios.CATEGORIA_EMPRESTIMOS, conta,
+                if (recebe) TipoDespesa.DEBITO else TipoDespesa.CREDITO
+            )
+        }
+        acertoDao.salvar(
+            Acerto(
+                pessoaId = pessoa.id, tipo = tipo, valor = Dinheiro.reais(centavos),
+                descricao = descricao?.trim()?.takeIf { it.isNotEmpty() } ?: if (recebe) "Empréstimo" else "Dívida",
+                data = quando, despesaId = despesaId, quitado = false, quitadoEm = null, grupoRateio = null
+            )
+        )
+    }
+
+    /**
+     * Receber/pagar o acerto: marca quitado e, com [contaLancamento], cria o lançamento já pago (receita "Reembolso" ao
+     * receber; despesa "Acertos" ao pagar) para o saldo bater com o banco. Devolve o id do lançamento (ou `null`).
+     */
+    suspend fun quitarAcerto(acertoId: Int, data: Long? = null, contaLancamento: String? = null, categoria: String? = null): Long? =
+        db.withTransaction {
+            val a = acertoDao.obterTodasStatic().firstOrNull { it.id == acertoId } ?: throw RegraFinanceiraException("Acerto não encontrado.")
+            if (a.quitado) throw RegraFinanceiraException("Este acerto já está quitado.")
+            val quando = data ?: agora()
+            val nome = pessoaDao.obterTodasStatic().firstOrNull { it.id == a.pessoaId }?.nome ?: "pessoa"
+            val recebendo = a.tipo == Rateios.A_RECEBER
+            val id = contaLancamento?.takeIf { it.isNotBlank() }?.let { conta ->
+                if (contaSaldoDao.obterPorNumero(conta) == null) throw RegraFinanceiraException("Conta não encontrada.")
+                lancarAcerto(
+                    if (recebendo) "Reembolso: $nome - ${a.descricao}" else "Acerto com $nome: ${a.descricao}", a.valor, quando,
+                    categoria?.trim()?.takeIf { it.isNotEmpty() } ?: if (recebendo) Rateios.CATEGORIA_REEMBOLSO else Rateios.CATEGORIA_ACERTOS,
+                    conta, if (recebendo) TipoDespesa.CREDITO else TipoDespesa.DEBITO
+                )
+            }
+            acertoDao.salvar(a.copy(quitado = true, quitadoEm = quando))
+            id
+        }
+
+    suspend fun excluirAcerto(id: Int) = acertoDao.excluir(id)
+
     /* ======================= BACKUP / RESTORE ======================= */
 
     suspend fun gerarBackup(): String = BackupJson.toJson(
@@ -1147,7 +1431,14 @@ class MainRepository(
             investimentos = investimentoDao.obterTodasStatic(),
             transacao = transacaoDao.obterTodasStatic(),
             transferenciasAgendadas = contaSaldoDao.obterAgendamentosStatic(),
-            lixeira = lixeiraDao.obterTodasStatic()
+            lixeira = lixeiraDao.obterTodasStatic(),
+            regrasCategoria = regraDao.obterTodasStatic(),
+            projetos = projetoDao.obterTodasStatic(),
+            dividas = dividaDao.obterTodasStatic(),
+            pessoas = pessoaDao.obterTodasStatic(),
+            acertos = acertoDao.obterTodasStatic(),
+            // R57: só leva as configurações se o usuário já alterou alguma (carimbo > 0)
+            configuracoes = runCatching { configuracaoLocal.documentoParaEnvio() }.getOrNull()
         )
     )
 
@@ -1179,8 +1470,15 @@ class MainRepository(
             patrimonioDao.inserirTodas(backup.patrimonio.orEmpty())
             contaSaldoDao.inserirAgendamentos(backup.transferenciasAgendadas.orEmpty())
             lixeiraDao.inserirTodas(backup.lixeira.orEmpty())
+            regraDao.inserirTodas(backup.regrasCategoria.orEmpty())
+            projetoDao.inserirTodas(backup.projetos.orEmpty())
+            dividaDao.inserirTodas(backup.dividas.orEmpty())
+            pessoaDao.inserirTodas(backup.pessoas.orEmpty())
+            acertoDao.inserirTodas(backup.acertos.orEmpty())
         }
         recalcularTudo()
+        // R57: configurações do backup entram só se forem mais novas que as atuais (empate/sem data = local vence).
+        backup.configuracoes?.let { doc -> runCatching { configuracaoLocal.aplicar(ConfigGeral.deDoc(doc)) } }
     }
 
     private fun normalizarRestore(d: Despesa): Despesa =
@@ -1202,6 +1500,11 @@ class MainRepository(
         contaSaldoDao.apagarCategorias()
         contaSaldoDao.apagarContas()
         lixeiraDao.limpar()
+        regraDao.limpar()
+        projetoDao.limpar()
+        dividaDao.limpar()
+        pessoaDao.limpar()
+        acertoDao.limpar()
     }
 
     /* ======================= EXPORTAÇÃO / SINAIS ======================= */

@@ -50,7 +50,29 @@ import {
 } from "../finance/operations";
 import { auditarSaldos, recalcularSaldos } from "../finance/conferencia";
 import { round2 } from "../finance/money";
-import type { Categoria, DespesaFixa, Investimento, Meta } from "../finance/types";
+import {
+  excluirDivida,
+  pagarDivida,
+  registrarJurosDivida,
+  salvarDivida,
+  type DadosDivida,
+  type PagamentoDivida,
+} from "../finance/dividas";
+import {
+  criarAcertoAvulso,
+  desfazerRateio,
+  dividirDespesa,
+  excluirAcerto,
+  excluirPessoa,
+  quitarAcerto,
+  salvarPessoa,
+  type AcertoAvulso,
+  type DivisaoDespesa,
+  type QuitacaoAcerto,
+} from "../finance/rateios";
+import { aplicarMudancas, desfazerMudancas, novaRegraAprendida, validarRegra, type MudancaRegra, type SugestaoRegra } from "../finance/regras";
+import { chaveTag, normalizarTags, validarProjeto } from "../finance/tags";
+import type { Categoria, DespesaFixa, Investimento, Meta, Projeto, RegraCategoria } from "../finance/types";
 import { aplicarConciliacao, desfazerConciliacao, desfazerLote, type Plano, type PlanoInverso } from "../conciliacao/plano";
 import { useSession } from "../session";
 import { useStore } from "./store";
@@ -187,6 +209,88 @@ export const acoes = {
       const r = recalcularSaldos(ds);
       return { ok: true as const, ds: r.ds, correcoes: r.correcoes };
     }),
+
+  // R55 - regras de categorização
+  salvarRegra: (dados: Omit<RegraCategoria, "id" | "criadaEm">, id?: number) =>
+    exec()((ds, ctx) => {
+      const limpo = { ...dados, padrao: dados.padrao.trim(), categoria: dados.categoria.trim(), conta: dados.conta?.trim() || null, tipo: dados.tipo ?? null };
+      const msg = validarRegra(limpo);
+      if (msg) return falha(msg);
+      if (id !== undefined) {
+        if (!ds.regrasCategoria.some((r) => r.id === id)) return falha("Regra não encontrada.");
+        return { ok: true as const, ds: { ...ds, regrasCategoria: atualizarItem(ds.regrasCategoria, id, limpo) } };
+      }
+      return { ok: true as const, ds: { ...ds, regrasCategoria: inserirItem(ds.regrasCategoria, { ...limpo, criadaEm: ctx.agora }, ctx).lista } };
+    }),
+  alternarRegra: (id: number) =>
+    exec()((ds) => {
+      const r = ds.regrasCategoria.find((x) => x.id === id);
+      if (!r) return falha("Regra não encontrada.");
+      return { ok: true as const, ds: { ...ds, regrasCategoria: atualizarItem(ds.regrasCategoria, id, { ativa: !r.ativa }) } };
+    }),
+  /** Muda a prioridade em +1/-1 (a regra de maior prioridade vence). */
+  ajustarPrioridadeRegra: (id: number, delta: number) =>
+    exec()((ds) => {
+      const r = ds.regrasCategoria.find((x) => x.id === id);
+      if (!r) return falha("Regra não encontrada.");
+      return { ok: true as const, ds: { ...ds, regrasCategoria: atualizarItem(ds.regrasCategoria, id, { prioridade: r.prioridade + delta }) } };
+    }),
+  excluirRegra: (id: number) =>
+    exec()((ds) => ({ ok: true as const, ds: { ...ds, regrasCategoria: removerItem(ds.regrasCategoria, id) } })),
+  criarRegraAprendida: (s: SugestaoRegra) =>
+    exec()((ds, ctx) => {
+      const nova = novaRegraAprendida(s, 0, ctx.agora);
+      const { id: _id, ...sem } = nova;
+      void _id;
+      return { ok: true as const, ds: { ...ds, regrasCategoria: inserirItem(ds.regrasCategoria, sem, ctx).lista } };
+    }),
+  /** Aplica a prévia confirmada; devolve o que é preciso para "Desfazer" imediato. */
+  aplicarRegrasExistentes: (mudancas: readonly MudancaRegra[]) =>
+    exec()((ds) => {
+      const r = aplicarMudancas(ds.despesas, mudancas);
+      return { ok: true as const, ds: { ...ds, despesas: r.despesas }, desfazer: r.desfazer };
+    }),
+  desfazerRegrasExistentes: (desfazer: readonly { id: number; categoria: string }[]) =>
+    exec()((ds) => ({ ok: true as const, ds: { ...ds, despesas: desfazerMudancas(ds.despesas, desfazer) } })),
+
+  // R56 - projetos
+  salvarProjeto: (dados: Omit<Projeto, "id" | "tag"> & { tag: string }, id?: number) =>
+    exec()((ds, ctx) => {
+      const tagRotulo = normalizarTags([dados.tag])[0] ?? "";
+      const limpo: Omit<Projeto, "id"> = {
+        nome: dados.nome.trim(),
+        tag: chaveTag(tagRotulo),
+        orcamento: dados.orcamento != null && dados.orcamento > 0 ? round2(dados.orcamento) : null,
+        inicio: dados.inicio ?? null,
+        fim: dados.fim ?? null,
+        ativo: dados.ativo,
+        cor: dados.cor ?? null,
+      };
+      const msg = validarProjeto(limpo, ds.projetos, id);
+      if (msg) return falha(msg);
+      if (id !== undefined) {
+        if (!ds.projetos.some((p) => p.id === id)) return falha("Projeto não encontrado.");
+        return { ok: true as const, ds: { ...ds, projetos: atualizarItem(ds.projetos, id, limpo) } };
+      }
+      return { ok: true as const, ds: { ...ds, projetos: inserirItem(ds.projetos, limpo, ctx).lista } };
+    }),
+  excluirProjeto: (id: number) =>
+    exec()((ds) => ({ ok: true as const, ds: { ...ds, projetos: removerItem(ds.projetos, id) } })),
+
+  // R58 - dívidas
+  salvarDivida: (dados: DadosDivida, id?: number) => exec()((ds, ctx) => salvarDivida(ds, dados, id, ctx)),
+  excluirDivida: (id: number) => exec()((ds) => excluirDivida(ds, id)),
+  registrarJurosDivida: (id: number, juros: number) => exec()((ds) => registrarJurosDivida(ds, id, juros)),
+  pagarDivida: (input: PagamentoDivida) => exec()((ds, ctx) => pagarDivida(ds, { autor: autorAtual(), ...input }, ctx)),
+
+  // R59 - pessoas, rateios e acertos
+  salvarPessoa: (dados: { nome: string; contato?: string | null }, id?: number) => exec()((ds, ctx) => salvarPessoa(ds, dados, id, ctx)),
+  excluirPessoa: (id: number) => exec()((ds) => excluirPessoa(ds, id)),
+  dividirDespesa: (input: DivisaoDespesa) => exec()((ds, ctx) => dividirDespesa(ds, input, ctx)),
+  desfazerRateio: (despesaId: number) => exec()((ds) => desfazerRateio(ds, despesaId)),
+  criarAcertoAvulso: (input: AcertoAvulso) => exec()((ds, ctx) => criarAcertoAvulso(ds, input, ctx)),
+  quitarAcerto: (input: QuitacaoAcerto) => exec()((ds, ctx) => quitarAcerto(ds, input, ctx)),
+  excluirAcerto: (id: number) => exec()((ds) => excluirAcerto(ds, id)),
 
   // categorias
   salvarCategoria: (dados: { nome: string; pic: string }, id?: number) =>

@@ -147,6 +147,7 @@ fun Configuracao(
     val hour by userPrefs.notifHourFlow.collectAsState(initial = 9)
     val minute by userPrefs.notifMinuteFlow.collectAsState(initial = 0)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
+    val avisoLimiteDiario by userPrefs.limiteDiarioAvisoFlow.collectAsState(initial = true)
     val biometriaEnabled by userPrefs.biometriaEnabledFlow.collectAsState(initial = true)
     val biometriaLancar by userPrefs.biometriaLancarFlow.collectAsState(initial = true)
 
@@ -457,6 +458,20 @@ fun Configuracao(
                                         )
                                     }
                                 },
+                                padding = PaddingValues(0.dp)
+                            )
+
+                            HorizontalDivider(
+                                color = TextWhite.copy(0.05f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+
+                            ConfiguracaoSwitchItem(
+                                icone = Icons.Default.NotificationsActive,
+                                titulo = "Aviso de limite diário",
+                                descricao = "Avisar quando o gasto de hoje passar do limite seguro (Quanto posso gastar hoje)",
+                                checked = avisoLimiteDiario,
+                                onCheckedChange = { v -> scope.launch { userPrefs.saveLimiteDiarioAviso(v) } },
                                 padding = PaddingValues(0.dp)
                             )
                         }

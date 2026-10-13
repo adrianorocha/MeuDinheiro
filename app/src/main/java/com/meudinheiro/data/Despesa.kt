@@ -48,7 +48,12 @@ data class Despesa(
     /** Identificador da transação no extrato do banco (conciliação feita no portal — R35/R38). */
     val fitid: String? = null,
     /** Quando foi conciliada com o extrato (epoch ms); nulo = não conciliada. */
-    val conciliadoEm: Long? = null
+    val conciliadoEm: Long? = null,
+    /**
+     * R56 — rótulos das tags (máx. 5, 30 caracteres, sem repetir a chave). Coluna TEXT (array JSON); a migração 8→9 cria
+     * a coluna com DEFAULT '[]' (por isso, de propósito, sem defaultValue no Room, como em `natureza`).
+     */
+    val tags: List<String> = emptyList()
 ) : Movimento {
     override val dataMs: Long get() = data.time
 }

@@ -10,23 +10,31 @@ import com.meudinheiro.dao.MetaDao
 import com.meudinheiro.dao.OrcamentoDao
 import com.meudinheiro.dao.PatrimonioDao
 import com.meudinheiro.dao.TransacaoDao
+import com.meudinheiro.data.Acerto
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.Cartao
 import com.meudinheiro.data.Categoria
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaFixa
+import com.meudinheiro.data.Divida
 import com.meudinheiro.data.Investimento
 import com.meudinheiro.data.Lixeira
 import com.meudinheiro.data.Meta
 import com.meudinheiro.data.Orcamento
 import com.meudinheiro.data.PatrimonioHistorico
+import com.meudinheiro.data.Pessoa
+import com.meudinheiro.data.Projeto
+import com.meudinheiro.data.RegraCategoria
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.Transacao
 import com.meudinheiro.data.TransferenciaAgendada
 import com.meudinheiro.domain.Dinheiro
+import com.meudinheiro.domain.Dividas
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.domain.Natureza
+import com.meudinheiro.domain.Regras
+import com.meudinheiro.domain.Tags
 import java.util.Date
 
 /** Documento Firestore = mapa campo → valor (números, texto, booleano ou nulo). */
@@ -40,6 +48,11 @@ typealias Doc = Map<String, Any?>
 class Colecao(
     val nome: String,
     val derivados: Set<String> = emptySet(),
+    /**
+     * Campos opcionais NOVOS (R56 `tags`): ausentes/nulos/listas vazias não entram no hash. Assim um documento antigo
+     * (sem o campo) e o mesmo documento com o campo vazio têm o mesmo hash — nada é regravado só por causa do upgrade.
+     */
+    val ignorarSeVazio: Set<String> = emptySet(),
     val lerLocal: suspend () -> Map<String, Doc>,
     val gravarLocal: suspend (List<Doc>) -> Unit,
     val apagarLocal: suspend (List<String>) -> Unit
@@ -83,7 +96,7 @@ object FirestoreMapper {
         "moedaOriginal" to d.moedaOriginal, "cotacaoNaData" to d.cotacaoNaData, "pago" to d.pago,
         "natureza" to d.natureza, "grupoId" to d.grupoId, "autor" to d.autor,
         "fitid" to d.fitid, "conciliadoEm" to d.conciliadoEm
-    )
+    ) + if (d.tags.isEmpty()) emptyMap() else mapOf("tags" to d.tags) // R56: só vai ao documento quando há tags (dados antigos intactos)
 
     fun despesaFromDoc(d: Doc): Despesa {
         val ms = d.long("data", System.currentTimeMillis())
@@ -108,7 +121,8 @@ object FirestoreMapper {
             grupoId = d.strOuNulo("grupoId"),
             autor = d.strOuNulo("autor"),
             fitid = d.strOuNulo("fitid"),
-            conciliadoEm = d.longOuNulo("conciliadoEm")
+            conciliadoEm = d.longOuNulo("conciliadoEm"),
+            tags = Tags.normalizar((d["tags"] as? List<*>)?.map { it as? String })
         )
     }
 
@@ -135,6 +149,69 @@ object FirestoreMapper {
 
     fun toDoc(o: Orcamento): Doc = mapOf("id" to o.id, "categoria" to o.categoria, "valorLimite" to o.valorLimite)
     fun orcamentoFromDoc(d: Doc) = Orcamento(id = d.int("id"), categoria = d.str("categoria"), valorLimite = d.double("valorLimite"))
+
+    fun toDoc(r: RegraCategoria): Doc = mapOf(
+        "id" to r.id, "padrao" to r.padrao, "tipoMatch" to r.tipoMatch, "categoria" to r.categoria,
+        "conta" to r.conta, "tipo" to r.tipo, "ativa" to r.ativa, "prioridade" to r.prioridade, "criadaEm" to r.criadaEm
+    )
+
+    fun regraFromDoc(d: Doc) = RegraCategoria(
+        id = d.int("id"), padrao = d.str("padrao"),
+        tipoMatch = d.str("tipoMatch", "CONTEM").takeIf { it in Regras.TIPOS_MATCH } ?: "CONTEM",
+        categoria = d.str("categoria"), conta = d.strOuNulo("conta")?.takeIf { it.isNotBlank() },
+        tipo = d.strOuNulo("tipo")?.takeIf { it == "DEBITO" || it == "CREDITO" },
+        ativa = d.bool("ativa", true), prioridade = d.int("prioridade"), criadaEm = d.long("criadaEm")
+    )
+
+    fun toDoc(p: Projeto): Doc = mapOf(
+        "id" to p.id, "nome" to p.nome, "tag" to p.tag, "orcamento" to p.orcamento, "inicio" to p.inicio,
+        "fim" to p.fim, "ativo" to p.ativo, "cor" to p.cor
+    )
+
+    fun projetoFromDoc(d: Doc) = Projeto(
+        id = d.int("id"), nome = d.str("nome"), tag = Tags.chave(d.str("tag")),
+        orcamento = (d["orcamento"] as? Number)?.toDouble()?.takeIf { it > 0.0 && it.isFinite() },
+        inicio = d.longOuNulo("inicio"), fim = d.longOuNulo("fim"), ativo = d.bool("ativo", true),
+        cor = d.strOuNulo("cor")?.takeIf { it.isNotBlank() }
+    )
+
+    /** R58 — dívida em quitação (valores em reais; valorOriginal e parcelaMinima opcionais). */
+    fun toDoc(d: Divida): Doc = mapOf(
+        "id" to d.id, "nome" to d.nome, "tipo" to d.tipo, "credor" to d.credor, "saldoDevedor" to d.saldoDevedor,
+        "valorOriginal" to d.valorOriginal, "taxaJurosMensal" to d.taxaJurosMensal, "parcelaMinima" to d.parcelaMinima,
+        "parcelasRestantes" to d.parcelasRestantes, "diaVencimento" to d.diaVencimento, "conta" to d.conta, "ativa" to d.ativa
+    )
+
+    fun dividaFromDoc(d: Doc) = Divida(
+        id = d.int("id"), nome = d.str("nome"),
+        tipo = d.str("tipo", "OUTRA").takeIf { it in Dividas.TIPOS } ?: "OUTRA",
+        credor = d.strOuNulo("credor")?.takeIf { it.isNotBlank() },
+        saldoDevedor = Dinheiro.arredondar(d.double("saldoDevedor")).coerceAtLeast(0.0),
+        valorOriginal = (d["valorOriginal"] as? Number)?.toDouble()?.takeIf { it > 0.0 && it.isFinite() }?.let { Dinheiro.arredondar(it) },
+        taxaJurosMensal = d.double("taxaJurosMensal").takeIf { it > 0.0 && it.isFinite() } ?: 0.0,
+        parcelaMinima = (d["parcelaMinima"] as? Number)?.toDouble()?.takeIf { it > 0.0 && it.isFinite() }?.let { Dinheiro.arredondar(it) },
+        parcelasRestantes = d.intOuNulo("parcelasRestantes")?.takeIf { it >= 0 },
+        diaVencimento = d.intOuNulo("diaVencimento")?.takeIf { it in 1..31 },
+        conta = d.strOuNulo("conta")?.takeIf { it.isNotBlank() },
+        ativa = d.bool("ativa", true)
+    )
+
+    /** R59 — pessoas e acertos. */
+    fun toDoc(p: Pessoa): Doc = mapOf("id" to p.id, "nome" to p.nome, "contato" to p.contato)
+    fun pessoaFromDoc(d: Doc) = Pessoa(id = d.int("id"), nome = d.str("nome"), contato = d.strOuNulo("contato")?.takeIf { it.isNotBlank() })
+
+    fun toDoc(a: Acerto): Doc = mapOf(
+        "id" to a.id, "pessoaId" to a.pessoaId, "tipo" to a.tipo, "valor" to a.valor, "descricao" to a.descricao, "data" to a.data,
+        "despesaId" to a.despesaId, "quitado" to a.quitado, "quitadoEm" to a.quitadoEm, "grupoRateio" to a.grupoRateio
+    )
+
+    fun acertoFromDoc(d: Doc) = Acerto(
+        id = d.int("id"), pessoaId = d.int("pessoaId"),
+        tipo = if (d.str("tipo") == "A_PAGAR") "A_PAGAR" else "A_RECEBER",
+        valor = Dinheiro.arredondar(d.double("valor")), descricao = d.str("descricao"), data = d.long("data"),
+        despesaId = d.longOuNulo("despesaId")?.takeIf { it != 0L }, quitado = d.bool("quitado"),
+        quitadoEm = d.longOuNulo("quitadoEm"), grupoRateio = d.strOuNulo("grupoRateio")?.takeIf { it.isNotBlank() }
+    )
 
     fun toDoc(m: Meta): Doc = mapOf(
         "id" to m.id, "nome" to m.nome, "valorObjetivo" to m.valorObjetivo,
@@ -229,6 +306,11 @@ object FirestoreMapper {
         val patrimonio: PatrimonioDao = db.patrimonioDao()
         val transacoes: TransacaoDao = db.transacaoDao()
         val lixeira = db.lixeiraDao()
+        val regras = db.regraCategoriaDao()
+        val projetos = db.projetoDao()
+        val dividas = db.dividaDao()
+        val pessoas = db.pessoaDao()
+        val acertos = db.acertoDao()
 
         fun <T> colecao(
             nome: String,
@@ -238,10 +320,12 @@ object FirestoreMapper {
             doc: (T) -> Doc,
             de: (Doc) -> T,
             gravar: suspend (List<T>) -> Unit,
-            apagar: suspend (List<String>) -> Unit
+            apagar: suspend (List<String>) -> Unit,
+            ignorarSeVazio: Set<String> = emptySet()
         ) = Colecao(
             nome = nome,
             derivados = derivados,
+            ignorarSeVazio = ignorarSeVazio,
             lerLocal = { ler().associate { id(it) to doc(it) } },
             gravarLocal = { docs -> gravar(docs.map(de)) },
             apagarLocal = apagar
@@ -255,7 +339,7 @@ object FirestoreMapper {
             colecao("categorias", emptySet(), { categorias.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::categoriaFromDoc,
                 { categorias.inserirTodas(it) }, { ids -> categorias.excluirPorIds(ids.map(String::toInt)) }),
             colecao("despesas", setOf("mes", "ano"), { despesas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::despesaFromDoc,
-                { despesas.inserirTodas(it) }, { ids -> despesas.excluirPorIds(ids.map(String::toLong)) }),
+                { despesas.inserirTodas(it) }, { ids -> despesas.excluirPorIds(ids.map(String::toLong)) }, ignorarSeVazio = setOf("tags")),
             colecao("despesasFixas", emptySet(), { fixas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::fixaFromDoc,
                 { fixas.inserirTodas(it) }, { ids -> fixas.excluirPorIds(ids.map(String::toInt)) }),
             colecao("orcamentos", emptySet(), { orcamentos.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::orcamentoFromDoc,
@@ -270,6 +354,16 @@ object FirestoreMapper {
                 { patrimonio.inserirTodas(it) }, { ids -> patrimonio.excluirPorIds(ids.map(String::toInt)) }),
             colecao("lixeira", emptySet(), { lixeira.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::lixeiraFromDoc,
                 { lixeira.inserirTodas(it) }, { ids -> lixeira.excluirPorIds(ids.map(String::toInt)) }),
+            colecao("regrasCategoria", emptySet(), { regras.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::regraFromDoc,
+                { regras.inserirTodas(it) }, { ids -> regras.excluirPorIds(ids.map(String::toInt)) }),
+            colecao("projetos", emptySet(), { projetos.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::projetoFromDoc,
+                { projetos.inserirTodas(it) }, { ids -> projetos.excluirPorIds(ids.map(String::toInt)) }),
+            colecao("dividas", emptySet(), { dividas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::dividaFromDoc,
+                { dividas.inserirTodas(it) }, { ids -> dividas.excluirPorIds(ids.map(String::toInt)) }),
+            colecao("pessoas", emptySet(), { pessoas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::pessoaFromDoc,
+                { pessoas.inserirTodas(it) }, { ids -> pessoas.excluirPorIds(ids.map(String::toInt)) }),
+            colecao("acertos", emptySet(), { acertos.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::acertoFromDoc,
+                { acertos.inserirTodas(it) }, { ids -> acertos.excluirPorIds(ids.map(String::toInt)) }),
             colecao("transacoes", emptySet(), { transacoes.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::transacaoFromDoc,
                 { transacoes.inserirTodas(it) }, { ids -> transacoes.excluirPorIds(ids.map(String::toInt)) })
         )

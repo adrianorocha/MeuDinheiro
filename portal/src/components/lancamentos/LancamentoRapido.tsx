@@ -7,6 +7,7 @@ import { Input, InputValor, Segmentado, Select } from "@/components/ui/Field";
 import { ErroBox } from "@/components/ui/Misc";
 import { Modal, RodapeForm } from "@/components/ui/Modal";
 import { sugerirCategoria } from "@/lib/finance/analises";
+import { aplicarRegras } from "@/lib/finance/regras";
 import { normalizar } from "@/lib/finance/texto";
 import type { Dataset } from "@/lib/finance/types";
 import { formatBRL, parseValorBR, valorParaCampo } from "@/lib/format";
@@ -56,14 +57,17 @@ function Formulario({ onFechar }: { onFechar: () => void }) {
   const [categoria, setCategoria] = useState("");
   const [conta, setConta] = useState(ds.contas[0]?.conta ?? "");
   const [erro, setErro] = useState<string | null>(null);
-  const sugestao = useMemo(() => sugerirCategoria(descricao, ds.despesas), [descricao, ds.despesas]);
+  // R55: regra explícita antes da heurística; só preenche quando a categoria não foi informada.
+  const regra = useMemo(() => aplicarRegras(ds.regrasCategoria, { descricao, conta, tipo }), [ds.regrasCategoria, descricao, conta, tipo]);
+  const sugestao = useMemo(() => regra?.categoria.trim() || sugerirCategoria(descricao, ds.despesas), [regra, descricao, ds.despesas]);
 
   function enviar(e: FormEvent) {
     e.preventDefault();
     const valor = parseValorBR(valorTxt);
     if (!(valor > 0)) return setErro("Informe um valor maior que zero.");
-    const pic = ds.categorias.find((c) => normalizar(c.nome) === normalizar(categoria))?.pic ?? "";
-    const r = acoes.addLancamento({ descricao, valor, data: Date.now(), categoria, pic, tipo, conta });
+    const categoriaFinal = categoria.trim() || regra?.categoria.trim() || "";
+    const pic = ds.categorias.find((c) => normalizar(c.nome) === normalizar(categoriaFinal))?.pic ?? "";
+    const r = acoes.addLancamento({ descricao, valor, data: Date.now(), categoria: categoriaFinal, pic, tipo, conta });
     if (!r.ok) return setErro(r.erro);
     avisar("sucesso", "Lançamento salvo.");
     onFechar();
@@ -112,7 +116,7 @@ function Formulario({ onFechar }: { onFechar: () => void }) {
           ))}
         </div>
       )}
-      <Input rotulo="Categoria" list="rapido-categorias" value={categoria} onChange={(e) => setCategoria(e.target.value)} required />
+      <Input rotulo="Categoria" list="rapido-categorias" value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder={regra ? `${regra.categoria} (regra)` : undefined} required={!regra} />
       <datalist id="rapido-categorias">
         {ds.categorias.map((c) => (
           <option key={c.id} value={c.nome} />

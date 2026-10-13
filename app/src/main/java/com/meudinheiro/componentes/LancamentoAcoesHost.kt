@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.CallSplit
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Share
@@ -67,7 +68,7 @@ import java.util.Locale
 /** Lançamento alvo do menu de ações. [excluirDireto] abre direto a confirmação de exclusão (ex.: swipe). */
 data class AlvoLancamento(val id: Long, val excluirDireto: Boolean = false)
 
-private enum class Etapa { MENU, EXCLUIR, REPETIR, ANTECIPAR, EDITAR, BLOQUEADO }
+private enum class Etapa { MENU, EXCLUIR, REPETIR, ANTECIPAR, EDITAR, BLOQUEADO, DIVIDIR }
 
 private val SheetBg = Color(0xFF1B263B)
 private val Perigo = Color(0xFFEF5350)
@@ -87,6 +88,22 @@ fun LancamentoAcoesHost(
     categorias: List<String>,
     getPicCategoria: (String) -> String
 ) {
+    // R55: oferta de regra depois de trocar a categoria (sobrevive ao fechamento do menu de ações).
+    val sugestaoRegra by viewModel.sugestaoRegra.collectAsState()
+    sugestaoRegra?.let { s ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dispensarSugestaoRegra() }, containerColor = DeepSpaceBlue,
+            title = { Text("Criar regra?", color = Color.White) },
+            text = {
+                Text(
+                    "Criar regra: \"${s.padrao}\" → ${s.categoria}? Você já usou esta categoria ${s.vezes} vezes para essa descrição. A regra vale para lançamentos novos e pode ser editada em Ferramentas → Regras de categoria.",
+                    color = Color.White.copy(0.8f)
+                )
+            },
+            confirmButton = { TextButton(onClick = { viewModel.criarRegraSugerida() }) { Text("Criar regra", color = NeonCyan) } },
+            dismissButton = { TextButton(onClick = { viewModel.dispensarSugestaoRegra() }) { Text("Agora não", color = Color.White.copy(0.7f)) } }
+        )
+    }
     if (alvo == null) return
     val context = LocalContext.current
     val carregado by produceState<Pair<Boolean, Despesa?>>(false to null, alvo.id) {
@@ -150,6 +167,9 @@ fun LancamentoAcoesHost(
                                 etapa = if (LancamentoAcoes.motivoExclusaoBloqueada(despesa.natureza) != null) Etapa.BLOQUEADO else Etapa.EXCLUIR
                             }
                         }
+                    }
+                    if (despesa.natureza == com.meudinheiro.domain.Natureza.NORMAL && despesa.tipo == TipoDespesa.DEBITO) {
+                        LinhaAcao(Icons.Rounded.CallSplit, "Dividir com pessoas…", NeonCyan) { etapa = Etapa.DIVIDIR }
                     }
                     LinhaAcao(Icons.Rounded.Share, "Ver comprovante", Color.White.copy(0.8f)) {
                         val cartaoObj = cartoes.firstOrNull { it.id == (despesa.cartaoId ?: com.meudinheiro.domain.Financas.cartaoDeDebito(despesa)) }
@@ -251,9 +271,21 @@ fun LancamentoAcoesHost(
             }
         }
 
+        Etapa.DIVIDIR -> {
+            val pessoas by viewModel.pessoas.collectAsState()
+            val acertos by viewModel.acertos.collectAsState()
+            DividirDespesaDialog(
+                despesa = despesa, pessoas = pessoas, acertos = acertos, onDismiss = onFechar,
+                onDividir = { modo, participantes, voce -> viewModel.dividirDespesa(despesa.id, modo, participantes, voce) { onFechar() } },
+                onDesfazer = { viewModel.desfazerRateio(despesa.id) { onFechar() } },
+                onNovaPessoa = { nome, aoCriar -> viewModel.criarPessoa(nome, aoCriar) }
+            )
+        }
+
         Etapa.EDITAR -> EditarLancamentoDialog(
             despesa = despesa, contas = contas, cartoes = cartoes,
             categorias = categorias, getPicCategoria = getPicCategoria,
+            tagsSugeridas = viewModel.tagsUsadas.collectAsState().value,
             onDismiss = onFechar,
             onSalvar = { editada, modalidade ->
                 val mudouValor = Dinheiro.arredondar(editada.valor) != Dinheiro.arredondar(despesa.valor)

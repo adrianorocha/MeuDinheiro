@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Date
 import java.util.concurrent.TimeUnit
 
@@ -274,11 +275,88 @@ class ContaSaldoViewModel(
         }
     }
 
+    /** R55 — regras de categorização (o formulário de lançamento usa para sugerir/preencher a categoria). */
+    val regrasCategoria: StateFlow<List<com.meudinheiro.data.RegraCategoria>> = repository.obterRegrasFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** R59 — pessoas e acertos (menu "Dividir" dos lançamentos). */
+    val pessoas: StateFlow<List<com.meudinheiro.data.Pessoa>> = repository.obterPessoasFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val acertos: StateFlow<List<com.meudinheiro.data.Acerto>> = repository.obterAcertosFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** R59 — "Dividir esta despesa": só cria acertos A_RECEBER; o lançamento e os saldos não mudam. */
+    fun dividirDespesa(
+        despesaId: Long, modo: com.meudinheiro.domain.Rateios.Modo, participantes: List<com.meudinheiro.domain.Rateios.Participante>,
+        vocePercentual: Long?, aoConcluir: () -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val voce = repository.dividirDespesa(despesaId, modo, participantes, vocePercentual)
+                _uiEvent.tryEmit("Divisão | Despesa dividida: ${com.meudinheiro.domain.FormatoCentavos.brl(voce)} ficam com você. O lançamento continua com o valor total. | Sucesso")
+                withContext(Dispatchers.Main) { aoConcluir() }
+            } catch (e: Exception) {
+                avisarErro("Divisão", e)
+            }
+        }
+    }
+
+    fun desfazerRateio(despesaId: Long, aoConcluir: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.desfazerRateio(despesaId)
+                _uiEvent.tryEmit("Divisão | Divisão desfeita. | Sucesso")
+                withContext(Dispatchers.Main) { aoConcluir() }
+            } catch (e: Exception) {
+                avisarErro("Divisão", e)
+            }
+        }
+    }
+
+    fun criarPessoa(nome: String, aoCriar: (Int) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = repository.salvarPessoa(com.meudinheiro.data.Pessoa(nome = nome)).toInt()
+                withContext(Dispatchers.Main) { aoCriar(id) }
+            } catch (e: Exception) {
+                avisarErro("Pessoa", e)
+            }
+        }
+    }
+
+    /** R56 — tags já usadas (sugestões dos campos de tags). */
+    val tagsUsadas: StateFlow<List<com.meudinheiro.domain.Tags.Usada>> = repository.todasDespesasFlow
+        .map { com.meudinheiro.domain.Tags.usadas(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** R55 — oferta "Criar regra: <descrição> → <categoria>?" depois de trocar a categoria (null = nada a oferecer). */
+    private val _sugestaoRegra = MutableStateFlow<com.meudinheiro.domain.Regras.Sugestao?>(null)
+    val sugestaoRegra: StateFlow<com.meudinheiro.domain.Regras.Sugestao?> = _sugestaoRegra.asStateFlow()
+
+    fun dispensarSugestaoRegra() { _sugestaoRegra.value = null }
+
+    fun criarRegraSugerida() {
+        val s = _sugestaoRegra.value ?: return
+        _sugestaoRegra.value = null
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.criarRegraAprendida(s)
+                _uiEvent.tryEmit("Regra | Regra criada: ${s.padrao} → ${s.categoria}. | Sucesso")
+            } catch (e: Exception) {
+                avisarErro("Regra", e)
+            }
+        }
+    }
+
     /** R11/R42 — grava a edição completa de um lançamento (conta ou cartão). */
     fun editarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val categoriaAntes = repository.obterDespesaPorId(despesa.id)?.categoria
                 repository.atualizarLancamento(despesa, modalidade)
+                if (categoriaAntes != null && com.meudinheiro.domain.Texto.normalizar(categoriaAntes) != com.meudinheiro.domain.Texto.normalizar(despesa.categoria)) {
+                    _sugestaoRegra.value = repository.sugerirRegraAprendida(despesa)
+                }
                 _uiEvent.tryEmit("Edição | Lançamento atualizado. | Sucesso")
             } catch (e: Exception) {
                 avisarErro("Edição", e)

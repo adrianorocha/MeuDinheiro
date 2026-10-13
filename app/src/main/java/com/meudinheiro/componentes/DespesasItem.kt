@@ -361,6 +361,13 @@ fun CardItemContent(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(text = dataFormatada, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                if (item.tags.isNotEmpty()) { // R56
+                    Text(
+                        text = item.tags.joinToString(" ") { "#$it" },
+                        style = MaterialTheme.typography.labelSmall, color = NeonCyan.copy(alpha = 0.8f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             // ==========================================
@@ -444,6 +451,7 @@ fun DespesasDomain.toDespesa(): Despesa {
         pago = this.pago,
         mes = cal.get(Calendar.MONTH) + 1,
         ano = cal.get(Calendar.YEAR),
-        cartaoId = this.cartaoId ?: 0
+        cartaoId = this.cartaoId ?: 0,
+        tags = this.tags
     )
 }

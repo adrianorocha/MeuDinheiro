@@ -110,6 +110,104 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/** 8 → 9: R55/R56/R57 — regras de categoria, projetos (tags) e configurações sincronizadas; despesas ganham `tags`. */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE despesas ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `regras_categoria` (
+              `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+              `padrao` TEXT NOT NULL,
+              `tipoMatch` TEXT NOT NULL,
+              `categoria` TEXT NOT NULL,
+              `conta` TEXT,
+              `tipo` TEXT,
+              `ativa` INTEGER NOT NULL,
+              `prioridade` INTEGER NOT NULL,
+              `criadaEm` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `projetos` (
+              `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+              `nome` TEXT NOT NULL,
+              `tag` TEXT NOT NULL,
+              `orcamento` REAL,
+              `inicio` INTEGER,
+              `fim` INTEGER,
+              `ativo` INTEGER NOT NULL,
+              `cor` TEXT
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `configuracoes` (
+              `chave` TEXT NOT NULL,
+              `json` TEXT NOT NULL,
+              `atualizadoEm` INTEGER NOT NULL,
+              PRIMARY KEY(`chave`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
+/**
+ * 9 → 10: R58/R59 — dívidas em quitação, pessoas e acertos (rateios/empréstimos). Só tabelas novas, nenhuma coluna existente
+ * muda: dados e backups antigos continuam valendo como "sem dívidas/pessoas/acertos".
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `dividas` (
+              `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+              `nome` TEXT NOT NULL,
+              `tipo` TEXT NOT NULL,
+              `credor` TEXT,
+              `saldoDevedor` REAL NOT NULL,
+              `valorOriginal` REAL,
+              `taxaJurosMensal` REAL NOT NULL,
+              `parcelaMinima` REAL,
+              `parcelasRestantes` INTEGER,
+              `diaVencimento` INTEGER,
+              `conta` TEXT,
+              `ativa` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `pessoas` (
+              `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+              `nome` TEXT NOT NULL,
+              `contato` TEXT
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `acertos` (
+              `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+              `pessoaId` INTEGER NOT NULL,
+              `tipo` TEXT NOT NULL,
+              `valor` REAL NOT NULL,
+              `descricao` TEXT NOT NULL,
+              `data` INTEGER NOT NULL,
+              `despesaId` INTEGER,
+              `quitado` INTEGER NOT NULL,
+              `quitadoEm` INTEGER,
+              `grupoRateio` TEXT
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 /** 7 → 8: R47 — pausar recorrência (despesas/receitas fixas), com retomada automática opcional. */
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -122,9 +220,10 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     entities = [
         Despesa::class, ContaSaldo::class, DespesaFixa::class, Categoria::class, Orcamento::class,
         Meta::class, Investimento::class, Transacao::class, TransferenciaAgendada::class,
-        PatrimonioHistorico::class, Cartao::class, SyncMeta::class, Lixeira::class
+        PatrimonioHistorico::class, Cartao::class, SyncMeta::class, Lixeira::class,
+        RegraCategoria::class, Projeto::class, Configuracao::class, Divida::class, Pessoa::class, Acerto::class
     ],
-    version = 8,
+    version = 10,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -141,6 +240,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cartaoDao(): CartaoDao
     abstract fun syncMetaDao(): SyncMetaDao
     abstract fun lixeiraDao(): LixeiraDao
+    abstract fun regraCategoriaDao(): RegraCategoriaDao
+    abstract fun projetoDao(): ProjetoDao
+    abstract fun configuracaoDao(): ConfiguracaoDao
+    abstract fun dividaDao(): DividaDao
+    abstract fun pessoaDao(): PessoaDao
+    abstract fun acertoDao(): AcertoDao
 
     companion object {
         // Nome do arquivo que já era (de fato) usado pelo app: `getDatabase` sempre rodava primeiro.
@@ -156,7 +261,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DB_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     // Só em downgrade (APK antigo sobre banco novo). Upgrades NUNCA apagam dados.
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()

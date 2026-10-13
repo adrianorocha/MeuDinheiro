@@ -17,6 +17,7 @@ import {
   documentoPatrimonio,
   filtroPadrao,
   gerarRelatorio,
+  totaisPorTag,
   MODELOS,
   periodoRapido,
   type Documento,
@@ -25,6 +26,7 @@ import {
   type ResultadoRelatorio,
   type TipoRelatorio,
 } from "@/lib/finance/relatorios";
+import { tagsUsadas } from "@/lib/finance/tags";
 import { MASCARA, deInputData, paraInputData } from "@/lib/format";
 import { useAgora, useDataset, useNotificar } from "@/lib/hooks";
 import { baixarArquivo, baixarBlob } from "@/lib/download";
@@ -79,6 +81,7 @@ export default function RelatoriosPage() {
   const [tipo, setTipo] = useState<TipoRelatorio>("DESPESA");
   const [pago, setPago] = useState<"" | "pago" | "pendente">("");
   const [texto, setTexto] = useState("");
+  const [tagsSel, setTagsSel] = useState<string[]>([]);
   const [contaExtrato, setContaExtrato] = useState(ds.contas[0]?.conta ?? "");
   const [cartaoFatura, setCartaoFatura] = useState(ds.cartoes[0]?.id ?? 0);
   const [mesRef, setMesRef] = useState(hoje);
@@ -92,6 +95,8 @@ export default function RelatoriosPage() {
     for (const d of ds.despesas) if (d.categoria.trim() && !m.has(normalizaNome(d.categoria))) m.set(normalizaNome(d.categoria), d.categoria.trim());
     return [...m.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [ds.categorias, ds.despesas]);
+
+  const tagsDisponiveis = useMemo(() => tagsUsadas(ds.despesas), [ds.despesas]);
 
   const intervalo = useMemo(() => {
     if (periodo !== "custom") return periodoRapido(periodo, agora);
@@ -118,14 +123,14 @@ export default function RelatoriosPage() {
       f = MODELOS.anualIR(anoIR);
       titulo = `Despesas dedutíveis (IR) ${anoIR}`;
     } else if (modelo === "categoria") {
-      f = { ...MODELOS.gastosCategoria(intervalo.inicio, intervalo.fim), categorias, contas, cartoes };
+      f = { ...MODELOS.gastosCategoria(intervalo.inicio, intervalo.fim), categorias, contas, cartoes, ...(tagsSel.length ? { tags: tagsSel } : {}) };
       titulo = "Gastos por categoria";
     } else {
-      f = { ...filtroPadrao(intervalo.inicio, intervalo.fim), contas, cartoes, categorias, tipo, pago: pago === "" ? null : pago === "pago", texto };
+      f = { ...filtroPadrao(intervalo.inicio, intervalo.fim), contas, cartoes, categorias, tipo, pago: pago === "" ? null : pago === "pago", texto, ...(tagsSel.length ? { tags: tagsSel } : {}) };
     }
     const r = gerarRelatorio(ds, f);
     return { doc: documentoDeResultado(titulo, f, r, ds, { detalhar, agruparPor: modelo === "extrato" ? "mes" : "categoria" }), resultado: r };
-  }, [ds, detalhar, modelo, cartaoFatura, mesRef, contaExtrato, intervalo, anoIR, categorias, contas, cartoes, tipo, pago, texto]);
+  }, [ds, detalhar, modelo, cartaoFatura, mesRef, contaExtrato, intervalo, anoIR, categorias, contas, cartoes, tipo, pago, texto, tagsSel]);
 
   async function exportar(formato: "pdf" | "png" | "csv") {
     if (!doc) return;
@@ -279,6 +284,18 @@ export default function RelatoriosPage() {
                 ))}
               </div>
             </fieldset>
+            {tagsDisponiveis.length > 0 && (
+              <fieldset>
+                <legend className="mb-1.5 text-sm font-medium">Tags (qualquer uma das marcadas)</legend>
+                <div className="flex flex-wrap gap-2">
+                  {tagsDisponiveis.map((t) => (
+                    <Chip key={t.chave} ativo={tagsSel.includes(t.chave)} onClick={() => setTagsSel(alterna(tagsSel, t.chave))}>
+                      #{t.rotulo}
+                    </Chip>
+                  ))}
+                </div>
+              </fieldset>
+            )}
           </div>
         )}
       </Card>
@@ -323,6 +340,21 @@ export default function RelatoriosPage() {
                 </Card>
               )}
             </div>
+          )}
+
+          {resultado && tagsDisponiveis.length > 0 && (usaFiltros) && (
+            <Card aria-labelledby="t-tags">
+              <CardTitulo id="t-tags">Por tag</CardTitulo>
+              <ul className="space-y-1 text-sm">
+                {totaisPorTag(resultado).map((g) => (
+                  <li key={g.tag || "sem"} className="flex justify-between gap-3">
+                    <span>{g.tag ? `#${g.rotulo}` : g.rotulo} <span className="text-xs text-muted">({g.quantidade})</span></span>
+                    <span className="tabular">{privado ? MASCARA : g.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-muted">Lançamentos com mais de uma tag aparecem em cada uma; a soma pode passar do total.</p>
+            </Card>
           )}
 
           <Card aria-labelledby="t-tab">

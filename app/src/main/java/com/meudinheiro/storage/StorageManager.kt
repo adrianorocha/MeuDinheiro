@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 /**
  * Orquestra o armazenamento: observa (modo escolhido × login) e mantém UMA [SyncSession] viva quando —
@@ -85,11 +87,23 @@ class StorageManager(context: Context) {
         }
         var tentativa = 0
         while (true) {
-            val nova = SyncSession(uid, db, FirebaseFirestore.getInstance(), repository) { _status.value = it }
+            val firestore = FirebaseFirestore.getInstance()
+            val nova = SyncSession(uid, db, firestore, repository) { _status.value = it }
             sessao = nova
             try {
                 _status.value = SyncStatus.Conectando
-                nova.rodar()
+                coroutineScope {
+                    // R57: configurações sincronizadas (documento único); falhas dela nunca derrubam a sincronização principal.
+                    val config = launch {
+                        runCatching { ConfigNuvem(uid, firestore, ConfiguracaoLocal(db, prefs), db).rodar() }
+                            .onFailure { if (it is CancellationException) throw it else Log.w(TAG, "Configurações sem sincronização", it) }
+                    }
+                    try {
+                        nova.rodar()
+                    } finally {
+                        config.cancel()
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

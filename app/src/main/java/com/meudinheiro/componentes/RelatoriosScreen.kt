@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.domain.Dinheiro
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.domain.FiltroRelatorio
 import com.meudinheiro.domain.Relatorios
@@ -107,6 +108,7 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
     var contasSel by remember { mutableStateOf(setOf<String>()) }
     var cartoesSel by remember { mutableStateOf(setOf<Int>()) }
     var categoriasSel by remember { mutableStateOf(setOf<String>()) }
+    var tagsSel by remember { mutableStateOf(setOf<String>()) } // R56: chaves de tags (vazio = não filtra)
     var tipo by remember { mutableStateOf(TipoRelatorio.DESPESA) }
     var pago by remember { mutableStateOf<Boolean?>(null) }
     var texto by remember { mutableStateOf("") }
@@ -124,7 +126,8 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
             PeriodoRapido.PERSONALIZADO -> Financas.inicioDoDia(inicioCustom) to Financas.fimDoDia(fimCustom)
         }
     }
-    val filtro = FiltroRelatorio(inicio, fim, contasSel, cartoesSel, categoriasSel, tipo, pago, texto, internos)
+    val tagsDisponiveis = remember(despesas) { com.meudinheiro.domain.Tags.usadas(despesas) }
+    val filtro = FiltroRelatorio(inicio, fim, contasSel, cartoesSel, categoriasSel, tipo, pago, texto, internos, tags = tagsSel)
     val resultado = remember(filtro, despesas, cartoes) { Relatorios.gerar(filtro, despesas, cartoes) }
 
     val bancoPorConta = remember(contas) { contas.associate { it.conta to it.banco } }
@@ -135,6 +138,7 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
             if (contasSel.isNotEmpty()) add("Contas: " + contasSel.joinToString { bancoPorConta[it] ?: it })
             if (cartoesSel.isNotEmpty()) add("Cartões: " + cartoes.filter { it.id in cartoesSel }.joinToString { it.nome + (if (it.cartaoPrincipalId != null) " (virtual)" else "") })
             if (categoriasSel.isNotEmpty()) add("Categorias: " + categoriasSel.joinToString())
+            if (tagsSel.isNotEmpty()) add("Tags: " + tagsSel.joinToString { "#$it" })
             if (pago != null) add(if (pago == true) "Somente pagos" else "Somente pendentes")
             if (texto.isNotBlank()) add("Busca: \"$texto\"")
             if (internos) add("Inclui transferências, aportes e faturas")
@@ -265,6 +269,19 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
                     }
                 }
             }
+            if (tagsDisponiveis.isNotEmpty()) item {
+                Secao("Tags (vazio = todas; vale ter uma das marcadas)") {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        tagsDisponiveis.forEach { t ->
+                            FilterChip(
+                                selected = t.chave in tagsSel,
+                                onClick = { tagsSel = if (t.chave in tagsSel) tagsSel - t.chave else tagsSel + t.chave },
+                                label = { Text("#${t.rotulo}") }, colors = chipColors()
+                            )
+                        }
+                    }
+                }
+            }
             item {
                 Secao("Categorias (vazio = todas)") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -312,6 +329,19 @@ fun RelatoriosScreen(repository: MainRepository, isPrivate: Boolean, onBack: () 
                         )
                     }
                     Spacer(Modifier.height(10.dp))
+                    // R56: agrupamento por tag (só aparece quando há tags nos lançamentos selecionados)
+                    val porTag = remember(resultado) { Relatorios.totaisPorTag(resultado) }
+                    if (porTag.any { it.tag.isNotEmpty() }) {
+                        Text("Por tag", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                        porTag.take(8).forEach { g ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text((if (g.tag.isEmpty()) "" else "#") + g.rotulo + " (${g.quantidade})", color = Color.White, fontSize = 12.sp)
+                                Text(formatarMoedaBR(Dinheiro.reais(g.total), isPrivate), color = Color.White.copy(0.8f), fontSize = 11.sp)
+                            }
+                        }
+                        Text("Lançamentos com mais de uma tag entram em cada uma; a soma pode passar do total.", color = Color.White.copy(0.45f), fontSize = 10.sp)
+                        Spacer(Modifier.height(10.dp))
+                    }
                     val max = resultado.porCategoria.firstOrNull()?.total ?: 0.0
                     resultado.porCategoria.take(8).forEach { cat ->
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {

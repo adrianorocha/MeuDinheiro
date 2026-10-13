@@ -84,9 +84,6 @@ fun PlanejamentoScreen(repository: MainRepository, isPrivate: Boolean, onBack: (
     }
     val mes = Financas.mesDe(agora)
     val ano = Financas.anoDe(agora)
-    val doMes = remember(despesas) { despesas.filter { it.dataMs in Financas.inicioDoMes(mes, ano)..Financas.fimDoMes(mes, ano) } }
-    val receitasMes = remember(despesas) { Financas.kpisPeriodo(despesas, Financas.inicioDoMes(mes, ano), Financas.fimDoMes(mes, ano)).receitasRealizadas }
-    val regra = remember(doMes, receitasMes) { Analises.regra503020(receitasMes, doMes) }
     val assinaturas = remember(despesas, fixas) { Analises.assinaturas(agora, despesas, fixas) }
 
     Scaffold(
@@ -120,27 +117,8 @@ fun PlanejamentoScreen(repository: MainRepository, isPrivate: Boolean, onBack: (
                 }
             }
 
-            // ---------------- 50/30/20 (R29)
-            item {
-                Secao("REGRA 50 / 30 / 20 — ESTE MÊS") {
-                    if (receitasMes <= 0) Texto("Sem receitas registradas neste mês.", Color.White.copy(0.6f))
-                    listOf(
-                        Triple("Necessidades", regra.necessidades, false),
-                        Triple("Desejos", regra.desejos, false),
-                        Triple("Poupança", regra.poupanca, true)
-                    ).forEach { (nome, g, poupanca) ->
-                        val ok = g.status == Analises.StatusGrupo.OK
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                            Text(nome, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                            Text(
-                                "%.0f%% (meta %s%d%%) · %s".format(Locale("pt", "BR"), g.percentual, if (poupanca) "≥ " else "≤ ", g.alvo, formatarMoedaBR(g.valor, isPrivate)),
-                                color = if (ok) NeonGreen else NeonRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Barra((g.percentual / 100).toFloat(), if (ok) NeonGreen else NeonRed)
-                    }
-                }
-            }
+            // ---------------- 50/30/20 por categoria + reserva de emergência essencial (R54; substitui a seção R29 na tela)
+            item { Painel503020Bloco(despesas, contas.map { it.saldo }, metas, agora, isPrivate) }
 
             // ---------------- assinaturas (R26)
             item {

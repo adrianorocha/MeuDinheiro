@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Search
@@ -57,7 +58,7 @@ import com.meudinheiro.ui.theme.NeonGreen
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA }
+private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA, CALENDARIO, RESUMO, REGRAS, PROJETOS, DIVIDAS, PESSOAS }
 
 private val TextoClaro = Color(0xFFE0E1DD)
 private val CardFundo = Color(0xFF1B263B)
@@ -72,9 +73,15 @@ fun FerramentasScreen(repository: MainRepository, userPrefs: UserPreferences, is
     when (tela) {
         Tela.RELATORIOS -> RelatoriosScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.PLANEJAMENTO -> PlanejamentoScreen(repository, isPrivate) { tela = Tela.HUB }
+        Tela.RESUMO -> ResumoInteligenteScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.LIXEIRA -> LixeiraScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.BACKUPS -> BackupsAutomaticosScreen(repository, userPrefs) { tela = Tela.HUB }
         Tela.CONFERENCIA -> ConferenciaSaldosScreen(repository, isPrivate) { tela = Tela.HUB }
+        Tela.CALENDARIO -> CalendarioFinanceiroScreen(repository, isPrivate) { tela = Tela.HUB }
+        Tela.REGRAS -> RegrasCategoriaScreen(repository) { tela = Tela.HUB }
+        Tela.PROJETOS -> ProjetosScreen(repository, isPrivate) { tela = Tela.HUB }
+        Tela.DIVIDAS -> DividasScreen(repository, isPrivate) { tela = Tela.HUB }
+        Tela.PESSOAS -> PessoasScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.HUB -> Hub(repository, isPrivate, onBack) { tela = it }
     }
 }
@@ -122,7 +129,13 @@ private fun Hub(repository: MainRepository, isPrivate: Boolean, onBack: () -> Un
 
             if (termo.isBlank()) {
                 item { Atalho(Icons.Default.Assessment, "Relatórios", "Filtre por período, cartão, categoria… e exporte PDF, PNG ou CSV") { abrir(Tela.RELATORIOS) } }
-                item { Atalho(Icons.Default.Insights, "Planejamento", "Reserva de emergência, 50/30/20, assinaturas, metas com prazo e simulador") { abrir(Tela.PLANEJAMENTO) } }
+                item { Atalho(Icons.Default.CalendarMonth, "Calendário financeiro", "Vencimentos, recebimentos previstos e saldo projetado dia a dia") { abrir(Tela.CALENDARIO) } }
+                item { Atalho(Icons.Default.Insights, "Resumo inteligente", "O que mudou no mês ou na semana: totais, categorias em alta, gasto fora do padrão e projeção") { abrir(Tela.RESUMO) } }
+                item { Atalho(Icons.Default.Insights, "Planejamento", "Reserva de emergência, 50/30/20 por categoria, assinaturas, metas com prazo e simulador") { abrir(Tela.PLANEJAMENTO) } }
+                item { Atalho(Icons.Default.Insights, "Regras de categoria", "Categorize sozinho pela descrição (ex.: contém “uber” → Transporte), com teste e aplicação às existentes") { abrir(Tela.REGRAS) } }
+                item { Atalho(Icons.Default.Assessment, "Projetos", "Acompanhe reformas, viagens… pelas tags dos lançamentos, com orçamento") { abrir(Tela.PROJETOS) } }
+                item { Atalho(Icons.Default.Assessment, "Dívidas", "Saldo devedor, pagamentos e simulador de quitação (bola de neve x avalanche)") { abrir(Tela.DIVIDAS) } }
+                item { Atalho(Icons.Default.Assessment, "Pessoas e rateios", "Quem te deve e quem você deve: despesas divididas, empréstimos e cobrança pronta para enviar") { abrir(Tela.PESSOAS) } }
                 item { Atalho(Icons.Default.DeleteSweep, "Lixeira", if (lixeira.isEmpty()) "Lançamentos excluídos ficam 30 dias" else "${lixeira.size} item(ns) que podem ser restaurados") { abrir(Tela.LIXEIRA) } }
                 item { Atalho(Icons.Default.FactCheck, "Conferência de saldos", "Compare saldos e limites gravados com o extrato e recalcule se houver diferença") { abrir(Tela.CONFERENCIA) } }
                 item { Atalho(Icons.Default.Backup, "Backups automáticos", "Cópia semanal no aparelho, com restauração") { abrir(Tela.BACKUPS) } }

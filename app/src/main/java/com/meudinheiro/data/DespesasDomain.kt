@@ -19,7 +19,9 @@ data class DespesasDomain(
     val grupoId: String? = null,
     val autor: String? = null,
     val fitid: String? = null,
-    val conciliadoEm: Long? = null
+    val conciliadoEm: Long? = null,
+    /** R56 */
+    val tags: List<String> = emptyList()
 ) : Movimento {
     override val dataMs: Long get() = data
 }

@@ -127,7 +127,10 @@ private class Dados(
     val historico: List<Despesa>,
     val orcamentos: List<Orcamento>,
     val origemInicial: String?,
-    val exigirBiometria: Boolean
+    val exigirBiometria: Boolean,
+    /** R55 — regras de categorização e número da conta de cada origem (para a restrição por conta). */
+    val regras: List<com.meudinheiro.data.RegraCategoria> = emptyList(),
+    val contaDaOrigem: Map<String, String> = emptyMap()
 )
 
 private suspend fun carregar(context: Context): Dados = withContext(Dispatchers.IO) {
@@ -146,7 +149,10 @@ private suspend fun carregar(context: Context): Dados = withContext(Dispatchers.
         orcamentos = repo.obterOrcamentosFlow().first(),
         origemInicial = context.getSharedPreferences(LancamentoRapidoActivity.PREFS, Context.MODE_PRIVATE)
             .getString(LancamentoRapidoActivity.KEY_ORIGEM, null),
-        exigirBiometria = runCatching { UserPreferences(context).biometriaLancarFlow.first() }.getOrDefault(true)
+        exigirBiometria = runCatching { UserPreferences(context).biometriaLancarFlow.first() }.getOrDefault(true),
+        regras = runCatching { repo.obterRegras() }.getOrDefault(emptyList()),
+        contaDaOrigem = contas.associate { "c:${it.conta}" to it.conta } +
+            cartoes.mapNotNull { k -> contas.firstOrNull { it.id == k.contaId }?.let { "k:${k.id}" to it.conta } }
     )
 }
 
@@ -175,11 +181,15 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
         }
     }
 
-    // Sugere a categoria pelo histórico enquanto a pessoa digita a descrição (R21), até ela escolher uma.
-    LaunchedEffect(descricao, dados) {
+    // Sugere a categoria enquanto a pessoa digita a descrição, até ela escolher uma: regra explícita (R55) primeiro,
+    // depois o histórico (R21). Nunca troca uma categoria escolhida à mão.
+    LaunchedEffect(descricao, dados, origemChave) {
         val d = dados ?: return@LaunchedEffect
         if (!categoriaManual && !receita && descricao.isNotBlank()) {
-            Analises.sugerirCategoria(descricao, d.historico)?.let { categoria = it }
+            val porRegra = com.meudinheiro.domain.Regras.categoria(
+                d.regras, com.meudinheiro.domain.Regras.Entrada(descricao, d.contaDaOrigem[origemChave], TipoDespesa.DEBITO.name)
+            )?.let { s -> d.categoriasDespesa.firstOrNull { it.first.equals(s, true) }?.first }
+            (porRegra ?: Analises.sugerirCategoria(descricao, d.historico))?.let { categoria = it }
         }
     }
 

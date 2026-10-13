@@ -5,6 +5,8 @@ import { novoIdInt } from "../finance/ids";
 import { round2 } from "../finance/money";
 import type { Dataset, Entity } from "../finance/types";
 import { NATUREZAS } from "../finance/types";
+import { normalizarTags } from "../finance/tags";
+import { normalizarGeral, type ConfigGeral } from "../finance/configuracoes";
 
 const num = z.number().finite();
 const id = num;
@@ -42,6 +44,7 @@ const despesaSchema = z.object({
   autor: z.string().nullish(),
   fitid: z.string().nullish(),
   conciliadoEm: num.nullish(),
+  tags: z.array(z.string()).nullish(),
 });
 
 const despesaFixaSchema = z.object({
@@ -113,6 +116,63 @@ const transacaoSchema = z.object({
   timestamp: num.optional(),
 });
 
+const regraCategoriaSchema = z.object({
+  id: id.optional(),
+  padrao: str,
+  tipoMatch: z.enum(["CONTEM", "COMECA_COM", "IGUAL"]).default("CONTEM"),
+  categoria: str,
+  conta: z.string().nullish(),
+  tipo: z.enum(["DEBITO", "CREDITO"]).nullish(),
+  ativa: z.boolean().default(true),
+  prioridade: num.default(0),
+  criadaEm: num.optional(),
+});
+
+const projetoSchema = z.object({
+  id: id.optional(),
+  nome: str,
+  tag: str,
+  orcamento: num.nullish(),
+  inicio: dataCampo.nullish(),
+  fim: dataCampo.nullish(),
+  ativo: z.boolean().default(true),
+  cor: z.string().nullish(),
+});
+
+const TIPOS_DIVIDA = ["EMPRESTIMO", "FINANCIAMENTO", "CHEQUE_ESPECIAL", "CARTAO_ROTATIVO", "CONSIGNADO", "OUTRA"] as const;
+
+/** R58 */
+const dividaSchema = z.object({
+  id: id.optional(),
+  nome: str,
+  tipo: z.string().optional(),
+  credor: z.string().nullish(),
+  saldoDevedor: num.default(0),
+  valorOriginal: num.nullish(),
+  taxaJurosMensal: num.nullish(),
+  parcelaMinima: num.nullish(),
+  parcelasRestantes: num.nullish(),
+  diaVencimento: num.nullish(),
+  conta: z.string().nullish(),
+  ativa: z.boolean().default(true),
+});
+
+/** R59 */
+const pessoaSchema = z.object({ id: id.optional(), nome: str, contato: z.string().nullish() });
+
+const acertoSchema = z.object({
+  id: id.optional(),
+  pessoaId: num,
+  tipo: z.string().optional(),
+  valor: num.default(0),
+  descricao: str,
+  data: dataCampo.optional(),
+  despesaId: num.nullish(),
+  quitado: z.boolean().default(false),
+  quitadoEm: dataCampo.nullish(),
+  grupoRateio: z.string().nullish(),
+});
+
 const lixeiraSchema = z.object({
   id: id.optional(),
   tipo: z.string().default("DESPESA"),
@@ -137,6 +197,14 @@ export const backupSchema = z.object({
   lixeira: z.array(lixeiraSchema).default([]),
   transacao: z.array(transacaoSchema).optional(),
   transacoes: z.array(transacaoSchema).optional(),
+  regrasCategoria: z.array(regraCategoriaSchema).default([]),
+  projetos: z.array(projetoSchema).default([]),
+  /** R58/R59 - opcionais: backup antigo (sem estas chaves) vale como "sem dívidas/pessoas/acertos". */
+  dividas: z.array(dividaSchema).default([]),
+  pessoas: z.array(pessoaSchema).default([]),
+  acertos: z.array(acertoSchema).default([]),
+  /** R57 - configurações sincronizadas (objeto único; aceita qualquer coisa e normaliza). */
+  configuracoes: z.unknown().optional(),
 });
 
 type Backup = z.infer<typeof backupSchema>;
@@ -204,6 +272,7 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
       autor: d.autor ?? null,
       fitid: d.fitid ?? null,
       conciliadoEm: d.conciliadoEm ? d.conciliadoEm : null,
+      ...(normalizarTags(d.tags).length > 0 ? { tags: normalizarTags(d.tags) } : {}),
     };
   });
   const ds: Dataset = {
@@ -242,11 +311,59 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
       ...t,
       timestamp: t.timestamp ?? agora,
     })),
+    regrasCategoria: comIds(b.regrasCategoria, gerarInt).map((r) => ({
+      id: r.id,
+      padrao: r.padrao,
+      tipoMatch: r.tipoMatch,
+      categoria: r.categoria,
+      conta: r.conta ? r.conta : null,
+      tipo: r.tipo ?? null,
+      ativa: r.ativa,
+      prioridade: Math.trunc(r.prioridade),
+      criadaEm: r.criadaEm ?? agora,
+    })),
+    projetos: comIds(b.projetos, gerarInt).map((p) => ({
+      id: p.id,
+      nome: p.nome,
+      tag: p.tag,
+      orcamento: p.orcamento != null && p.orcamento > 0 ? p.orcamento : null,
+      inicio: p.inicio == null ? null : paraMillis(p.inicio, agora),
+      fim: p.fim == null ? null : paraMillis(p.fim, agora),
+      ativo: p.ativo,
+      cor: p.cor ? p.cor : null,
+    })),
+    dividas: comIds(b.dividas, gerarInt).map((d) => ({
+      id: d.id,
+      nome: d.nome,
+      tipo: (TIPOS_DIVIDA as readonly string[]).includes(d.tipo ?? "") ? (d.tipo as (typeof TIPOS_DIVIDA)[number]) : "OUTRA",
+      credor: d.credor ? d.credor : null,
+      saldoDevedor: round2(Math.max(0, d.saldoDevedor)),
+      valorOriginal: d.valorOriginal != null && d.valorOriginal > 0 ? round2(d.valorOriginal) : null,
+      taxaJurosMensal: d.taxaJurosMensal != null && d.taxaJurosMensal > 0 ? d.taxaJurosMensal : 0,
+      parcelaMinima: d.parcelaMinima != null && d.parcelaMinima > 0 ? round2(d.parcelaMinima) : null,
+      parcelasRestantes: d.parcelasRestantes != null && d.parcelasRestantes >= 0 ? Math.trunc(d.parcelasRestantes) : null,
+      diaVencimento: d.diaVencimento != null && d.diaVencimento >= 1 && d.diaVencimento <= 31 ? Math.trunc(d.diaVencimento) : null,
+      conta: d.conta ? d.conta : null,
+      ativa: d.ativa,
+    })),
+    pessoas: comIds(b.pessoas, gerarInt).map((p) => ({ id: p.id, nome: p.nome, contato: p.contato ? p.contato : null })),
+    acertos: comIds(b.acertos, gerarInt).map((a) => ({
+      id: a.id,
+      pessoaId: a.pessoaId,
+      tipo: a.tipo === "A_PAGAR" ? ("A_PAGAR" as const) : ("A_RECEBER" as const),
+      valor: round2(a.valor),
+      descricao: a.descricao,
+      data: paraMillis(a.data, agora),
+      despesaId: a.despesaId ? a.despesaId : null,
+      quitado: a.quitado,
+      quitadoEm: a.quitadoEm == null ? null : paraMillis(a.quitadoEm, agora),
+      grupoRateio: a.grupoRateio ? a.grupoRateio : null,
+    })),
   };
   return ds;
 }
 
-export type ResultadoImport = { ok: true; dataset: Dataset; versao: number } | { ok: false; erro: string };
+export type ResultadoImport = { ok: true; dataset: Dataset; versao: number; configuracoes?: ConfigGeral } | { ok: false; erro: string };
 
 /** Valida e converte o texto de um backup JSON (v2, ou v1 legado com `data` em texto). */
 export function importarBackup(texto: string, agora: number = Date.now()): ResultadoImport {
@@ -265,11 +382,17 @@ export function importarBackup(texto: string, agora: number = Date.now()): Resul
     const caminho = primeiro ? primeiro.path.join(".") : "";
     return { ok: false, erro: `Backup inválido${caminho ? ` em "${caminho}"` : ""}: ${primeiro?.message ?? "erro desconhecido"}.` };
   }
-  return { ok: true, dataset: recalcularTudo(normalizarBackup(r.data, agora)), versao: r.data.versaoBackup ?? 1 };
+  const config = r.data.configuracoes !== undefined ? normalizarGeral(r.data.configuracoes) : undefined;
+  return {
+    ok: true,
+    dataset: recalcularTudo(normalizarBackup(r.data, agora)),
+    versao: r.data.versaoBackup ?? 1,
+    ...(config && Object.keys(config).length > 0 ? { configuracoes: config } : {}),
+  };
 }
 
 /** Backup v2 compatível com o app Android. */
-export function exportarBackup(ds: Dataset): Record<string, unknown> {
+export function exportarBackup(ds: Dataset, configuracoes?: ConfigGeral | null): Record<string, unknown> {
   return {
     versaoBackup: 2,
     contas: ds.contas,
@@ -284,5 +407,11 @@ export function exportarBackup(ds: Dataset): Record<string, unknown> {
     patrimonio: ds.patrimonio,
     lixeira: ds.lixeira,
     transacao: ds.transacoes,
+    regrasCategoria: ds.regrasCategoria,
+    projetos: ds.projetos,
+    dividas: ds.dividas,
+    pessoas: ds.pessoas,
+    acertos: ds.acertos,
+    ...(configuracoes && Object.keys(configuracoes).length > 0 ? { configuracoes } : {}),
   };
 }

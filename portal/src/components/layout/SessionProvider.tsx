@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { gravarPerfil } from "@/lib/firebase/compartilhar";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { useSession } from "@/lib/session";
+import { iniciarConfigNuvem } from "@/lib/firebase/configNuvem";
 import { FirebaseAdapter } from "@/lib/store/firebase-adapter";
 import { LocalAdapter } from "@/lib/store/local-adapter";
 import { useStore } from "@/lib/store/store";
@@ -47,6 +48,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     parar();
     return undefined;
+  }, [modo, hidratado, uidUsuario, raizUid]);
+
+  // R57: configurações sincronizadas (documento único). Sem Firebase/login, o local segue como hoje.
+  useEffect(() => {
+    if (!hidratado || modo !== "firebase" || !uidUsuario) return;
+    return iniciarConfigNuvem(raizUid ?? uidUsuario);
   }, [modo, hidratado, uidUsuario, raizUid]);
 
   return <>{children}</>;

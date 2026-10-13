@@ -284,6 +284,7 @@ class SyncSession(
     private fun hash(col: Colecao, doc: Doc): String {
         val canonico = doc.entries
             .filter { it.key != CAMPO_ATUALIZADO && it.key !in col.derivados }
+            .filterNot { it.key in col.ignorarSeVazio && (it.value == null || (it.value as? Collection<*>)?.isEmpty() == true) }
             .sortedBy { it.key }
             .joinToString("|") { (k, v) -> "$k=${canonizar(v)}" }
         return MessageDigest.getInstance("SHA-256").digest(canonico.toByteArray())
@@ -304,7 +305,8 @@ class SyncSession(
 
         private val TABELAS_LOCAIS = arrayOf(
             "contasaldo", "cartoes", "categorias", "despesas", "despesas_fixas", "orcamentos",
-            "metas", "investimentos", "transferencias_agendadas", "patrimonio_historico", "transacoes", "lixeira"
+            "metas", "investimentos", "transferencias_agendadas", "patrimonio_historico", "transacoes", "lixeira",
+            "regras_categoria", "projetos", "dividas", "pessoas", "acertos"
         )
 
         /** Mensagem amigável para erros comuns do Firestore. */

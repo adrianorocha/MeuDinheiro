@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle, Copy, FastForward, Pencil, Receipt, Repeat, Trash2, Unlink } from "lucide-react";
+import { Check, Circle, Copy, FastForward, Pencil, Receipt, Repeat, Split, Trash2, Unlink } from "lucide-react";
 import { useState } from "react";
 import { Input, Select } from "@/components/ui/Field";
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
@@ -15,6 +15,7 @@ import { formatData } from "@/lib/format";
 import { useAgora, useDataset } from "@/lib/hooks";
 import { acoes } from "@/lib/store/actions";
 import { useStore } from "@/lib/store/store";
+import { DividirModal } from "@/components/pessoas/DividirModal";
 import { AntecipacaoModal } from "./AntecipacaoModal";
 import { ComprovanteModal } from "./ComprovanteModal";
 import { LancamentoModal } from "./LancamentoModal";
@@ -46,6 +47,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
   const [repetindo, setRepetindo] = useState<Despesa | null>(null);
   const [antecipando, setAntecipando] = useState<Despesa | null>(null);
   const [comprovante, setComprovante] = useState<Despesa | null>(null);
+  const [dividindo, setDividindo] = useState<Despesa | null>(null);
   const [repN, setRepN] = useState("3");
   const [repIntervalo, setRepIntervalo] = useState("1");
   const [repUnidade, setRepUnidade] = useState<UnidadeRepeticao>("MESES");
@@ -132,6 +134,10 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                   {cartaoIdDe(d) !== null && <Badge>Fatura</Badge>}
                   {cartaoDeDebito(d) !== null && <Badge>Débito no cartão</Badge>}
                   {!d.pago && <Badge tom={atrasada ? "neg" : "warn"}>{atrasada ? "Atrasada" : "Pendente"}</Badge>}
+                  {ds.acertos.some((a) => a.despesaId === d.id && a.grupoRateio) && <Badge tom="primary">Dividido</Badge>}
+                  {(d.tags ?? []).map((t) => (
+                    <Badge key={t}>#{t}</Badge>
+                  ))}
                 </div>
               </div>
               <Money valor={entrada ? d.valor : -d.valor} tom="auto" className="text-sm font-semibold" />
@@ -156,6 +162,11 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                     <IconButton rotulo={`Duplicar ${d.descricao}`} onClick={() => duplicar(d)}>
                       <Copy size={16} aria-hidden />
                     </IconButton>
+                    {d.tipo === "DEBITO" && (
+                      <IconButton rotulo={`Dividir ${d.descricao}`} onClick={() => setDividindo(d)}>
+                        <Split size={16} aria-hidden />
+                      </IconButton>
+                    )}
                     <IconButton rotulo={`Repetir ${d.descricao}`} onClick={() => { setRepErro(null); setRepetindo(d); }}>
                       <Repeat size={16} aria-hidden />
                     </IconButton>
@@ -193,6 +204,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
           <RodapeForm onCancelar={() => setRepetindo(null)} rotuloEnviar="Repetir" />
         </form>
       </Modal>
+      <DividirModal despesa={dividindo} onFechar={() => setDividindo(null)} />
       <ComprovanteModal despesa={comprovante} onFechar={() => setComprovante(null)} />
       <AntecipacaoModal aberto={antecipando !== null} onFechar={() => setAntecipando(null)} base={antecipando} />
       <LancamentoModal aberto={editando !== null} onFechar={() => setEditando(null)} editar={editando} />

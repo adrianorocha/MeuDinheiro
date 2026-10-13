@@ -194,6 +194,7 @@ fun MainScreen(
     var showScanner by remember { mutableStateOf(false) }
     var showFerramentas by remember { mutableStateOf(false) }
     var showConferencia by remember { mutableStateOf(false) }
+    var showCalendario by remember { mutableStateOf(false) } // R52
 
     // Atalho do launcher "Nova despesa": abre direto o formulário de lançamento.
     LaunchedEffect(com.meudinheiro.AtalhosApp.novaDespesaPedida) {
@@ -411,6 +412,14 @@ fun MainScreen(
                         onConferirSaldos = { showConferencia = true },
                         isPrivateMode = isPrivate,
                         onTogglePrivate = { scope.launch { userPrefs.togglePrivateMode() } }
+                    )
+
+                    // R51 — quanto posso gastar hoje
+                    LimiteDiarioCard(
+                        repository = repository,
+                        userPrefs = userPrefs,
+                        isPrivate = isPrivate,
+                        onAbrirCalendario = { showCalendario = true }
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -877,6 +886,10 @@ fun MainScreen(
 
         if (showConferencia) {
             ConferenciaSaldosScreen(repository = repository, isPrivate = isPrivate, onBack = { showConferencia = false })
+        }
+
+        if (showCalendario) {
+            CalendarioFinanceiroScreen(repository = repository, isPrivate = isPrivate, onBack = { showCalendario = false })
         }
 
         if (showFerramentas) {

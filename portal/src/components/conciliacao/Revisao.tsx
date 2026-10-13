@@ -47,7 +47,8 @@ function tipoDoPar(valorBanco: number, d: Despesa): "EXATO" | "DIFERENCA" {
 }
 
 function padrao(it: ItemMatch, ds: Dataset, destino: Destino): Escolha {
-  const categoria = categoriaSugerida(ds, it.transacao.descricao);
+  const contaDestino = destino.tipo === "CONTA" ? destino.conta : ds.contas.find((c) => c.id === ds.cartoes.find((x) => x.id === destino.cartaoId)?.contaId)?.conta;
+  const categoria = categoriaSugerida(ds, it.transacao.descricao, { conta: contaDestino, tipo: it.transacao.valor < 0 ? "DEBITO" : "CREDITO" });
   const mescla = mesclaPadrao(it, destino);
   if (it.classe === "AUTOMATICO") return { acao: "conciliar", lancamentoId: it.lancamentoId, mescla, categoria, parcelasRestantes: true };
   if (it.classe === "SUGERIDO") return { acao: "ignorar", lancamentoId: it.lancamentoId, mescla, categoria, parcelasRestantes: true };

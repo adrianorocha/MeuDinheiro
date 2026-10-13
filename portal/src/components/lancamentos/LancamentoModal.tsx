@@ -6,12 +6,15 @@ import { picDaCategoria } from "@/lib/catalogo";
 import type { FormEvent } from "react";
 import { Checkbox, Input, InputValor, Segmentado, Select } from "@/components/ui/Field";
 import { ErroBox } from "@/components/ui/Misc";
+import { TagsInput } from "@/components/ui/TagsInput";
+import { aplicarRegras, sugerirRegraAprendida, type SugestaoRegra } from "@/lib/finance/regras";
 import { Modal, RodapeForm } from "@/components/ui/Modal";
 import { MOEDAS } from "@/lib/catalogo";
 import { cartaoDeDebito, cartaoIdDe, saldoDoCartao } from "@/lib/finance/calc";
 import { sugerirCategoria } from "@/lib/finance/analises";
 import { normalizar } from "@/lib/finance/texto";
 import { MAX_PARCELAS, modalidadeDaCompra, type Modalidade } from "@/lib/finance/operations";
+import { Button } from "@/components/ui/Button";
 import { round2 } from "@/lib/finance/money";
 import type { Despesa, Tipo } from "@/lib/finance/types";
 import { deInputData, paraInputData, parseValorBR, valorParaCampo } from "@/lib/format";
@@ -62,6 +65,10 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   const [cotacaoTxt, setCotacaoTxt] = useState(editar && editar.moedaOriginal !== "BRL" ? valorParaCampo(editar.cotacaoNaData) : "");
   const [data, setData] = useState(() => paraInputData(editar?.data ?? Date.now()));
   const [categoria, setCategoria] = useState(editar?.categoria ?? "");
+  // R55 - a regra só preenche a categoria enquanto o usuário não escolheu uma manualmente (nunca sobrescreve).
+  const [categoriaManual, setCategoriaManual] = useState(false);
+  const [tags, setTags] = useState<string[]>(editar?.tags ?? []);
+  const [oferta, setOferta] = useState<SugestaoRegra | null>(null);
   const [conta, setConta] = useState(contaPadrao);
   const [cartaoId, setCartaoId] = useState(String(predefinicao?.cartaoId ?? (editar ? cartaoIdDe(editar) : null) ?? ds.cartoes[0]?.id ?? ""));
   const [pago, setPago] = useState(editar?.pago ?? true);
@@ -70,8 +77,17 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   const [modalidade, setModalidade] = useState<Modalidade>("CREDITO");
   const [erro, setErro] = useState<string | null>(null);
 
-  const sugestao = useMemo(() => (editar ? null : sugerirCategoria(descricao, ds.despesas)), [descricao, ds.despesas, editar]);
   const noCartao = entrada === "cartao";
+  const tipoAtual: Tipo = entrada === "receita" || (noCartao && estorno) ? "CREDITO" : "DEBITO";
+  const contaRegra = noCartao ? ds.contas.find((c) => c.id === ds.cartoes.find((x) => x.id === Number(cartaoId))?.contaId)?.conta : conta;
+  const regra = useMemo(
+    () => (editar ? null : aplicarRegras(ds.regrasCategoria, { descricao, conta: contaRegra, tipo: tipoAtual })),
+    [editar, ds.regrasCategoria, descricao, contaRegra, tipoAtual],
+  );
+  const categoriaEf = !categoriaManual && regra ? regra.categoria.trim() : categoria;
+  const sugestaoHeuristica = useMemo(() => (editar ? null : sugerirCategoria(descricao, ds.despesas)), [descricao, ds.despesas, editar]);
+  // regra explícita tem prioridade sobre a sugestão heurística (R21)
+  const sugestao = regra ? regra.categoria.trim() : sugestaoHeuristica;
   const estrangeira = moeda !== "BRL";
   // R42 - modalidade efetiva da compra: débito sai direto da conta (sem limite, fatura ou parcelas).
   const cartaoSel = noCartao ? ds.cartoes.find((x) => x.id === Number(cartaoId)) : undefined;
@@ -108,9 +124,9 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
     const timestamp = deInputData(data);
     if (Number.isNaN(timestamp)) return setErro("Informe uma data válida.");
     if (!descricao.trim()) return setErro("Informe a descrição.");
-    if (!categoria.trim()) return setErro("Informe a categoria.");
-    const tipo: Tipo = entrada === "receita" || (noCartao && estorno) ? "CREDITO" : "DEBITO";
-    const picCategoria = picDaCategoria(categoria, ds.categorias) ?? "";
+    if (!categoriaEf.trim()) return setErro("Informe a categoria.");
+    const tipo: Tipo = tipoAtual;
+    const picCategoria = picDaCategoria(categoriaEf, ds.categorias) ?? "";
     const moedaOriginal = moeda;
 
     if (editar) {
@@ -118,15 +134,23 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
         descricao,
         valor,
         data: timestamp,
-        categoria,
+        categoria: categoriaEf,
         tipo,
         ...(noCartao ? { cartaoId: Number(cartaoId), modalidade } : { cartaoId: null, conta, pago }),
         valorOriginal: valorOriginal ?? valor,
         moedaOriginal,
         cotacaoNaData: cotacao ?? 1,
+        tags,
       });
       if (!r.ok) return setErro(r.erro);
       avisar("sucesso", "Lançamento atualizado.");
+      // R55 - aprendizado leve: trocou a categoria e já há 2+ lançamentos iguais com ela? Oferece (não cria sozinho).
+      if (normalizar(categoriaEf) !== normalizar(editar.categoria)) {
+        const atual = useStore.getState().ds;
+        const novo = atual.despesas.find((x) => x.id === editar.id);
+        const s = novo ? sugerirRegraAprendida(atual.despesas, atual.regrasCategoria, novo) : null;
+        if (s) return setOferta(s);
+      }
       return onFechar();
     }
 
@@ -135,7 +159,7 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
         descricao,
         valor,
         conta,
-        categoria,
+        categoria: categoriaEf,
         pic: picCategoria,
         tipo,
         diaVencimento: new Date(timestamp).getDate(),
@@ -158,9 +182,10 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
       descricao,
       valor,
       data: timestamp,
-      categoria,
+      categoria: categoriaEf,
       pic: picCategoria,
       tipo,
+      tags,
       ...(noCartao ? { cartaoId: Number(cartaoId), modalidade } : { conta, pago }),
       valorOriginal,
       moedaOriginal,
@@ -175,6 +200,30 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   }
 
   const semContas = ds.contas.length === 0;
+
+  if (oferta) {
+    return (
+      <div className="flex flex-col gap-4" role="status">
+        <p className="text-sm">
+          Criar regra: <strong>{oferta.padrao}</strong> → <strong>{oferta.categoria}</strong>?
+        </p>
+        <p className="text-xs text-muted">Você já usou esta categoria para essa descrição {oferta.vezes} vezes. A regra vale para lançamentos novos e pode ser editada em Regras.</p>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onFechar}>Agora não</Button>
+          <Button
+            variante="primary"
+            onClick={() => {
+              acoes.criarRegraAprendida(oferta);
+              avisar("sucesso", "Regra criada.");
+              onFechar();
+            }}
+          >
+            Criar regra
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={submeter} className="flex flex-col gap-4" noValidate>
@@ -249,14 +298,14 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
           dica="1 = compra nova. Para compra já em andamento, informe a parcela que está sendo lançada agora: serão criadas só dela até a última, a primeira na data informada."
         />
       )}
-      <SeletorCategoria valor={categoria} onChange={setCategoria} personalizadas={ds.categorias} />
-      {sugestao && normalizar(sugestao) !== normalizar(categoria) && (
+      <SeletorCategoria valor={categoriaEf} onChange={(v) => { setCategoria(v); setCategoriaManual(true); }} personalizadas={ds.categorias} />
+      {sugestao && normalizar(sugestao) !== normalizar(categoriaEf) && (
         <button
           type="button"
-          onClick={() => setCategoria(sugestao)}
+          onClick={() => { setCategoria(sugestao); setCategoriaManual(true); }}
           className="-mt-2 self-start rounded-full border border-primary/40 bg-primary-soft px-3 py-1 text-xs font-medium text-primary"
         >
-          Sugestão de categoria: {sugestao} (usar)
+          {regra ? "Regra" : "Sugestão"} de categoria: {sugestao} (usar)
         </button>
       )}
       {noCartao ? (
@@ -300,6 +349,8 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
       {!noCartao && modo === "unica" && <Checkbox rotulo={entrada === "receita" ? "Já recebida" : "Já paga"} checked={pago} onChange={(e) => setPago(e.target.checked)} />}
       {modo === "parcelada" && !editar && !noDebito && <p className="text-xs text-muted">O valor informado é o total da compra; a última parcela recebe o resto dos centavos.{noCartao && Number(parcelaAtualTxt) > 1 ? " Com parcela atual maior que 1, só as parcelas restantes são lançadas (todas reservam o limite)." : ""}</p>}
       {modo === "fixa" && <p className="text-xs text-muted">Cria uma recorrência: lançada automaticamente todo mês no dia do vencimento (dias 29–31 caem no último dia dos meses curtos).</p>}
+      <TagsInput valor={tags} onChange={setTags} despesas={ds.despesas} />
+      {modo === "fixa" && tags.length > 0 && <p className="text-xs text-muted">As tags não são aplicadas às recorrências (só aos lançamentos criados diretamente).</p>}
       {erro && <ErroBox>{erro}</ErroBox>}
       <RodapeForm onCancelar={onFechar} />
     </form>

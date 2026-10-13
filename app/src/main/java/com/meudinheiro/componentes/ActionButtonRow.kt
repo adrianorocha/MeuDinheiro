@@ -581,6 +581,11 @@ fun AddDespesaDialog(
     var modalidadePedida by remember { mutableStateOf(Financas.Modalidade.CREDITO) }
 
     var categoriaSelecionada by remember { mutableStateOf(categorias.firstOrNull()) }
+    // R55: a regra só preenche a categoria enquanto o usuário não escolheu uma manualmente (nunca sobrescreve a escolha dele).
+    var categoriaManual by remember { mutableStateOf(false) }
+    // R56: tags do lançamento (parcelas herdam as da compra).
+    var tags by remember { mutableStateOf(listOf<String>()) }
+    val regras by viewModel.regrasCategoria.collectAsState()
     var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
     var descricao by rememberSaveable { mutableStateOf("") }
     var valorTexto by rememberSaveable { mutableStateOf(if (valorInicial > 0) Math.round(valorInicial * 100).toString() else "") }
@@ -606,6 +611,18 @@ fun AddDespesaDialog(
         else com.meudinheiro.domain.Analises.sugerirCategoria(descricao, historico)
             ?.let { s -> categorias.firstOrNull { it.equals(s, ignoreCase = true) } }
     }
+
+    // R55: regra explícita (conta e tipo DÉBITO deste formulário) tem prioridade sobre a sugestão heurística acima.
+    val categoriaDaRegra = remember(descricao, regras, categorias, contaAtual) {
+        if (descricao.trim().length < 2) null
+        else com.meudinheiro.domain.Regras.categoria(regras, com.meudinheiro.domain.Regras.Entrada(descricao, contaAtual, TipoDespesa.DEBITO.name))
+            ?.let { s -> categorias.firstOrNull { it.equals(s, ignoreCase = true) } }
+    }
+    val categoriaFinalSugerida = categoriaDaRegra ?: categoriaSugerida
+    LaunchedEffect(categoriaDaRegra) {
+        if (!categoriaManual && categoriaDaRegra != null) categoriaSelecionada = categoriaDaRegra
+    }
+    val tagsSugeridas = remember(historico) { com.meudinheiro.domain.Tags.usadas(historico) }
 
     var observacao by remember { mutableStateOf(if (codigoBarras.isNotEmpty()) "Boleto: $codigoBarras" else "") }
 
@@ -763,7 +780,7 @@ fun AddDespesaDialog(
                                             onClick = {
                                                 descricao = r.descricao.replace(Regex("\\s*\\(\\d+/\\d+\\)"), "").trim()
                                                 valorTexto = Math.round(r.valor * 100).toString()
-                                                categorias.firstOrNull { it.equals(r.categoria, ignoreCase = true) }?.let { categoriaSelecionada = it }
+                                                categorias.firstOrNull { it.equals(r.categoria, ignoreCase = true) }?.let { categoriaSelecionada = it; categoriaManual = true }
                                             },
                                             label = { Text(r.descricao.take(16), fontSize = 12.sp) }
                                         )
@@ -813,10 +830,10 @@ fun AddDespesaDialog(
                                 )
                             }
 
-                            if (categoriaSugerida != null && !categoriaSugerida.equals(categoriaSelecionada, ignoreCase = true)) {
+                            if (categoriaFinalSugerida != null && !categoriaFinalSugerida.equals(categoriaSelecionada, ignoreCase = true)) {
                                 androidx.compose.material3.AssistChip(
-                                    onClick = { categoriaSelecionada = categoriaSugerida },
-                                    label = { Text("Sugestão: $categoriaSugerida — usar", fontSize = 12.sp) }
+                                    onClick = { categoriaSelecionada = categoriaFinalSugerida; categoriaManual = true },
+                                    label = { Text((if (categoriaDaRegra != null) "Regra" else "Sugestão") + ": $categoriaFinalSugerida — usar", fontSize = 12.sp) }
                                 )
                             }
 
@@ -824,9 +841,11 @@ fun AddDespesaDialog(
                                 categorias = categorias,
                                 getPicCategoria = getPicCategoria,
                                 selecionada = categoriaSelecionada,
-                                onSelect = { categoriaSelecionada = it },
+                                onSelect = { categoriaSelecionada = it; categoriaManual = true },
                                 erroCat = erros["cat"]
                             )
+
+                            CampoTags(tags = tags, onChange = { tags = it }, sugestoes = tagsSugeridas)
 
                             DateAndInstallmentSection(
                                 frequencia = frequencia,
@@ -884,7 +903,8 @@ fun AddDespesaDialog(
                                             cotacaoNaData = vCotacao,
                                             mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                                             ano = Calendar.getInstance().get(Calendar.YEAR),
-                                            cartaoId = idDoCartaoParaSalvar
+                                            cartaoId = idDoCartaoParaSalvar,
+                                            tags = tags
                                         )
 
                                         autenticarParaLancar(currentContext, exigirBio, "Confirmar lançamento", "Autentique para lançar esta despesa") {

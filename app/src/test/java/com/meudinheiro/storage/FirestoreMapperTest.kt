@@ -73,13 +73,24 @@ class FirestoreMapperTest {
                 tipo = TipoDespesa.DEBITO, mes = 0, ano = 0, pago = true, autor = "Ana", fitid = "F123", conciliadoEm = 1_760_000_000_000)
         )
         repo.excluirLancamento(extra)
+        // R55/R56: regra, projeto e tags também entram na ida e volta
+        repo.salvarRegra(com.meudinheiro.data.RegraCategoria(padrao = "uber", categoria = "Transporte", conta = "111", tipo = "DEBITO", prioridade = 3, criadaEm = 9L))
+        repo.salvarProjeto(com.meudinheiro.data.Projeto(nome = "Reforma", tag = "reforma", orcamento = 1500.0, inicio = 1L, fim = 2L, cor = "#fff"))
+        // R58/R59: dívida, pessoa e acerto também entram na ida e volta
+        repo.salvarDivida(com.meudinheiro.data.Divida(nome = "Cartão rotativo", tipo = "CARTAO_ROTATIVO", credor = "Banco", saldoDevedor = 1500.5, taxaJurosMensal = 12.5, parcelaMinima = 150.0, parcelasRestantes = 12, diaVencimento = 10, conta = "111"))
+        val pessoaId = repo.salvarPessoa(com.meudinheiro.data.Pessoa(nome = "Ana", contato = "11 99999-0000")).toInt()
+        repo.criarAcertoAvulso(pessoaId, "A_RECEBER", 50.0, "Pizza", data = 1_760_000_000_000)
+        repo.registrarLancamento(
+            Despesa(descricao = "Com tags", valor = 3.0, data = Date(1_760_000_000_000), categoria = "Casa", conta = "111", pic = "p",
+                tipo = TipoDespesa.DEBITO, mes = 0, ano = 0, pago = true, tags = listOf("reforma", "Casa Nova"))
+        )
     }
 
     @Test fun `todas as colecoes dao ida e volta sem perda`() = runBlocking {
         popular()
         val catalogo = FirestoreMapper.catalogo(db)
         val antes = catalogo.associate { it.nome to it.lerLocal() }
-        assertEquals(12, catalogo.size)
+        assertEquals(17, catalogo.size)
         assertTrue("todas as coleções do contrato têm dados no teste", antes.values.all { it.isNotEmpty() })
 
         // apaga tudo pela porta que o sync usa (ordem inversa) e regrava pelos documentos
@@ -97,7 +108,7 @@ class FirestoreMapperTest {
     @Test fun `nomes das colecoes seguem o contrato`() {
         assertEquals(
             setOf("contas", "cartoes", "categorias", "despesas", "despesasFixas", "orcamentos", "metas", "investimentos",
-                "transferenciasAgendadas", "patrimonio", "transacoes", "lixeira"),
+                "transferenciasAgendadas", "patrimonio", "transacoes", "lixeira", "regrasCategoria", "projetos", "dividas", "pessoas", "acertos"),
             FirestoreMapper.catalogo(db).map { it.nome }.toSet()
         )
     }

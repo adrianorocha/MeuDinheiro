@@ -4,6 +4,7 @@ import { mesAnoDe, somaMeses } from "../finance/dates";
 import { montaDespesa } from "../finance/operations";
 import { sugerirCategoria } from "../finance/analises";
 import { round2, toCents } from "../finance/money";
+import { categoriaPorRegras } from "../finance/regras";
 import { limparDescricao } from "../finance/texto";
 import type { Dataset, Despesa, Result } from "../finance/types";
 import { lancamentosDoDestino } from "./matching";
@@ -40,19 +41,31 @@ export function mesclaPadrao(item: Pick<ItemMatch, "tipo">, destino: Destino): M
   return { data: true, valor: item.tipo === "DIFERENCA", descricao: false, pago: destino.tipo === "CONTA" };
 }
 
-export function categoriaSugerida(ds: Pick<Dataset, "despesas">, descricaoBanco: string): string {
-  return sugerirCategoria(limparDescricaoBanco(descricaoBanco), ds.despesas) ?? "Outros";
+/** Dados mínimos para sugerir categoria; as regras (R55), quando presentes, têm prioridade sobre a heurística. */
+export type DadosCategoria = Pick<Dataset, "despesas"> & Partial<Pick<Dataset, "regrasCategoria" | "cartoes" | "contas">>;
+
+/** R55: regra explícita primeiro (descrição do banco já limpa, conta e tipo do destino); depois a heurística R21. */
+export function categoriaSugerida(ds: DadosCategoria, descricaoBanco: string, contexto: { conta?: string; tipo?: "DEBITO" | "CREDITO" } = {}): string {
+  const limpa = limparDescricaoBanco(descricaoBanco);
+  const porRegra = ds.regrasCategoria ? categoriaPorRegras(ds.regrasCategoria, { descricao: limpa, conta: contexto.conta, tipo: contexto.tipo }) : null;
+  return porRegra ?? sugerirCategoria(limpa, ds.despesas) ?? "Outros";
+}
+
+function contaDoDestino(ds: DadosCategoria, destino: Destino): string | undefined {
+  if (destino.tipo === "CONTA") return destino.conta;
+  const cartao = ds.cartoes?.find((c) => c.id === destino.cartaoId);
+  return cartao ? ds.contas?.find((c) => c.id === cartao.contaId)?.conta : undefined;
 }
 
 export function acaoConciliar(item: ItemMatch, destino: Destino, lancamentoId: number, tipo: ItemMatch["tipo"] = item.tipo): AcaoPlano {
   return { tipo: "CONCILIAR", transacao: item.transacao, lancamentoId, mescla: mesclaPadrao({ tipo }, destino) };
 }
 
-export function acaoCriar(item: ItemMatch, ds: Pick<Dataset, "despesas">, categoria?: string, parcelasRestantes?: boolean): AcaoPlano {
+export function acaoCriar(item: ItemMatch, ds: DadosCategoria, categoria?: string, parcelasRestantes?: boolean, conta?: string): AcaoPlano {
   return {
     tipo: "CRIAR",
     transacao: item.transacao,
-    categoria: categoria ?? categoriaSugerida(ds, item.transacao.descricao),
+    categoria: categoria ?? categoriaSugerida(ds, item.transacao.descricao, { conta, tipo: item.transacao.valor < 0 ? "DEBITO" : "CREDITO" }),
     ...(parcelasRestantes ? { parcelasRestantes: true } : {}),
   };
 }
@@ -60,7 +73,7 @@ export function acaoCriar(item: ItemMatch, ds: Pick<Dataset, "despesas">, catego
 /** Plano padrão: concilia os AUTOMATICOS e (opcional) os SUGERIDOS; cria os SO_NO_EXTRATO se pedido. */
 export function montarPlano(
   resultado: ResultadoMatching,
-  ds: Pick<Dataset, "despesas">,
+  ds: DadosCategoria,
   destino: Destino,
   opcoes: { sugeridos?: boolean; criar?: boolean; parcelasRestantes?: boolean } = {},
 ): Plano {
@@ -68,7 +81,7 @@ export function montarPlano(
   for (const it of resultado.itens) {
     if (it.lancamentoId !== undefined && (it.classe === "AUTOMATICO" || (opcoes.sugeridos && it.classe === "SUGERIDO"))) {
       acoes.push(acaoConciliar(it, destino, it.lancamentoId));
-    } else if (opcoes.criar && it.classe === "SO_NO_EXTRATO") acoes.push(acaoCriar(it, ds, undefined, opcoes.parcelasRestantes));
+    } else if (opcoes.criar && it.classe === "SO_NO_EXTRATO") acoes.push(acaoCriar(it, ds, undefined, opcoes.parcelasRestantes, contaDoDestino(ds, destino)));
   }
   return { destino, acoes };
 }

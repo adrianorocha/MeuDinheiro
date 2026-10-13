@@ -68,7 +68,9 @@ fun EditarLancamentoDialog(
     categorias: List<String>,
     getPicCategoria: (String) -> String,
     onDismiss: () -> Unit,
-    onSalvar: (editada: Despesa, modalidade: Financas.Modalidade?) -> Unit
+    onSalvar: (editada: Despesa, modalidade: Financas.Modalidade?) -> Unit,
+    /** R56 — tags já usadas (sugestões do campo de tags). */
+    tagsSugeridas: List<com.meudinheiro.domain.Tags.Usada> = emptyList()
 ) {
     val listaCategorias = remember(categorias, despesa.categoria) {
         if (categorias.any { it.equals(despesa.categoria, ignoreCase = true) }) categorias else listOf(despesa.categoria) + categorias
@@ -86,6 +88,7 @@ fun EditarLancamentoDialog(
     var cartaoId by remember { mutableStateOf(cartaoOriginal ?: cartoes.firstOrNull()?.id) }
     var modalidade by remember { mutableStateOf(Financas.Modalidade.CREDITO) }
     var pago by remember { mutableStateOf(despesa.pago) }
+    var tags by remember { mutableStateOf(despesa.tags) } // R56
     var mostrarCalendario by remember { mutableStateOf(false) }
     var erros by remember { mutableStateOf(mapOf<String, String>()) }
 
@@ -126,7 +129,8 @@ fun EditarLancamentoDialog(
             pago = if (noCartao) (if (trocouCartao) false else despesa.pago) else pago,
             valorOriginal = if (mudouValor) valorNovo else despesa.valorOriginal,
             moedaOriginal = if (mudouValor) "BRL" else despesa.moedaOriginal,
-            cotacaoNaData = if (mudouValor) 1.0 else despesa.cotacaoNaData
+            cotacaoNaData = if (mudouValor) 1.0 else despesa.cotacaoNaData,
+            tags = com.meudinheiro.domain.Tags.normalizar(tags)
         )
         onSalvar(editada, if (multiplo) modalidade else null)
     }
@@ -221,6 +225,8 @@ fun EditarLancamentoDialog(
                     } else {
                         Text("Compra de cartão é quitada pelo pagamento da fatura.", color = Color.White.copy(0.5f), fontSize = 11.sp)
                     }
+
+                    CampoTags(tags = tags, onChange = { tags = it }, sugestoes = tagsSugeridas)
 
                     ActionButtons(onCancel = onDismiss, onSave = ::salvar)
                 }

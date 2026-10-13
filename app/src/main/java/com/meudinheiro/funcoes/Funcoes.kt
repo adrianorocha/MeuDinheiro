@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.meudinheiro.data.AppDatabase
+import com.meudinheiro.storage.ConfiguracaoLocal
 import com.meudinheiro.storage.StorageMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -64,6 +66,9 @@ class UserPreferences(private val context: Context) {
         private val KEY_CLOUD_ROOT_UID = stringPreferencesKey("cloud_root_uid")
         private val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup")
         private val KEY_ALERTAS_ORCAMENTO = stringSetPreferencesKey("alertas_orcamento")
+        private val KEY_PAINEL_503020 = stringPreferencesKey("painel_503020_config") // R54
+        private val KEY_LIMITE_DIARIO_ATE_RECEITA = booleanPreferencesKey("limite_diario_ate_receita")
+        private val KEY_LIMITE_DIARIO_AVISO = booleanPreferencesKey("limite_diario_aviso")
     }
 
     // ---- armazenamento de dados (local × Firebase) ----
@@ -96,6 +101,21 @@ class UserPreferences(private val context: Context) {
             // mantém só os do mês corrente e do anterior para o conjunto não crescer sem limite
             prefs[KEY_ALERTAS_ORCAMENTO] = (prefs[KEY_ALERTAS_ORCAMENTO].orEmpty() + chaves).toList().takeLast(400).toSet()
         }
+    }
+
+    // ---- R54: configuração do painel 50-30-20 (metas %, meses da reserva e classificação por categoria).
+    // R57: continua local-first (DataStore); ao alterar, carimba a linha `configuracoes` (Room) e, com a nuvem ligada,
+    // o documento `configuracoes/geral` é sincronizado (o mais novo vence). [carimbar] = false só ao aplicar o que veio da nuvem.
+    val painel503020Flow: Flow<String> = context.dataStore.data.map { it[KEY_PAINEL_503020].orEmpty() }
+
+    suspend fun salvarPainel503020(texto: String, carimbar: Boolean = true) {
+        context.dataStore.edit { it[KEY_PAINEL_503020] = texto }
+        if (carimbar) carimbarConfiguracao()
+    }
+
+    /** R57 — registra a alteração local (nunca impede o salvamento da preferência em caso de erro no banco). */
+    private suspend fun carimbarConfiguracao() {
+        runCatching { ConfiguracaoLocal(AppDatabase.getInstance(context), this).registrarAlteracao() }
     }
 
     suspend fun lastCloudUid(): String = context.dataStore.data.first()[KEY_LAST_CLOUD_UID].orEmpty()
@@ -171,6 +191,19 @@ class UserPreferences(private val context: Context) {
 
     suspend fun saveNotifOnlyCredit(v: Boolean) {
         context.dataStore.edit { it[KEY_NOTIF_ONLY_CREDIT] = v }
+    }
+
+    /** R51 — período do limite diário: false = fim do mês (padrão); true = até a próxima receita prevista. */
+    val limiteDiarioAteReceitaFlow = context.dataStore.data.map { it[KEY_LIMITE_DIARIO_ATE_RECEITA] ?: false }
+    suspend fun saveLimiteDiarioAteReceita(v: Boolean, carimbar: Boolean = true) {
+        context.dataStore.edit { it[KEY_LIMITE_DIARIO_ATE_RECEITA] = v }
+        if (carimbar) carimbarConfiguracao()
+    }
+
+    /** R51 — aviso "Hoje você já passou do limite" na ronda diária (padrão ligado; vale só com a ronda ligada). */
+    val limiteDiarioAvisoFlow = context.dataStore.data.map { it[KEY_LIMITE_DIARIO_AVISO] ?: true }
+    suspend fun saveLimiteDiarioAviso(v: Boolean) {
+        context.dataStore.edit { it[KEY_LIMITE_DIARIO_AVISO] = v }
     }
 
     suspend fun saveNotifLastDay(v: Long) {

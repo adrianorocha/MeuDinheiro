@@ -15,6 +15,7 @@ import { toCents, fromCents } from "@/lib/finance/money";
 import { lancamentosParaCsv } from "@/lib/csv";
 import { baixarArquivo } from "@/lib/download";
 import { useAgora, useDataset } from "@/lib/hooks";
+import { chaveTag, tagsUsadas, temTag } from "@/lib/finance/tags";
 
 const PAGINA = 100;
 
@@ -30,6 +31,7 @@ export default function LancamentosPage() {
   const [status, setStatus] = useState("");
   const [autor, setAutor] = useState("");
   const [conciliacao, setConciliacao] = useState("");
+  const [tag, setTag] = useState("");
   const [busca, setBusca] = useState("");
   const [limite, setLimite] = useState(PAGINA);
   const [novo, setNovo] = useState(false);
@@ -63,6 +65,7 @@ export default function LancamentosPage() {
         if (tipo && d.tipo !== tipo) return false;
         if (status === "pago" && !d.pago) return false;
         if (status === "pendente" && d.pago) return false;
+        if (tag && !temTag(d, tag)) return false;
         if (autor && (d.autor ?? "") !== autor) return false;
         if (conciliacao === "sim" && d.conciliadoEm == null) return false;
         if (conciliacao === "nao" && d.conciliadoEm != null) return false;
@@ -70,7 +73,9 @@ export default function LancamentosPage() {
         return true;
       })
       .sort((a, b) => b.data - a.data || b.id - a.id);
-  }, [ds.despesas, mes, ano, conta, categoria, tipo, status, autor, conciliacao, busca]);
+  }, [ds.despesas, mes, ano, conta, categoria, tipo, status, autor, conciliacao, busca, tag]);
+
+  const tagsDisponiveis = useMemo(() => tagsUsadas(ds.despesas), [ds.despesas]);
 
   const autores = useMemo(() => [...new Set(ds.despesas.map((d) => d.autor).filter((a): a is string => !!a))].sort(), [ds.despesas]);
 
@@ -160,6 +165,16 @@ export default function LancamentosPage() {
             <option value="sim">Conciliados</option>
             <option value="nao">Não conciliados</option>
           </Select>
+          {tagsDisponiveis.length > 0 && (
+            <Select rotulo="Tag" value={tag} onChange={(e) => { setTag(e.target.value); setLimite(PAGINA); }}>
+              <option value="">Todas</option>
+              {tagsDisponiveis.map((t) => (
+                <option key={t.chave} value={chaveTag(t.chave)}>
+                  #{t.rotulo}
+                </option>
+              ))}
+            </Select>
+          )}
           {autores.length > 0 && (
             <Select rotulo="Quem lançou" value={autor} onChange={(e) => { setAutor(e.target.value); setLimite(PAGINA); }}>
               <option value="">Todos</option>

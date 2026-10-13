@@ -62,9 +62,13 @@ fun ExtratoScreen(
 
     var categoriaFiltro by remember { mutableStateOf<String?>(null) }
 
-    val listaFiltrada = remember(despesas, categoriaFiltro) {
-        if (categoriaFiltro == null) despesas
-        else despesas.filter { it.categoria == categoriaFiltro }
+    // R56: filtro por tag (chave normalizada); sem tag selecionada, a lista é exatamente a de antes.
+    var tagFiltro by remember { mutableStateOf<String?>(null) }
+    val tagsDoMes = remember(despesas) { com.meudinheiro.domain.Tags.usadasDeListas(despesas.map { it.tags }) }
+    val listaFiltrada = remember(despesas, categoriaFiltro, tagFiltro) {
+        despesas
+            .let { l -> if (categoriaFiltro == null) l else l.filter { it.categoria == categoriaFiltro } }
+            .let { l -> tagFiltro?.let { t -> l.filter { com.meudinheiro.domain.Tags.tem(it.tags, t) } } ?: l }
     }
 
     // Cálculo do saldo do período filtrado
@@ -135,6 +139,23 @@ fun ExtratoScreen(
                 }
             }
 
+            if (tagsDoMes.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(tagsDoMes) { t ->
+                        FilterChip(
+                            selected = tagFiltro == t.chave,
+                            onClick = { tagFiltro = if (tagFiltro == t.chave) null else t.chave },
+                            label = { Text("#${t.rotulo}") },
+                            colors = chipColors()
+                        )
+                    }
+                }
+            }
+
             // Card de Resumo do Filtro
             Card(
                 modifier = Modifier
@@ -149,7 +170,8 @@ fun ExtratoScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         val labelTexto =
-                            if (categoriaFiltro == null) "Saldo Total do Mês" else "Total em $categoriaFiltro"
+                            if (categoriaFiltro == null && tagFiltro == null) "Saldo Total do Mês"
+                            else "Total em " + listOfNotNull(categoriaFiltro, tagFiltro?.let { "#$it" }).joinToString(" · ")
                         Text(labelTexto, fontSize = 12.sp, color = TextWhite.copy(0.6f))
                         Text(
                             text = formatarMoedaBR(totalMes, isPrivate),

@@ -30,7 +30,9 @@ data class FiltroRelatorio(
     val tipo: TipoRelatorio = TipoRelatorio.TODOS,
     val pago: Boolean? = null,
     val texto: String = "",
-    val incluirInternos: Boolean = false
+    val incluirInternos: Boolean = false,
+    /** R56 — só lançamentos com ALGUMA destas tags (chaves ou rótulos); vazio = não filtra. */
+    val tags: Set<String> = emptySet()
 )
 
 data class LinhaCategoria(val nome: String, val total: Double, val percentual: Double)
@@ -81,6 +83,7 @@ object Relatorios {
         val idsCartao = idsDeCartoes(filtro.cartoes, cartoes)
         val categorias = filtro.categorias.map(Texto::normalizar).toSet()
         val texto = Texto.normalizar(filtro.texto)
+        val tagsFiltro = filtro.tags.map(Tags::chave).filter { it.isNotEmpty() }.toSet()
         return despesas.mapNotNull { l ->
             if (l.dataMs < inicio || l.dataMs > fim) return@mapNotNull null
             if (!filtro.incluirInternos && l.natureza != Natureza.NORMAL) return@mapNotNull null
@@ -88,6 +91,7 @@ object Relatorios {
             if (idsCartao.isNotEmpty() && l.cartaoId !in idsCartao) return@mapNotNull null
             if (categorias.isNotEmpty() && Texto.normalizar(l.categoria) !in categorias) return@mapNotNull null
             if (filtro.pago != null && l.pago != filtro.pago) return@mapNotNull null
+            if (tagsFiltro.isNotEmpty() && l.tags.none { Tags.chave(it) in tagsFiltro }) return@mapNotNull null
             if (texto.isNotEmpty() && texto !in Texto.normalizar(l.descricao) && texto !in Texto.normalizar(l.categoria)) {
                 return@mapNotNull null
             }
@@ -136,6 +140,26 @@ object Relatorios {
             anterior = ResumoPeriodo(Dinheiro.reais(antTotalC), ant.size),
             variacaoPercentual = variacao
         )
+    }
+
+    data class TotalTag(val tag: String, val rotulo: String, val total: Long, val quantidade: Int)
+
+    /**
+     * R56 — agrupamento por tag sobre o resultado. Um lançamento com várias tags entra em cada uma (a soma pode passar
+     * do total); sem tag = "Sem tag" (chave vazia). Só olha o que já foi selecionado pelo filtro.
+     */
+    fun totaisPorTag(r: ResultadoRelatorio): List<TotalTag> {
+        val m = LinkedHashMap<String, TotalTag>()
+        for (d in r.itens) {
+            val c = contribuicao(d, r.filtro.tipo) ?: continue
+            val tags = d.tags.filter { Tags.chave(it).isNotEmpty() }
+            val chaves = if (tags.isEmpty()) listOf("" to "Sem tag") else tags.map { Tags.chave(it) to it.trim() }
+            for ((k, rotulo) in chaves) {
+                val g = m[k]
+                m[k] = if (g != null) g.copy(total = g.total + c, quantidade = g.quantidade + 1) else TotalTag(k, rotulo, c, 1)
+            }
+        }
+        return m.values.sortedWith(compareByDescending<TotalTag> { kotlin.math.abs(it.total) }.thenBy { it.rotulo.lowercase() })
     }
 
     private fun chaveMes(ms: Long): String =

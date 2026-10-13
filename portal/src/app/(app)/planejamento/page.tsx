@@ -3,19 +3,16 @@
 import { useMemo, useState } from "react";
 import { Input, InputValor } from "@/components/ui/Field";
 import { Badge, Card, CardTitulo, EmptyState, PageHeader, ProgressBar } from "@/components/ui/Misc";
-import { MonthPicker } from "@/components/ui/MonthPicker";
+import { PainelR54 } from "@/components/planejamento/PainelR54";
 import { Money } from "@/components/ui/Money";
 import {
   detectarAssinaturas,
-  regra503020,
   reservaEmergencia,
   simularParcelamento,
   totaisAssinaturas,
   MESES_META_RESERVA,
-  type GrupoRegra,
 } from "@/lib/finance/analises";
-import { mesAnoDe } from "@/lib/finance/dates";
-import { formatData, formatPercentual, parseValorBR } from "@/lib/format";
+import { formatData, parseValorBR } from "@/lib/format";
 import { useAgora, useDataset } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
 
@@ -163,50 +160,6 @@ function Simulador() {
   );
 }
 
-function LinhaRegra({ nome, g, alvoRotulo }: { nome: string; g: GrupoRegra; alvoRotulo: string }) {
-  const tom = g.status === "OK" ? "pos" : "warn";
-  return (
-    <li>
-      <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-        <span className="font-medium">
-          {nome} <span className="text-xs text-muted">({alvoRotulo})</span>
-        </span>
-        <span className="flex items-center gap-2">
-          <Money valor={g.valor} /> · {formatPercentual(g.percentual)}
-          <Badge tom={tom}>{g.status === "OK" ? "OK" : g.status === "ACIMA" ? "Acima" : "Abaixo"}</Badge>
-        </span>
-      </div>
-      <ProgressBar razao={g.percentual} tom={tom === "pos" ? "primary" : "warn"} rotulo={`${nome}: ${formatPercentual(g.percentual)} da receita`} />
-    </li>
-  );
-}
-
-function Painel503020() {
-  const ds = useDataset();
-  const agora = useAgora();
-  const [ref, setRef] = useState(() => mesAnoDe(agora));
-  const r = useMemo(() => regra503020(ds.despesas, ref.mes, ref.ano), [ds.despesas, ref]);
-  return (
-    <Card aria-labelledby="t-503020">
-      <CardTitulo id="t-503020" acao={<MonthPicker mes={ref.mes} ano={ref.ano} onChange={setRef} />}>
-        Regra 50/30/20
-      </CardTitulo>
-      {r.receitas <= 0 ? (
-        <p className="py-4 text-center text-sm text-muted">Sem receitas realizadas neste mês para calcular os percentuais.</p>
-      ) : (
-        <p className="mb-3 text-sm text-muted">
-          Sobre receitas de <Money valor={r.receitas} />.
-        </p>
-      )}
-      <ul className="space-y-4">
-        <LinhaRegra nome="Necessidades" g={r.necessidades} alvoRotulo="até 50%" />
-        <LinhaRegra nome="Desejos" g={r.desejos} alvoRotulo="até 30%" />
-        <LinhaRegra nome="Poupança" g={r.poupanca} alvoRotulo="pelo menos 20%" />
-      </ul>
-    </Card>
-  );
-}
-
 export default function PlanejamentoPage() {
   const ds = useDataset();
   return (
@@ -222,7 +175,7 @@ export default function PlanejamentoPage() {
           <Reserva />
         </div>
         <Assinaturas />
-        <Painel503020 />
+        <PainelR54 />
         <div className="lg:col-span-2">
           <Simulador />
         </div>

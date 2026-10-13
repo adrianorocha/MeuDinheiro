@@ -10,6 +10,7 @@ import {
 } from "./calc";
 import { clampDia, mesAnoDe, MESES_ABREV, normalizaMes, somaMeses } from "./dates";
 import { novoIdInt, novoIdLong, novoUuid } from "./ids";
+import { normalizarTags } from "./tags";
 import { fromCents, round2, toCents } from "./money";
 import type {
   Cartao,
@@ -91,6 +92,8 @@ interface BaseDespesa {
   autor?: string | null;
   fitid?: string | null;
   conciliadoEm?: number | null;
+  /** R56 */
+  tags?: string[];
 }
 
 export function montaDespesa(b: BaseDespesa, id: number): Despesa {
@@ -118,6 +121,7 @@ export function montaDespesa(b: BaseDespesa, id: number): Despesa {
     autor: b.autor ?? null,
     fitid: b.fitid ?? null,
     conciliadoEm: b.conciliadoEm ?? null,
+    ...(b.tags && b.tags.length > 0 ? { tags: normalizarTags(b.tags) } : {}),
   };
 }
 
@@ -172,6 +176,8 @@ export interface NovoLancamento {
   autor?: string | null;
   /** R42 - só vale em cartão MÚLTIPLO; padrão CREDITO. */
   modalidade?: Modalidade;
+  /** R56 - tags do lançamento; todas as parcelas herdam as da compra. */
+  tags?: string[];
 }
 
 export const MAX_PARCELAS = 120;
@@ -240,6 +246,7 @@ export function adicionarLancamento(ds: Dataset, input: NovoLancamento, ctx: Ctx
           pago,
           grupoId,
           autor: input.autor,
+          tags: input.tags,
         },
         id,
       ),
@@ -271,6 +278,8 @@ export interface EdicaoLancamento {
   cotacaoNaData?: number;
   /** R42 - ao trocar o cartão/modalidade; só vale em cartão MÚLTIPLO. */
   modalidade?: Modalidade;
+  /** R56 - substitui as tags (lista vazia remove todas); ausente = mantém. */
+  tags?: string[];
 }
 
 export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancamento, ctx: Ctx = { agora: Date.now() }): Op {
@@ -332,6 +341,11 @@ export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancament
     moedaOriginal: patch.moedaOriginal?.trim() || atual.moedaOriginal || "BRL",
     cotacaoNaData: patch.cotacaoNaData && patch.cotacaoNaData > 0 ? patch.cotacaoNaData : atual.cotacaoNaData || 1,
   };
+  if (patch.tags !== undefined) {
+    const tags = normalizarTags(patch.tags);
+    if (tags.length > 0) novo.tags = tags;
+    else delete novo.tags;
+  }
   return finaliza({ ...ds, despesas: ds.despesas.map((d) => (d.id === id ? novo : d)) }, {});
 }
 

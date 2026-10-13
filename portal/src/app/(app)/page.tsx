@@ -4,6 +4,7 @@ import { CreditCard, Receipt } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { GraficoPatrimonio, GraficoPizza } from "@/components/charts/Graficos";
+import { LimiteDiarioCard } from "@/components/dashboard/LimiteDiarioCard";
 import { AlertasOrcamento } from "@/components/layout/AlertasOrcamento";
 import { Segmentado } from "@/components/ui/Field";
 import { Badge, Card, CardTitulo, EmptyState, PageHeader, ProgressBar } from "@/components/ui/Misc";
@@ -123,6 +124,7 @@ export default function DashboardPage() {
           <Money valor={saldoContas} />
         </Kpi>
       </div>
+      <LimiteDiarioCard />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Período</h2>

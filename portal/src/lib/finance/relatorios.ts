@@ -1,6 +1,7 @@
 import { cartaoIdDe, resumoFatura } from "./calc";
 import { fimDoMes, inicioDoMes, mesAnoDe, normalizaMes } from "./dates";
 import { fromCents, round2, toCents } from "./money";
+import { chaveTag } from "./tags";
 import { normalizar } from "./texto";
 import type { Dataset, Despesa } from "./types";
 
@@ -21,6 +22,8 @@ export interface FiltroRelatorio {
   pago: boolean | null;
   texto: string;
   incluirInternos?: boolean;
+  /** R56 - só lançamentos com ALGUMA destas tags (chaves ou rótulos); ausente/vazio = não filtra. */
+  tags?: string[];
 }
 
 export interface FatiaCategoria {
@@ -82,6 +85,7 @@ function selecionar(ds: Pick<Dataset, "despesas" | "cartoes">, f: FiltroRelatori
   const cats = new Set(f.categorias.map(normalizar));
   const cartoes = idsDeCartoes(ds, f.cartoes);
   const texto = normalizar(f.texto);
+  const tagsFiltro = new Set((f.tags ?? []).map(chaveTag).filter(Boolean));
   const out: { d: Despesa; c: number }[] = [];
   for (const d of ds.despesas) {
     if (d.data < inicio || d.data > fim) continue;
@@ -93,6 +97,7 @@ function selecionar(ds: Pick<Dataset, "despesas" | "cartoes">, f: FiltroRelatori
     }
     if (cats.size > 0 && !cats.has(normalizar(d.categoria))) continue;
     if (f.pago !== null && d.pago !== f.pago) continue;
+    if (tagsFiltro.size > 0 && !(d.tags ?? []).some((t) => tagsFiltro.has(chaveTag(t)))) continue;
     if (texto && !normalizar(`${d.descricao} ${d.categoria}`).includes(texto)) continue;
     const c = contribuicao(d, f.tipo);
     if (c === null) continue;
@@ -142,6 +147,27 @@ export function gerarRelatorio(ds: Pick<Dataset, "despesas" | "cartoes">, f: Fil
     anterior,
     variacaoPercentual: anterior.total > 0 ? ((atual.total - anterior.total) / anterior.total) * 100 : null,
   };
+}
+
+/**
+ * R56 - agrupamento por tag sobre o resultado (itensCent). Um lançamento com várias tags entra em cada uma
+ * (por isso a soma das tags pode passar do total); sem tag = "Sem tag". Só olha o que já foi selecionado.
+ */
+export function totaisPorTag(r: Pick<ResultadoRelatorio, "itensCent">): { tag: string; rotulo: string; total: number; quantidade: number }[] {
+  const m = new Map<string, { tag: string; rotulo: string; cents: number; quantidade: number }>();
+  for (const { d, c } of r.itensCent) {
+    const tags = (d.tags ?? []).filter((t) => chaveTag(t));
+    const chaves = tags.length > 0 ? tags.map((t) => [chaveTag(t), t.trim()] as const) : ([["", "Sem tag"]] as const);
+    for (const [k, rotulo] of chaves) {
+      const g = m.get(k) ?? { tag: k, rotulo, cents: 0, quantidade: 0 };
+      g.cents += c;
+      g.quantidade += 1;
+      m.set(k, g);
+    }
+  }
+  return [...m.values()]
+    .sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents) || a.rotulo.localeCompare(b.rotulo, "pt-BR"))
+    .map((g) => ({ tag: g.tag, rotulo: g.rotulo, total: fromCents(g.cents), quantidade: g.quantidade }));
 }
 
 // ---------------------------------------------------------------- períodos rápidos
@@ -312,6 +338,7 @@ export function descreverFiltro(f: FiltroRelatorio, ds: Pick<Dataset, "contas" |
   if (f.contas.length) linhas.push(`Contas: ${f.contas.map((n) => ds.contas.find((c) => c.conta === n)?.banco ?? n).join(", ")}`);
   if (f.cartoes.length) linhas.push(`Cartões: ${f.cartoes.map((id) => ds.cartoes.find((c) => c.id === id)?.nome ?? String(id)).join(", ")}`);
   if (f.categorias.length) linhas.push(`Categorias: ${f.categorias.join(", ")}`);
+  if (f.tags && f.tags.length) linhas.push(`Tags: ${f.tags.join(", ")}`);
   linhas.push(`Tipo: ${f.tipo === "DESPESA" ? "Despesas" : f.tipo === "RECEITA" ? "Receitas" : "Receitas e despesas"}`);
   if (f.pago !== null) linhas.push(`Situação: ${f.pago ? "Pagos" : "Pendentes"}`);
   if (f.texto.trim()) linhas.push(`Texto: "${f.texto.trim()}"`);

@@ -18,6 +18,8 @@ import type { Dataset } from "@/lib/finance/types";
 import { paraInputData } from "@/lib/format";
 import { useDataset } from "@/lib/hooks";
 import { useSession, type TemaPref } from "@/lib/session";
+import { useConfigGeral } from "@/lib/configGeral";
+import type { ConfigGeral } from "@/lib/finance/configuracoes";
 import { exportarBackup, importarBackup } from "@/lib/store/backup";
 import { useStore } from "@/lib/store/store";
 
@@ -33,6 +35,12 @@ const ROTULO_COLECAO: Record<string, string> = {
   transferenciasAgendadas: "transferências agendadas",
   patrimonio: "registros de patrimônio",
   transacoes: "transações (legado)",
+  lixeira: "itens na lixeira",
+  regrasCategoria: "regras de categoria",
+  projetos: "projetos",
+  dividas: "dívidas",
+  pessoas: "pessoas",
+  acertos: "acertos",
 };
 
 function resumo(ds: Dataset): string {
@@ -50,7 +58,7 @@ export default function ConfiguracoesPage() {
   const tema = useSession((s) => s.tema);
   const privado = useSession((s) => s.privado);
   const arquivoRef = useRef<HTMLInputElement>(null);
-  const [importando, setImportando] = useState<{ ds: Dataset; versao: number; nome: string } | null>(null);
+  const [importando, setImportando] = useState<{ ds: Dataset; versao: number; nome: string; config?: ConfigGeral } | null>(null);
   const [erroImport, setErroImport] = useState<string | null>(null);
   const [demo, setDemo] = useState(false);
   const [apagar, setApagar] = useState(false);
@@ -61,19 +69,21 @@ export default function ConfiguracoesPage() {
     if (!arquivo) return;
     const r = importarBackup(await arquivo.text());
     if (!r.ok) return setErroImport(r.erro);
-    setImportando({ ds: r.dataset, versao: r.versao, nome: arquivo.name });
+    setImportando({ ds: r.dataset, versao: r.versao, nome: arquivo.name, config: r.configuracoes });
   }
 
   async function confirmarImport() {
     if (!importando) return;
     await useStore.getState().substituirTudo(importando.ds);
+    // R57: configurações do backup entram só se forem mais novas que as atuais.
+    if (importando.config) useConfigGeral.getState().importar(importando.config);
     avisar("sucesso", "Backup importado.");
     setImportando(null);
     if (arquivoRef.current) arquivoRef.current.value = "";
   }
 
   function exportar() {
-    baixarArquivo(`meudinheiro-backup-${paraInputData(Date.now())}.json`, JSON.stringify(exportarBackup(ds), null, 2), "application/json");
+    baixarArquivo(`meudinheiro-backup-${paraInputData(Date.now())}.json`, JSON.stringify(exportarBackup(ds, useConfigGeral.getState().config), null, 2), "application/json");
   }
 
   async function trocarModo() {
