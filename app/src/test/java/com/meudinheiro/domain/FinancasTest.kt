@@ -196,6 +196,21 @@ class FinancasTest {
         assertTrue(p.last().valor > 0.0)
     }
 
+    @Test fun `valor digitado a vista em reais nunca perde nem ganha centavo`() {
+        // Mesmo caminho do formulário: dígitos (centavos) → /100.0 → × cotação 1.0 → arredondar → centavos.
+        for (c in 1L..3_000_000L) {
+            val v = (c.toString().toDouble() / 100.0) * 1.0
+            assertEquals("centavos $c", c, Dinheiro.centavos(Dinheiro.arredondar(v)))
+        }
+    }
+
+    @Test fun `saldo apos varias despesas confere com a soma exata em centavos`() {
+        val valores = listOf(2328.21, 0.1, 0.2, 19.99, 1234.57, 0.07)
+        val movs = valores.map { lanc(it, pago = true) }
+        val esperado = valores.sumOf { Dinheiro.centavos(it) }
+        assertEquals(Dinheiro.reais(-esperado), Financas.saldoConta("111", movs), 0.0)
+    }
+
     @Test fun `parcelas no dia 31 nao derivam para o dia 28`() {
         val p = Financas.parcelar(lanc(120.0, data = ms(2026, 1, 31)), 4, 0L)
         val dias = p.map { Calendar.getInstance().apply { timeInMillis = it.dataMs }.let { c -> c.get(Calendar.MONTH) + 1 to c.get(Calendar.DAY_OF_MONTH) } }
