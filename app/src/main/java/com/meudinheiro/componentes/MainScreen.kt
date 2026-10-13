@@ -195,6 +195,15 @@ fun MainScreen(
     var showFerramentas by remember { mutableStateOf(false) }
     var showConferencia by remember { mutableStateOf(false) }
     var showCalendario by remember { mutableStateOf(false) } // R52
+    var showImportarExtratos by remember { mutableStateOf(false) } // R63
+
+    // R63: extrato compartilhado ou aviso da pasta monitorada abre a revisão (depois do login/biometria).
+    LaunchedEffect(com.meudinheiro.AtalhosApp.importarExtratosPedido) {
+        if (com.meudinheiro.AtalhosApp.importarExtratosPedido) {
+            showImportarExtratos = true
+            com.meudinheiro.AtalhosApp.consumirImportarExtratos()
+        }
+    }
 
     // Atalho do launcher "Nova despesa": abre direto o formulário de lançamento.
     LaunchedEffect(com.meudinheiro.AtalhosApp.novaDespesaPedida) {
@@ -890,6 +899,10 @@ fun MainScreen(
 
         if (showCalendario) {
             CalendarioFinanceiroScreen(repository = repository, isPrivate = isPrivate, onBack = { showCalendario = false })
+        }
+
+        if (showImportarExtratos) {
+            ImportacaoExtratosScreen(repository = repository, isPrivate = isPrivate, onBack = { showImportarExtratos = false })
         }
 
         if (showFerramentas) {

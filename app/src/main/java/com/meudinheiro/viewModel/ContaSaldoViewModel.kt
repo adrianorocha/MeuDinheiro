@@ -17,6 +17,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.Constraints
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.meudinheiro.componentes.AnexosEdicao
 import com.meudinheiro.componentes.FiltroPeriodo
 import com.meudinheiro.componentes.SaldoWidget
 import com.meudinheiro.componentes.obterIntervalo
@@ -188,13 +189,41 @@ class ContaSaldoViewModel(
     // ==========================================
     // 5. LANÇAMENTOS (CRUD)
     // ==========================================
-    fun adicionarDespesa(despesa: Despesa, modalidade: Financas.Modalidade? = null) {
+    fun adicionarDespesa(despesa: Despesa, modalidade: Financas.Modalidade? = null, anexos: List<com.meudinheiro.storage.AnexosGerenciador.Preparado> = emptyList()) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.registrarLancamento(despesa, modalidade)
+                val id = repository.registrarLancamento(despesa, modalidade)
+                // R60: o lançamento já está salvo; falha nos anexos nunca o desfaz.
+                if (anexos.isNotEmpty()) aplicarAnexos(id, AnexosEdicao(novos = anexos))
             } catch (e: Exception) {
                 avisarErro("Lançamento", e)
             }
+        }
+    }
+
+    /**
+     * R60 — remove os anexos pedidos (arquivo apagado em melhor esforço) e salva os novos primeiro no aparelho
+     * (`local:`); com nuvem, envia ao Storage em segundo plano. Erros viram aviso, nunca perdem o lançamento.
+     */
+    private suspend fun aplicarAnexos(id: Long, mudancas: AnexosEdicao) {
+        val g = com.meudinheiro.storage.AnexosGerenciador.get(getApplication())
+        try {
+            val atuais = repository.obterDespesaPorId(id)?.anexos.orEmpty()
+            val aRemover = atuais.filter { it.id in mudancas.removidos }
+            val criados = mudancas.novos.map { g.guardarLocal(id, it) }
+            repository.atualizarAnexos(id) { lista -> lista.filter { it.id !in mudancas.removidos } + criados }
+            g.excluirTodos(aRemover)
+            if (criados.isNotEmpty() && g.nuvemAtiva()) criados.forEach { enviarAnexo(id, it) }
+        } catch (e: Exception) {
+            mudancas.novos.forEach { g.descartarPreparado(it) }
+            avisarErro("Anexos", e)
+        }
+    }
+
+    /** R60 — envia (ou tenta de novo) um anexo "local:" ao Storage; ao concluir troca o caminho no lançamento. */
+    fun enviarAnexo(despesaId: Long, anexo: com.meudinheiro.data.Anexo) {
+        com.meudinheiro.storage.AnexosGerenciador.get(getApplication()).enviarEmSegundoPlano(despesaId, anexo) { antigo, novo ->
+            repository.atualizarAnexos(despesaId) { l -> l.map { if (it.id == antigo.id) novo else it } }
         }
     }
 
@@ -349,11 +378,12 @@ class ContaSaldoViewModel(
     }
 
     /** R11/R42 — grava a edição completa de um lançamento (conta ou cartão). */
-    fun editarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) {
+    fun editarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null, anexos: AnexosEdicao = AnexosEdicao()) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val categoriaAntes = repository.obterDespesaPorId(despesa.id)?.categoria
                 repository.atualizarLancamento(despesa, modalidade)
+                if (!anexos.vazio) aplicarAnexos(despesa.id, anexos) // R60: lê os anexos atuais do banco (não os do formulário)
                 if (categoriaAntes != null && com.meudinheiro.domain.Texto.normalizar(categoriaAntes) != com.meudinheiro.domain.Texto.normalizar(despesa.categoria)) {
                     _sugestaoRegra.value = repository.sugerirRegraAprendida(despesa)
                 }

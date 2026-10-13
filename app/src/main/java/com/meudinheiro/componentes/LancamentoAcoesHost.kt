@@ -286,10 +286,11 @@ fun LancamentoAcoesHost(
             despesa = despesa, contas = contas, cartoes = cartoes,
             categorias = categorias, getPicCategoria = getPicCategoria,
             tagsSugeridas = viewModel.tagsUsadas.collectAsState().value,
+            onReenviarAnexo = { viewModel.enviarAnexo(despesa.id, it) },
             onDismiss = onFechar,
-            onSalvar = { editada, modalidade ->
+            onSalvar = { editada, modalidade, anexosEd ->
                 val mudouValor = Dinheiro.arredondar(editada.valor) != Dinheiro.arredondar(despesa.valor)
-                val gravar = { viewModel.editarLancamento(editada, modalidade); onFechar() }
+                val gravar = { viewModel.editarLancamento(editada, modalidade, anexosEd); onFechar() }
                 if (mudouValor) comBio("Confirmar edição", "Autentique para alterar o valor de \"$titulo\"") { gravar() } else gravar()
             }
         )

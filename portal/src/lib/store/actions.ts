@@ -75,6 +75,7 @@ import { chaveTag, normalizarTags, validarProjeto } from "../finance/tags";
 import type { Categoria, DespesaFixa, Investimento, Meta, Projeto, RegraCategoria } from "../finance/types";
 import { aplicarConciliacao, desfazerConciliacao, desfazerLote, type Plano, type PlanoInverso } from "../conciliacao/plano";
 import { useSession } from "../session";
+import { limparAnexosDaLixeira } from "../firebase/anexosArquivos";
 import { useStore } from "./store";
 
 /** Quem está lançando (R32); null no modo local. */
@@ -104,7 +105,12 @@ export const acoes = {
   repetirLancamento: (id: number, opcoes: { n: number; intervalo: number; unidade: UnidadeRepeticao }) =>
     exec()((ds, ctx) => repetirLancamento(ds, id, opcoes, ctx)),
   restaurarLixeira: (id: number) => exec()((ds, ctx) => restaurarDaLixeira(ds, id, ctx)),
-  esvaziarLixeira: () => exec()((ds) => ({ ok: true as const, ds: esvaziarLixeira(ds) })),
+  esvaziarLixeira: () => {
+    const antes = useStore.getState().ds.lixeira;
+    const r = exec()((ds) => ({ ok: true as const, ds: esvaziarLixeira(ds) }));
+    if (r.ok) void limparAnexosDaLixeira(antes, []); // R60: apaga os arquivos dos anexos (melhor esforço)
+    return r;
+  },
   alternarPago: (id: number) => exec()((ds) => alternarPago(ds, id)),
   darBaixa: (id: number) => exec()((ds) => marcarPago(ds, id)),
   // antecipação de pagamento (R40)

@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.Configuracao
 import com.meudinheiro.domain.ConfigGeral
+import com.meudinheiro.domain.ImpostoRenda
 import com.meudinheiro.domain.Painel503020
 import com.meudinheiro.funcoes.UserPreferences
 import kotlinx.coroutines.flow.first
@@ -27,9 +28,14 @@ class ConfiguracaoLocal(
         return ConfigGeral(
             painel = texto.takeIf { it.isNotBlank() }?.let { Painel503020.desserializar(it) },
             limiteDiarioAteReceita = prefs.limiteDiarioAteReceitaFlow.first(),
-            atualizadoEm = carimbo.takeIf { it > 0 }
+            atualizadoEm = carimbo.takeIf { it > 0 },
+            ir = prefs.irConfigFlow.first().takeIf { it.isNotBlank() }?.let { lerIr(it) }
         )
     }
+
+    /** R61 — tolerante: JSON inválido = padrões. */
+    private fun lerIr(texto: String): ImpostoRenda.Config? =
+        runCatching { ImpostoRenda.Config.deDoc(GSON.fromJson(texto, Map::class.java)) }.getOrNull()
 
     /** O usuário acabou de alterar uma configuração: carimba (sempre estritamente maior que o anterior) e grava a linha. */
     suspend fun registrarAlteracao() {
@@ -48,6 +54,7 @@ class ConfiguracaoLocal(
         if (acao == ConfigGeral.Acao.APLICAR_NUVEM) {
             resultado.painel?.let { prefs.salvarPainel503020(Painel503020.serializar(it), carimbar = false) }
             resultado.limiteDiarioAteReceita?.let { prefs.saveLimiteDiarioAteReceita(it, carimbar = false) }
+            resultado.ir?.let { prefs.salvarIrConfig(GSON.toJson(it.toDoc()), carimbar = false) }
             val efetivo = atual().copy(atualizadoEm = resultado.carimbo)
             dao.salvar(Configuracao(json = GSON.toJson(efetivo.toDoc()), atualizadoEm = resultado.carimbo))
         }

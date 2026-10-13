@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         agendarLembreteBackupSemanal(this)
+        lifecycleScope.launch(Dispatchers.IO) { runCatching { com.meudinheiro.importacao.PastaExtratos.sincronizarAgendamento(applicationContext) } }
         lifecycleScope.launch(Dispatchers.IO) { runCatching { com.meudinheiro.worker.BackupAutomatico.sincronizarAgendamento(applicationContext) } }
 
         // 3. Ativa o verificador diário (Coroutine atrelada à Activity)
@@ -117,6 +118,9 @@ class MainActivity : AppCompatActivity() {
         if (intent?.action == AtalhosApp.ACAO_NOVA_DESPESA) {
             AtalhosApp.pedirNovaDespesa()
             intent.action = null // não reabre ao girar a tela
+        } else if (intent?.action == AtalhosApp.ACAO_IMPORTAR_EXTRATOS) {
+            AtalhosApp.pedirImportarExtratos() // R63: a revisão abre na tela principal, depois do login/biometria
+            intent.action = null
         }
     }
 

@@ -68,9 +68,11 @@ fun EditarLancamentoDialog(
     categorias: List<String>,
     getPicCategoria: (String) -> String,
     onDismiss: () -> Unit,
-    onSalvar: (editada: Despesa, modalidade: Financas.Modalidade?) -> Unit,
+    onSalvar: (editada: Despesa, modalidade: Financas.Modalidade?, anexos: AnexosEdicao) -> Unit,
     /** R56 — tags já usadas (sugestões do campo de tags). */
-    tagsSugeridas: List<com.meudinheiro.domain.Tags.Usada> = emptyList()
+    tagsSugeridas: List<com.meudinheiro.domain.Tags.Usada> = emptyList(),
+    /** R60 — reenviar à nuvem um anexo que ficou só no aparelho ("Tentar de novo"). */
+    onReenviarAnexo: ((com.meudinheiro.data.Anexo) -> Unit)? = null
 ) {
     val listaCategorias = remember(categorias, despesa.categoria) {
         if (categorias.any { it.equals(despesa.categoria, ignoreCase = true) }) categorias else listOf(despesa.categoria) + categorias
@@ -89,6 +91,7 @@ fun EditarLancamentoDialog(
     var modalidade by remember { mutableStateOf(Financas.Modalidade.CREDITO) }
     var pago by remember { mutableStateOf(despesa.pago) }
     var tags by remember { mutableStateOf(despesa.tags) } // R56
+    val anexosForm = remember { AnexosFormState() } // R60
     var mostrarCalendario by remember { mutableStateOf(false) }
     var erros by remember { mutableStateOf(mapOf<String, String>()) }
 
@@ -132,7 +135,7 @@ fun EditarLancamentoDialog(
             cotacaoNaData = if (mudouValor) 1.0 else despesa.cotacaoNaData,
             tags = com.meudinheiro.domain.Tags.normalizar(tags)
         )
-        onSalvar(editada, if (multiplo) modalidade else null)
+        onSalvar(editada, if (multiplo) modalidade else null, AnexosEdicao(anexosForm.novos.toList(), anexosForm.removidos.toSet()))
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -227,6 +230,8 @@ fun EditarLancamentoDialog(
                     }
 
                     CampoTags(tags = tags, onChange = { tags = it }, sugestoes = tagsSugeridas)
+
+                    SecaoAnexos(existentes = despesa.anexos, estado = anexosForm, reenviar = onReenviarAnexo)
 
                     ActionButtons(onCancel = onDismiss, onSave = ::salvar)
                 }

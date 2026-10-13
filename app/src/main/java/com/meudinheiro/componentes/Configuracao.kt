@@ -575,6 +575,10 @@ fun Configuracao(
                     }
                 }
 
+                // SEÇÃO: IMPORTAÇÃO DE EXTRATOS (R63)
+                item { SectionTitle("IMPORTAÇÃO DE EXTRATOS") }
+                item { SecaoImportacaoExtratos(mainRepository, userPrefs) }
+
                 // SEÇÃO: DESTRUIÇÃO
                 item { SectionTitle("ZONA DE RISCO", NeonRed) }
                 item {

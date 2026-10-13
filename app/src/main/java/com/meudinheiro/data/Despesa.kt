@@ -53,7 +53,9 @@ data class Despesa(
      * R56 — rótulos das tags (máx. 5, 30 caracteres, sem repetir a chave). Coluna TEXT (array JSON); a migração 8→9 cria
      * a coluna com DEFAULT '[]' (por isso, de propósito, sem defaultValue no Room, como em `natureza`).
      */
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    /** R60 — anexos (fotos/comprovantes; máx. 5). Coluna TEXT (array JSON); a migração 10→11 cria a coluna com DEFAULT '[]' (sem defaultValue no Room, como `tags`). Vazio = campo ausente no Firestore. */
+    val anexos: List<Anexo> = emptyList()
 ) : Movimento {
     override val dataMs: Long get() = data.time
 }

@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -86,6 +87,7 @@ import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.domain.CartoesUi
 import com.meudinheiro.domain.Financas
+import com.meudinheiro.domain.LancamentoTexto
 import com.meudinheiro.funcoes.SuccessAnimation
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.compartilharComprovante
@@ -585,6 +587,8 @@ fun AddDespesaDialog(
     var categoriaManual by remember { mutableStateOf(false) }
     // R56: tags do lançamento (parcelas herdam as da compra).
     var tags by remember { mutableStateOf(listOf<String>()) }
+    // R60: anexos do novo lançamento (só lançamento único; parcelas/recorrências não recebem anexos).
+    val anexosForm = remember { AnexosFormState() }
     val regras by viewModel.regrasCategoria.collectAsState()
     var frequencia by remember { mutableStateOf(Frequencia.UNICA) }
     var descricao by rememberSaveable { mutableStateOf("") }
@@ -688,6 +692,57 @@ fun AddDespesaDialog(
             cartaoSelecionadoId = cartoesFiltrados.firstOrNull()?.id
         }
     }
+    // R62: lançar por texto/voz. NUNCA salva: só preenche os campos abaixo para o usuário revisar e confirmar.
+    var fraseTexto by remember { mutableStateOf("") }
+    var interpretado by remember { mutableStateOf<LancamentoTexto.Interpretacao?>(null) }
+    fun interpretarFrase(frase: String) {
+        if (frase.isBlank()) { interpretado = null; return }
+        val r = LancamentoTexto.interpretar(
+            frase,
+            LancamentoTexto.Contexto(
+                contas = emptyList(), // este formulário é sempre da conta aberta
+                cartoes = cartoesFiltrados.map { LancamentoTexto.CartaoCtx(it.id, it.nomeCartao) },
+                categorias = categorias, regras = regras, agora = LancamentoTexto.Data.de(System.currentTimeMillis())
+            )
+        )
+        interpretado = r
+        if (r.tipo == TipoDespesa.CREDITO) return // receita: só mostra o que entendeu (este formulário é de despesa)
+        r.valorCentavos?.let { valorTexto = it.toString(); moedaSelecionada = "BRL"; cotacaoTexto = "1.00"; erros = erros - "valor" }
+        if (r.descricao.isNotBlank()) { descricao = r.descricao; erros = erros - "desc" }
+        dataMillis.value = r.data.paraMs()
+        r.categoria?.let { c -> categorias.firstOrNull { it.equals(c, ignoreCase = true) }?.let { categoriaSelecionada = it; categoriaManual = true } }
+        r.parcelas?.let { frequencia = Frequencia.PARCELADA; numeroParcelas = it.toString() }
+        when (r.destino?.tipo) {
+            LancamentoTexto.Destino.CARTAO -> {
+                formaPagamento = "CARTAO"
+                r.destino?.id?.toIntOrNull()?.takeIf { id -> cartoesFiltrados.any { it.id == id } }?.let { cartaoSelecionadoId = it }
+            }
+            LancamentoTexto.Destino.CONTA -> formaPagamento = "CONTA"
+            null -> Unit
+        }
+    }
+    val lancadorVoz = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        val falado = res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (res.resultCode == android.app.Activity.RESULT_OK && !falado.isNullOrBlank()) {
+            fraseTexto = falado
+            interpretarFrase(falado)
+        }
+    }
+    fun falar() {
+        val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Ex.: gastei 45 no mercado ontem")
+        }
+        try {
+            lancadorVoz.launch(intent)
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(currentContext, "Este aparelho não tem reconhecimento de voz. Digite a frase.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     if (mostrarScannerCupom) {
         Dialog(
             onDismissRequest = { mostrarScannerCupom = false },
@@ -805,6 +860,43 @@ fun AddDespesaDialog(
                                 Text("  Escanear cupom", color = NeonCyan, fontSize = 13.sp)
                             }
 
+                            // R62: "Descreva em uma frase" (texto ou voz) — só preenche os campos, nunca salva
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = fraseTexto,
+                                    onValueChange = { fraseTexto = it },
+                                    label = { Text("Descreva em uma frase", fontSize = 12.sp) },
+                                    placeholder = { Text("gastei 45 no mercado ontem", fontSize = 12.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { interpretarFrase(fraseTexto) }),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                                        focusedBorderColor = NeonCyan, unfocusedBorderColor = Color.White.copy(0.2f), cursorColor = NeonCyan,
+                                        focusedLabelColor = NeonCyan, unfocusedLabelColor = Color.White.copy(0.6f)
+                                    )
+                                )
+                                IconButton(onClick = { falar() }) {
+                                    Icon(Icons.Default.Mic, contentDescription = "Falar o lançamento", tint = NeonCyan)
+                                }
+                            }
+                            androidx.compose.material3.TextButton(
+                                onClick = { interpretarFrase(fraseTexto) },
+                                enabled = fraseTexto.isNotBlank(),
+                                modifier = Modifier.align(Alignment.End)
+                            ) { Text("Preencher pelos dados da frase", color = NeonCyan, fontSize = 13.sp) }
+                            interpretado?.let { r ->
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("Entendi: " + LancamentoTexto.resumo(r).joinToString(" · "), color = Color.White.copy(0.8f), fontSize = 11.sp)
+                                    if (r.tipo == TipoDespesa.CREDITO) {
+                                        Text("Isto parece uma receita: este formulário é de despesa. Use Depósito para registrar entradas.", color = Color(0xFFFFB74D), fontSize = 11.sp)
+                                    }
+                                    r.pendencias.forEach { Text("• $it", color = Color(0xFFFFB74D), fontSize = 11.sp) }
+                                    if (r.candidatos.isNotEmpty()) Text("Escolha o cartão/conta abaixo.", color = Color.White.copy(0.6f), fontSize = 11.sp)
+                                }
+                            }
+
                             ValueSection(
                                 moeda = moedaSelecionada,
                                 valor = valorTexto,
@@ -846,6 +938,8 @@ fun AddDespesaDialog(
                             )
 
                             CampoTags(tags = tags, onChange = { tags = it }, sugestoes = tagsSugeridas)
+
+                            if (frequencia == Frequencia.UNICA) SecaoAnexos(existentes = emptyList(), estado = anexosForm)
 
                             DateAndInstallmentSection(
                                 frequencia = frequencia,
@@ -910,7 +1004,7 @@ fun AddDespesaDialog(
                                         autenticarParaLancar(currentContext, exigirBio, "Confirmar lançamento", "Autentique para lançar esta despesa") {
                                         parentScope.launch {
                                             when (frequencia) {
-                                                Frequencia.UNICA -> viewModel.adicionarDespesa(desp, modalidadeEnviada)
+                                                Frequencia.UNICA -> viewModel.adicionarDespesa(desp, modalidadeEnviada, anexosForm.novos.toList())
                                                 Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(
                                                     desp,
                                                     numeroParcelas.toInt(),

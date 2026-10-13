@@ -148,7 +148,9 @@ object BackupJson {
             cotacaoNaData = if (d.cotacaoNaData > 0) d.cotacaoNaData else 1.0,
             natureza = natureza,
             // R56: backup antigo não tem o campo (Gson deixa nulo) — vira lista vazia; sempre normalizada.
-            tags = Tags.normalizar(d.tags as List<String?>?)
+            tags = Tags.normalizar(d.tags as List<String?>?),
+            // R60: backup antigo não tem `anexos` (Gson deixa nulo) — vira lista vazia; sempre saneada.
+            anexos = com.meudinheiro.domain.Anexos.normalizar(d.anexos as List<com.meudinheiro.data.Anexo?>?)
         )
     }
 

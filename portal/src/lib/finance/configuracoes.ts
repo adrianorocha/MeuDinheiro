@@ -1,3 +1,4 @@
+import { normalizarConfigIR, type ConfigIR } from "./imposto";
 import { normalizarConfig, type ConfigPainel } from "./painel503020";
 
 /**
@@ -10,6 +11,8 @@ export interface ConfigGeral {
   painel503020?: ConfigPainel | null;
   /** R51 - limite diário até a próxima receita prevista (false = fim do mês). Ausente = padrão. */
   limiteDiarioAteReceita?: boolean | null;
+  /** R61 - escolhas do relatório de IR (classe por categoria, limite de educação…). Ausente = padrões. */
+  ir?: ConfigIR | null;
   /** epoch ms da última alteração feita pelo usuário; ausente/0 = nunca alterada. */
   atualizadoEm?: number | null;
 }
@@ -49,6 +52,7 @@ export function normalizarGeral(entrada: unknown): ConfigGeral {
   const out: ConfigGeral = {};
   if (e.painel503020 && typeof e.painel503020 === "object") out.painel503020 = normalizarConfig(e.painel503020);
   if (typeof e.limiteDiarioAteReceita === "boolean") out.limiteDiarioAteReceita = e.limiteDiarioAteReceita;
+  if (e.ir && typeof e.ir === "object") out.ir = normalizarConfigIR(e.ir);
   const t = typeof e.atualizadoEm === "number" && Number.isFinite(e.atualizadoEm) && e.atualizadoEm > 0 ? Math.trunc(e.atualizadoEm) : null;
   if (t !== null) out.atualizadoEm = t;
   return out;

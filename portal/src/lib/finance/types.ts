@@ -1,3 +1,5 @@
+import type { Anexo } from "./anexos";
+
 export type Tipo = "DEBITO" | "CREDITO";
 
 export const NATUREZAS = [
@@ -50,6 +52,8 @@ export interface Despesa {
   conciliadoEm: number | null;
   /** R56 - rótulos de tags (máx. 5, 30 caracteres); ausente em dados antigos = sem tags. */
   tags?: string[];
+  /** R60 - anexos (fotos/comprovantes; máx. 5); ausente em dados antigos = sem anexos. */
+  anexos?: Anexo[];
 }
 
 export interface DespesaFixa {

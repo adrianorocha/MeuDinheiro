@@ -61,6 +61,37 @@
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize|stateVisible"
             android:theme="@style/Theme.MeuDinheiro.Painel" />
+        <!-- R63: recebe extratos compartilhados (OFX/CSV). Exportada; valida tudo e nunca cria lançamento. -->
+        <activity
+            android:name=".importacao.ImportarExtratoActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="Importar extrato"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/x-ofx" />
+                <data android:mimeType="application/ofx" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/x-ofx" />
+                <data android:mimeType="application/ofx" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize"

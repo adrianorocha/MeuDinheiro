@@ -11,6 +11,7 @@ import {
 import { clampDia, mesAnoDe, MESES_ABREV, normalizaMes, somaMeses } from "./dates";
 import { novoIdInt, novoIdLong, novoUuid } from "./ids";
 import { normalizarTags } from "./tags";
+import { normalizarAnexos, type Anexo } from "./anexos";
 import { fromCents, round2, toCents } from "./money";
 import type {
   Cartao,
@@ -280,6 +281,8 @@ export interface EdicaoLancamento {
   modalidade?: Modalidade;
   /** R56 - substitui as tags (lista vazia remove todas); ausente = mantém. */
   tags?: string[];
+  /** R60 - substitui os anexos (saneados; lista vazia remove o campo); ausente = mantém. */
+  anexos?: Anexo[];
 }
 
 export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancamento, ctx: Ctx = { agora: Date.now() }): Op {
@@ -345,6 +348,11 @@ export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancament
     const tags = normalizarTags(patch.tags);
     if (tags.length > 0) novo.tags = tags;
     else delete novo.tags;
+  }
+  if (patch.anexos !== undefined) {
+    const anexos = normalizarAnexos(patch.anexos);
+    if (anexos.length > 0) novo.anexos = anexos;
+    else delete novo.anexos;
   }
   return finaliza({ ...ds, despesas: ds.despesas.map((d) => (d.id === id ? novo : d)) }, {});
 }
@@ -1307,9 +1315,17 @@ export function purgarLixeira(ds: Dataset, agora: number): Dataset {
 
 export type UnidadeRepeticao = "DIAS" | "SEMANAS" | "MESES";
 
+/** R60 - duplicar/repetir/dividir um lançamento NÃO copia os anexos (ficam só no original). */
+function semAnexos(d: Despesa): Despesa {
+  if (!("anexos" in d)) return d;
+  const c = { ...d };
+  delete c.anexos;
+  return c;
+}
+
 function copiaBase(d: Despesa, id: number, data: number, grupoId: string | null): Despesa {
   const { mes, ano } = mesAnoDe(data);
-  return { ...d, id, data, mes, ano, pago: false, grupoId, fitid: null, conciliadoEm: null };
+  return { ...semAnexos(d), id, data, mes, ano, pago: false, grupoId, fitid: null, conciliadoEm: null };
 }
 
 /** Duplica um lançamento NORMAL: data = agora, pendente, novo id, sem grupo. */
@@ -1450,7 +1466,7 @@ export function anteciparPagamento(ds: Dataset, input: Antecipacao, ctx: Ctx): O
       substituidos.set(d.id, { ...d, valor: fromCents(resto), valorOriginal: fromCents(resto) });
       const id = novoIdLong(usados, ctx.agora);
       usados.add(id);
-      const parte = { ...d, ...base, id, descricao: `${d.descricao} (adiantamento${desc > 0 ? `, desc. ${fromCents(desc).toFixed(2).replace(".", ",")}` : ""})`, fitid: null };
+      const parte = { ...semAnexos(d), ...base, id, descricao: `${d.descricao} (adiantamento${desc > 0 ? `, desc. ${fromCents(desc).toFixed(2).replace(".", ",")}` : ""})`, fitid: null };
       novos.push(parte);
       pagos.push(parte);
     }

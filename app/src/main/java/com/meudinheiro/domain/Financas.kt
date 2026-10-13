@@ -707,7 +707,7 @@ object Financas {
                 val resto = Dinheiro.centavos(d.valor) - quitado
                 substituidos.add(d.copy(valor = Dinheiro.reais(resto), valorOriginal = Dinheiro.reais(resto)))
                 val parte = base.copy(
-                    id = 0, fitid = null, conciliadoEm = null,
+                    id = 0, fitid = null, conciliadoEm = null, anexos = emptyList(), // R60: o adiantamento parcial não herda anexos
                     descricao = d.descricao + " (adiantamento" + (if (desc > 0) ", desc. ${moedaVirgula(desc)}" else "") + ")"
                 )
                 novos.add(parte); pagos.add(parte)

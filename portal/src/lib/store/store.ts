@@ -10,6 +10,7 @@ import {
 import { emptyDataset } from "../finance/types";
 import type { Dataset, Result } from "../finance/types";
 import type { PersistenceAdapter, StorageMode } from "./adapter";
+import { limparAnexosDaLixeira } from "../firebase/anexosArquivos";
 
 export type Status = "idle" | "carregando" | "pronto" | "erro";
 
@@ -75,7 +76,9 @@ export const useStore = create<Estado>((set, get) => {
   /** Rotinas de abertura: despesas fixas (R16), transferências agendadas vencidas (R9) e snapshot (R14). */
   const rotinasDeAbertura = () => {
     // R31: remove da lixeira o que passou de 30 dias.
+    const lixeiraAntes = get().ds.lixeira;
     executar((ds, ctx) => ({ ok: true as const, ds: purgarLixeira(ds, ctx.agora) }));
+    void limparAnexosDaLixeira(lixeiraAntes, get().ds.lixeira); // R60: o que saiu de vez da lixeira leva os arquivos (melhor esforço)
     const fixas = executar(processarDespesasFixas);
     if (fixas.ok && fixas.criados.length > 0) {
       avisar("info", `${fixas.criados.length} despesa(s) fixa(s) lançada(s) automaticamente.`);

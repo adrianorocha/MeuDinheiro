@@ -368,6 +368,7 @@ fun CardItemContent(
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
+                IndicadorAnexos(item.anexos) // R60
             }
 
             // ==========================================
@@ -452,6 +453,7 @@ fun DespesasDomain.toDespesa(): Despesa {
         mes = cal.get(Calendar.MONTH) + 1,
         ano = cal.get(Calendar.YEAR),
         cartaoId = this.cartaoId ?: 0,
-        tags = this.tags
+        tags = this.tags,
+        anexos = this.anexos
     )
 }

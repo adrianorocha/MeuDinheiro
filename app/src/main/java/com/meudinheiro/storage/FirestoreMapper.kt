@@ -34,6 +34,8 @@ import com.meudinheiro.domain.Dividas
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.domain.Natureza
 import com.meudinheiro.domain.Regras
+import com.meudinheiro.data.Anexo
+import com.meudinheiro.domain.Anexos
 import com.meudinheiro.domain.Tags
 import java.util.Date
 
@@ -96,7 +98,25 @@ object FirestoreMapper {
         "moedaOriginal" to d.moedaOriginal, "cotacaoNaData" to d.cotacaoNaData, "pago" to d.pago,
         "natureza" to d.natureza, "grupoId" to d.grupoId, "autor" to d.autor,
         "fitid" to d.fitid, "conciliadoEm" to d.conciliadoEm
-    ) + if (d.tags.isEmpty()) emptyMap() else mapOf("tags" to d.tags) // R56: só vai ao documento quando há tags (dados antigos intactos)
+    ) +
+        // R56: `tags` só vai ao documento quando há tags; R60: idem `anexos` (lista de mapas); vazio = campo ausente (dados antigos intactos)
+        (if (d.tags.isEmpty()) emptyMap() else mapOf("tags" to d.tags)) +
+        (if (d.anexos.isEmpty()) emptyMap() else mapOf("anexos" to d.anexos.map(::anexoToDoc)))
+
+    /** R60 */
+    fun anexoToDoc(a: Anexo): Doc = mapOf(
+        "id" to a.id, "nome" to a.nome, "tipo" to a.tipo, "tamanho" to a.tamanho, "caminho" to a.caminho, "criadoEm" to a.criadoEm
+    )
+
+    /** R60 — tolerante: ausente/nulo/itens inválidos viram lista vazia/são descartados (ver [Anexos.normalizar]). */
+    fun anexosFromDoc(v: Any?): List<Anexo> = Anexos.normalizar(
+        (v as? List<*>)?.map { item ->
+            (item as? Map<*, *>)?.let { m ->
+                val d: Doc = m.entries.associate { (k, x) -> k.toString() to x }
+                Anexo(d.str("id"), d.str("nome"), d.str("tipo"), d.long("tamanho"), d.str("caminho"), d.long("criadoEm"))
+            }
+        }
+    )
 
     fun despesaFromDoc(d: Doc): Despesa {
         val ms = d.long("data", System.currentTimeMillis())
@@ -122,7 +142,8 @@ object FirestoreMapper {
             autor = d.strOuNulo("autor"),
             fitid = d.strOuNulo("fitid"),
             conciliadoEm = d.longOuNulo("conciliadoEm"),
-            tags = Tags.normalizar((d["tags"] as? List<*>)?.map { it as? String })
+            tags = Tags.normalizar((d["tags"] as? List<*>)?.map { it as? String }),
+            anexos = anexosFromDoc(d["anexos"])
         )
     }
 
@@ -339,7 +360,7 @@ object FirestoreMapper {
             colecao("categorias", emptySet(), { categorias.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::categoriaFromDoc,
                 { categorias.inserirTodas(it) }, { ids -> categorias.excluirPorIds(ids.map(String::toInt)) }),
             colecao("despesas", setOf("mes", "ano"), { despesas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::despesaFromDoc,
-                { despesas.inserirTodas(it) }, { ids -> despesas.excluirPorIds(ids.map(String::toLong)) }, ignorarSeVazio = setOf("tags")),
+                { despesas.inserirTodas(it) }, { ids -> despesas.excluirPorIds(ids.map(String::toLong)) }, ignorarSeVazio = setOf("tags", "anexos")),
             colecao("despesasFixas", emptySet(), { fixas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::fixaFromDoc,
                 { fixas.inserirTodas(it) }, { ids -> fixas.excluirPorIds(ids.map(String::toInt)) }),
             colecao("orcamentos", emptySet(), { orcamentos.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::orcamentoFromDoc,

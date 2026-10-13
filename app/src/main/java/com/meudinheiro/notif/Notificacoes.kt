@@ -38,7 +38,8 @@ enum class TipoAviso(
     ORCAMENTO_ESTOURADO("avisos_orcamento", "Orçamento", 0xFFFF5252.toInt(), "ESTOURADO", "!"),
     SUCESSO("avisos_recibos", "Recibos", 0xFF1DB954.toInt(), "CONCLUÍDO", "OK"),
     FALHA("avisos_recibos", "Recibos", 0xFFFF5252.toInt(), "NÃO REALIZADO", "!"),
-    BACKUP("avisos_backup", "Backup", 0xFF00B8D4.toInt(), "SEGURANÇA", "B")
+    BACKUP("avisos_backup", "Backup", 0xFF00B8D4.toInt(), "SEGURANÇA", "B"),
+    EXTRATO("avisos_extratos", "Extratos", 0xFF00B8D4.toInt(), "CONCILIAR", "E")
 }
 
 /**
@@ -54,7 +55,9 @@ data class Aviso(
     val id: Int,
     val linhas: List<String> = emptyList(),
     val despesaId: Long? = null,
-    val textoPublico: String = "Você tem um aviso financeiro"
+    val textoPublico: String = "Você tem um aviso financeiro",
+    /** Ação do Intent que abre o app ao tocar na notificação (nula = só abrir). */
+    val acao: String? = null
 )
 
 object Notificacoes {
@@ -84,6 +87,7 @@ object Notificacoes {
         canal("avisos_orcamento", "Orçamento", "Avisos quando uma categoria chega a 80% ou estoura", NotificationManager.IMPORTANCE_HIGH, TipoAviso.ORCAMENTO.cor, true)
         canal("avisos_recibos", "Recibos", "Confirmação de transferências e lançamentos", NotificationManager.IMPORTANCE_DEFAULT, TipoAviso.SUCESSO.cor, false)
         canal("avisos_backup", "Backup", "Lembrete semanal para guardar seus dados", NotificationManager.IMPORTANCE_LOW, TipoAviso.BACKUP.cor, false)
+        canal("avisos_extratos", "Extratos", "Extratos novos encontrados na pasta monitorada, para conciliar", NotificationManager.IMPORTANCE_DEFAULT, TipoAviso.EXTRATO.cor, false)
     }
 
     private fun podeNotificar(context: Context) =
@@ -113,9 +117,10 @@ object Notificacoes {
         return bmp
     }
 
-    private fun abrirApp(context: Context, id: Int): PendingIntent = PendingIntent.getActivity(
+    private fun abrirApp(context: Context, id: Int, acao: String? = null): PendingIntent = PendingIntent.getActivity(
         context, id,
         Intent(context, MainActivity::class.java).apply {
+            if (acao != null) action = acao
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -145,7 +150,7 @@ object Notificacoes {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publica)
             .setGroup("meudinheiro_${t.canal}")
-            .setContentIntent(abrirApp(app, aviso.id))
+            .setContentIntent(abrirApp(app, aviso.id, aviso.acao))
             .setAutoCancel(true)
 
         b.setStyle(

@@ -2,11 +2,13 @@
 
 import { useRef, useState } from "react";
 import { sugerirDestino } from "@/components/conciliacao/DestinoResumo";
-import { MAX_BYTES } from "@/components/conciliacao/EnvioArquivo";
+import { identificarDestino, pistasDoArquivo } from "@/lib/conciliacao/destino-sugerido";
+import { gravarHashes, hashArquivo, jaProcessado, lerHashes, registrarHash, validarArquivoExtrato } from "@/lib/conciliacao/importacao-arquivos";
 import { interpretarTexto } from "@/lib/conciliacao/leitura";
 import { decodificarTexto } from "@/lib/conciliacao/texto-banco";
 import type { ArquivoExtrato, Destino } from "@/lib/conciliacao/tipos";
 import type { Dataset } from "@/lib/finance/types";
+import { ler, gravar as gravarLocal } from "@/lib/session";
 
 export type StatusFila = "FILA" | "LENDO" | "PRONTO" | "REVISAR" | "ERRO";
 
@@ -23,12 +25,27 @@ export interface EntradaFila {
   formato?: "OFX" | "CSV";
   extrato?: ArquivoExtrato;
   destino?: Destino | null;
+  /** R63 - SHA-256 do conteúdo */
+  hash?: string;
+  /** R63 - já processado antes (epoch ms); o usuário pode reprocessar */
+  jaProcessadoEm?: number;
+  reprocessar?: boolean;
+  /** R63 - aviso da identificação automática do destino */
+  dica?: string;
 }
 
 export interface ProgressoLeitura {
   feitos: number;
   total: number;
   pct: number;
+}
+
+/** R63 - destino por heurística (OFX: ACCTID/BANKID/ORG; CSV: nome e cabeçalho). Ambíguo: o usuário escolhe. */
+export function destinoDoArquivo(ds: Dataset, nome: string, texto: string, extrato: ArquivoExtrato | null): { destino: Destino | null; dica?: string } {
+  const id = identificarDestino(ds, pistasDoArquivo(nome, texto));
+  if (id.estado === "UNICO") return { destino: id.destino };
+  if (id.estado === "AMBIGUO") return { destino: null, dica: "Mais de uma conta/cartão combina com este arquivo: escolha o destino." };
+  return { destino: extrato ? sugerirDestino(ds, extrato) : null, dica: "Não deu para identificar a conta/cartão pelo arquivo: confira o destino." };
 }
 
 const ceder = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -67,13 +84,18 @@ export function useFila(getDs: () => Dataset) {
           const bytes = new Uint8Array(await prox.file.arrayBuffer());
           etapa(40);
           await ceder();
+          const hash = await hashArquivo(bytes);
+          const antes = jaProcessado(lerHashes(ler), hash);
           const texto = decodificarTexto(bytes);
-          etapa(70);
+          etapa(70, { hash, jaProcessadoEm: antes?.em });
           await ceder();
           const r = interpretarTexto(texto);
           if (r.estado === "ERRO") etapa(100, { erro: r.erro }, "ERRO");
           else if (r.estado === "REVISAR") etapa(100, { texto, formato: "CSV", destino: null }, "REVISAR");
-          else etapa(100, { texto, formato: r.formato, extrato: r.extrato, destino: sugerirDestino(getDs(), r.extrato) }, "PRONTO");
+          else {
+            const d = destinoDoArquivo(getDs(), prox.nome, texto, r.extrato);
+            etapa(100, { texto, formato: r.formato, extrato: r.extrato, destino: d.destino, dica: d.dica }, "PRONTO");
+          }
         } catch (e) {
           etapa(100, { erro: e instanceof Error ? e.message : "Não foi possível ler o arquivo." }, "ERRO");
         }
@@ -96,7 +118,8 @@ export function useFila(getDs: () => Dataset) {
         continue;
       }
       const base = { id: `f${++contador}`, file, nome: file.name, tamanho: file.size, pct: 0 };
-      novos.push(file.size > MAX_BYTES ? { ...base, status: "ERRO", pct: 100, erro: "Arquivo grande demais (máx. 25 MB)." } : { ...base, status: "FILA" });
+      const v = validarArquivoExtrato({ nome: file.name, tamanho: file.size, tipo: file.type });
+      novos.push(v.ok ? { ...base, status: "FILA" } : { ...base, status: "ERRO", pct: 100, erro: v.motivo });
     }
     setAvisos(duplicados.length ? [`Arquivo repetido (mesmo nome e tamanho), ignorado: ${duplicados.join(", ")}.`] : []);
     if (novos.length) gravar([...ref.current, ...novos]);
@@ -115,7 +138,18 @@ export function useFila(getDs: () => Dataset) {
     },
     definirDestino: (id: string, destino: Destino | null) => patch(id, { destino }),
     /** conclui o mapeamento manual de colunas de um CSV */
-    concluirMapeamento: (id: string, extrato: ArquivoExtrato) => patch(id, { status: "PRONTO", extrato, erro: undefined, destino: sugerirDestino(getDs(), extrato) }),
+    concluirMapeamento: (id: string, extrato: ArquivoExtrato) => {
+      const e = ref.current.find((x) => x.id === id);
+      const d = destinoDoArquivo(getDs(), e?.nome ?? "", e?.texto ?? "", extrato);
+      patch(id, { status: "PRONTO", extrato, erro: undefined, destino: d.destino, dica: d.dica });
+    },
+    reprocessar: (id: string) => patch(id, { reprocessar: true }),
+    /** registra os arquivos do lote como processados (por hash) */
+    registrarProcessados: (ids: string[]) => {
+      let mapa = lerHashes(ler);
+      for (const e of ref.current) if (ids.includes(e.id) && e.hash) mapa = registrarHash(mapa, e.hash, e.nome, Date.now());
+      gravarHashes(gravarLocal, mapa);
+    },
     fecharAvisos: () => setAvisos([]),
   };
 }

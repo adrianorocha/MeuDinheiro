@@ -6,6 +6,7 @@ import { rotuloDestino } from "@/components/conciliacao/DestinoResumo";
 import { ConfirmarArquivo, ZonaDrop } from "@/components/conciliacao/EnvioArquivo";
 import { ExecucaoLote, type EstadoExecucao } from "@/components/conciliacao/ExecucaoLote";
 import { FilaArquivos } from "@/components/conciliacao/FilaArquivos";
+import { PastaMonitorada } from "@/components/conciliacao/PastaMonitorada";
 import { OpcoesLote } from "@/components/conciliacao/OpcoesLote";
 import { ResultadoLote } from "@/components/conciliacao/ResultadoLote";
 import { useFila } from "@/components/conciliacao/useFila";
@@ -81,7 +82,7 @@ export function ConciliacaoLote({ onPasso, onRevisarUmPorUm, onRevisarPendencias
 
   const prontos = useMemo<ArquivoParaLote[]>(
     () =>
-      fila.itens.flatMap((i) => (i.status === "PRONTO" && i.extrato && i.destino ? [{ id: i.id, nome: i.nome, extrato: i.extrato, destino: i.destino, rotuloDestino: rotuloDestino(ds, i.destino) }] : [])),
+      fila.itens.flatMap((i) => (i.status === "PRONTO" && i.extrato && i.destino && !(i.jaProcessadoEm !== undefined && !i.reprocessar) ? [{ id: i.id, nome: i.nome, extrato: i.extrato, destino: i.destino, rotuloDestino: rotuloDestino(ds, i.destino) }] : [])),
     [fila.itens, ds],
   );
   const ocupado = fila.itens.some((i) => i.status === "FILA" || i.status === "LENDO");
@@ -109,6 +110,7 @@ export function ConciliacaoLote({ onPasso, onRevisarUmPorUm, onRevisarPendencias
       onProgresso: (ev) => setExec((p) => reduzir(p, ev)),
       sinalCancelar: () => cancelar.current,
     });
+    fila.registrarProcessados(prontos.map((p) => p.id));
     useUltimoLote.getState().definir(null);
     useUltimoLote.getState().definirMultiplo({ resultado, em: Date.now(), desfeito: false });
     setFase(4);
@@ -173,6 +175,7 @@ export function ConciliacaoLote({ onPasso, onRevisarUmPorUm, onRevisarPendencias
     <Card aria-labelledby="t-fila">
       <CardTitulo id="t-fila">1. Arquivos do lote</CardTitulo>
       <ZonaDrop onArquivos={fila.adicionar} compacto={!vazio} />
+      <PastaMonitorada onArquivos={fila.adicionar} />
       <p className="mt-3 text-xs text-muted">Privacidade: os arquivos são lidos somente no seu navegador. Nada deles é enviado a servidores; só os lançamentos que você confirmar são gravados.</p>
       {fila.avisos.map((a) => (
         <p key={a} role="status" className="mt-2 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">
@@ -193,7 +196,7 @@ export function ConciliacaoLote({ onPasso, onRevisarUmPorUm, onRevisarPendencias
         </div>
       ) : (
         <div className="mt-4">
-          <FilaArquivos itens={fila.itens} ds={ds} leitura={fila.leitura} onDestino={fila.definirDestino} onMapear={setMapeando} onRemover={fila.remover} />
+          <FilaArquivos itens={fila.itens} ds={ds} leitura={fila.leitura} onDestino={fila.definirDestino} onMapear={setMapeando} onRemover={fila.remover} onReprocessar={fila.reprocessar} />
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <Button icone={<Eraser size={16} aria-hidden />} onClick={fila.limpar}>
               Limpar fila

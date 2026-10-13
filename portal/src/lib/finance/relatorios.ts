@@ -193,6 +193,8 @@ export interface Documento {
   /** R48 - itens que compõem os totais (ausente/null = sem detalhamento). Não entra no CSV (que já traz todas as linhas). */
   detalhamento?: Detalhamento | null;
   filtros: string[];
+  /** R61 - título do bloco `filtros` no PDF (padrão "Filtros aplicados"). */
+  rotuloFiltros?: string;
   totais: { rotulo: string; valor: string }[];
   colunas: string[];
   /** índices de colunas numéricas em R$ (formatadas no PDF, `1234,56` no CSV) */

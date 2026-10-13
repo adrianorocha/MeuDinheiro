@@ -34,6 +34,16 @@ class Converters {
         return runCatching { GSON.fromJson(json, Array<String>::class.java)?.filterNotNull() }.getOrNull().orEmpty()
     }
 
+    /** R60 — anexos: lista ⇄ array JSON (mesmos campos do documento Firestore). */
+    @TypeConverter
+    fun fromAnexos(anexos: List<Anexo>?): String = if (anexos.isNullOrEmpty()) "[]" else GSON.toJson(anexos)
+
+    @TypeConverter
+    fun toAnexos(json: String?): List<Anexo> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching { GSON.fromJson(json, Array<Anexo>::class.java)?.filterNotNull() }.getOrNull().orEmpty()
+    }
+
     private companion object {
         val GSON = Gson()
     }

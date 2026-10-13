@@ -33,7 +33,7 @@ export async function gerarPdf(doc: Documento, geradoEm: Date = new Date()): Pro
   pdf.setTextColor(30, 40, 40);
   pdf.setFontSize(10);
   pdf.setFont("helvetica", "bold");
-  pdf.text("Filtros aplicados", margem, y);
+  pdf.text(doc.rotuloFiltros ?? "Filtros aplicados", margem, y);
   y += 5;
   pdf.setFont("helvetica", "normal");
   for (const f of doc.filtros) {

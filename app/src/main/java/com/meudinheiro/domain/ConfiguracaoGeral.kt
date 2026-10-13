@@ -11,7 +11,9 @@ data class ConfigGeral(
     /** R51 — nulo = padrão (fim do mês). */
     val limiteDiarioAteReceita: Boolean? = null,
     /** epoch ms da última alteração do usuário; nulo/0 = nunca alterada. */
-    val atualizadoEm: Long? = null
+    val atualizadoEm: Long? = null,
+    /** R61 — escolhas do relatório de IR (classe por categoria, limite de educação…); nulo = padrões. */
+    val ir: ImpostoRenda.Config? = null
 ) {
     /** Carimbo efetivo (nulo, 0 ou negativo = 0). */
     val carimbo: Long get() = atualizadoEm?.takeIf { it > 0 } ?: 0L
@@ -29,6 +31,7 @@ data class ConfigGeral(
             )
         }
         limiteDiarioAteReceita?.let { put("limiteDiarioAteReceita", it) }
+        ir?.let { put("ir", it.toDoc()) }
         if (carimbo > 0) put("atualizadoEm", carimbo)
     }
 
@@ -58,8 +61,9 @@ data class ConfigGeral(
             atual: ConfigGeral,
             agora: Long,
             painel: Painel503020.Config? = atual.painel,
-            limite: Boolean? = atual.limiteDiarioAteReceita
-        ): ConfigGeral = ConfigGeral(painel, limite, maxOf(agora, atual.carimbo + 1))
+            limite: Boolean? = atual.limiteDiarioAteReceita,
+            ir: ImpostoRenda.Config? = atual.ir
+        ): ConfigGeral = ConfigGeral(painel, limite, maxOf(agora, atual.carimbo + 1), ir)
 
         private fun inteiro(v: Any?): Int? =
             (v as? Number)?.toDouble()?.takeIf { it.isFinite() && it % 1.0 == 0.0 }?.toInt()
@@ -81,7 +85,8 @@ data class ConfigGeral(
                 )
             }
             val ts = (doc["atualizadoEm"] as? Number)?.toDouble()?.takeIf { it.isFinite() && it > 0 }?.toLong()
-            return ConfigGeral(painel, doc["limiteDiarioAteReceita"] as? Boolean, ts)
+            val ir = (doc["ir"] as? Map<*, *>)?.let { ImpostoRenda.Config.deDoc(it) }
+            return ConfigGeral(painel, doc["limiteDiarioAteReceita"] as? Boolean, ts, ir)
         }
     }
 }

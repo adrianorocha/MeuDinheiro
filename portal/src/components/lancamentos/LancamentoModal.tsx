@@ -7,6 +7,10 @@ import type { FormEvent } from "react";
 import { Checkbox, Input, InputValor, Segmentado, Select } from "@/components/ui/Field";
 import { ErroBox } from "@/components/ui/Misc";
 import { TagsInput } from "@/components/ui/TagsInput";
+import { AnexosCampo } from "./AnexosCampo";
+import { normalizarAnexos } from "@/lib/finance/anexos";
+import { sincronizarAnexos, type Pendente } from "@/lib/firebase/anexos";
+import { useSession } from "@/lib/session";
 import { aplicarRegras, sugerirRegraAprendida, type SugestaoRegra } from "@/lib/finance/regras";
 import { Modal, RodapeForm } from "@/components/ui/Modal";
 import { MOEDAS } from "@/lib/catalogo";
@@ -29,6 +33,12 @@ export interface PredefinicaoLancamento {
   entrada?: Entrada;
   cartaoId?: number;
   conta?: string;
+  /** R62 - campos vindos de "Lançar por texto" (o usuário revisa antes de salvar). */
+  descricao?: string;
+  valorTxt?: string;
+  data?: number;
+  categoria?: string;
+  parcelas?: number;
 }
 
 interface Props {
@@ -55,27 +65,34 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   const [entrada, setEntrada] = useState<Entrada>(
     editar ? (cartaoIdDe(editar) !== null ? "cartao" : editar.tipo === "CREDITO" ? "receita" : "despesa") : (predefinicao?.entrada ?? "despesa"),
   );
-  const [modo, setModo] = useState<Modo>("unica");
+  const [modo, setModo] = useState<Modo>(!editar && predefinicao?.parcelas ? "parcelada" : "unica");
   const [estorno, setEstorno] = useState(editar ? cartaoIdDe(editar) !== null && editar.tipo === "CREDITO" : false);
-  const [descricao, setDescricao] = useState(editar?.descricao ?? "");
+  const [descricao, setDescricao] = useState(editar?.descricao ?? predefinicao?.descricao ?? "");
   const [moeda, setMoeda] = useState(editar?.moedaOriginal ?? "BRL");
   const [valorTxt, setValorTxt] = useState(
-    editar ? valorParaCampo(editar.moedaOriginal !== "BRL" ? editar.valorOriginal : editar.valor) : "",
+    editar ? valorParaCampo(editar.moedaOriginal !== "BRL" ? editar.valorOriginal : editar.valor) : (predefinicao?.valorTxt ?? ""),
   );
   const [cotacaoTxt, setCotacaoTxt] = useState(editar && editar.moedaOriginal !== "BRL" ? valorParaCampo(editar.cotacaoNaData) : "");
-  const [data, setData] = useState(() => paraInputData(editar?.data ?? Date.now()));
-  const [categoria, setCategoria] = useState(editar?.categoria ?? "");
+  const [data, setData] = useState(() => paraInputData(editar?.data ?? predefinicao?.data ?? Date.now()));
+  const [categoria, setCategoria] = useState(editar?.categoria ?? predefinicao?.categoria ?? "");
   // R55 - a regra só preenche a categoria enquanto o usuário não escolheu uma manualmente (nunca sobrescreve).
-  const [categoriaManual, setCategoriaManual] = useState(false);
+  const [categoriaManual, setCategoriaManual] = useState(!editar && !!predefinicao?.categoria);
   const [tags, setTags] = useState<string[]>(editar?.tags ?? []);
   const [oferta, setOferta] = useState<SugestaoRegra | null>(null);
   const [conta, setConta] = useState(contaPadrao);
   const [cartaoId, setCartaoId] = useState(String(predefinicao?.cartaoId ?? (editar ? cartaoIdDe(editar) : null) ?? ds.cartoes[0]?.id ?? ""));
   const [pago, setPago] = useState(editar?.pago ?? true);
-  const [parcelasTxt, setParcelasTxt] = useState("2");
+  const [parcelasTxt, setParcelasTxt] = useState(String(predefinicao?.parcelas ?? 2));
   const [parcelaAtualTxt, setParcelaAtualTxt] = useState("1");
   const [modalidade, setModalidade] = useState<Modalidade>("CREDITO");
   const [erro, setErro] = useState<string | null>(null);
+  // R60 - anexos: arquivos escolhidos (ainda não enviados), ids a remover e o lançamento já salvo (para "Tentar de novo").
+  const nuvem = useSession((s) => s.modo === "firebase" && s.user !== null);
+  const [pendentes, setPendentes] = useState<Pendente[]>([]);
+  const [removidos, setRemovidos] = useState<string[]>([]);
+  const [salvoId, setSalvoId] = useState<number | null>(editar?.id ?? null);
+  const [enviandoAnexos, setEnviandoAnexos] = useState(false);
+  const existentes = normalizarAnexos(ds.despesas.find((d) => d.id === (salvoId ?? -1))?.anexos);
 
   const noCartao = entrada === "cartao";
   const tipoAtual: Tipo = entrada === "receita" || (noCartao && estorno) ? "CREDITO" : "DEBITO";
@@ -107,9 +124,34 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
     return usado + valor > c.limiteProprio ? `Esta compra ultrapassa o limite próprio de ${c.nome} (R$ ${c.limiteProprio.toFixed(2).replace(".", ",")}).` : null;
   })();
 
+  /** Envia os anexos do lançamento já salvo. O lançamento nunca se perde: se algo falhar, o formulário fica aberto com "Tentar de novo". */
+  async function concluirAnexos(id: number, seguinte: () => void) {
+    setSalvoId(id);
+    if (pendentes.length === 0 && removidos.length === 0) return seguinte();
+    setEnviandoAnexos(true);
+    const r = await sincronizarAnexos(id, pendentes, removidos, (chave, parcial) =>
+      setPendentes((l) => l.map((p) => (p.chave === chave ? { ...p, ...parcial } : p))),
+    );
+    setEnviandoAnexos(false);
+    setPendentes((l) => l.filter((p) => !r.enviados.includes(p.chave)));
+    setRemovidos([]);
+    if (r.falhas > 0) {
+      avisar("erro", "Lançamento salvo, mas nem todos os anexos foram enviados. Use \"Tentar de novo\".");
+      return;
+    }
+    seguinte();
+  }
+
+  function tentarAnexosDeNovo() {
+    if (salvoId !== null) void concluirAnexos(salvoId, onFechar);
+  }
+
   function submeter(e: FormEvent) {
     e.preventDefault();
     setErro(null);
+    if (enviandoAnexos) return;
+    // lançamento já salvo e só restaram anexos com erro: reenvia em vez de gravar de novo
+    if (salvoId !== null && !editar) return tentarAnexosDeNovo();
     const base = parseValorBR(valorTxt);
     if (!(base > 0)) return setErro("Informe um valor maior que zero.");
     let valor = base;
@@ -144,14 +186,16 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
       });
       if (!r.ok) return setErro(r.erro);
       avisar("sucesso", "Lançamento atualizado.");
-      // R55 - aprendizado leve: trocou a categoria e já há 2+ lançamentos iguais com ela? Oferece (não cria sozinho).
-      if (normalizar(categoriaEf) !== normalizar(editar.categoria)) {
-        const atual = useStore.getState().ds;
-        const novo = atual.despesas.find((x) => x.id === editar.id);
-        const s = novo ? sugerirRegraAprendida(atual.despesas, atual.regrasCategoria, novo) : null;
-        if (s) return setOferta(s);
-      }
-      return onFechar();
+      return void concluirAnexos(editar.id, () => {
+        // R55 - aprendizado leve: trocou a categoria e já há 2+ lançamentos iguais com ela? Oferece (não cria sozinho).
+        if (normalizar(categoriaEf) !== normalizar(editar.categoria)) {
+          const atual = useStore.getState().ds;
+          const novo = atual.despesas.find((x) => x.id === editar.id);
+          const s = novo ? sugerirRegraAprendida(atual.despesas, atual.regrasCategoria, novo) : null;
+          if (s) return setOferta(s);
+        }
+        onFechar();
+      });
     }
 
     if (modo === "fixa" && !noCartao) {
@@ -196,6 +240,8 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
     if (!r.ok) return setErro(r.erro);
     const lancadas = parcelas - parcelaAtual + 1;
     avisar("sucesso", parcelas > 1 ? `${lancadas} ${lancadas === 1 ? "parcela lançada" : "parcelas lançadas"}.` : "Lançamento salvo.");
+    // R60 - anexos só em lançamento único (parcelas/recorrências não recebem anexos; anexe editando cada lançamento).
+    if (parcelas === 1 && r.criados[0]) return void concluirAnexos(r.criados[0].id, onFechar);
     onFechar();
   }
 
@@ -351,8 +397,21 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
       {modo === "fixa" && <p className="text-xs text-muted">Cria uma recorrência: lançada automaticamente todo mês no dia do vencimento (dias 29–31 caem no último dia dos meses curtos).</p>}
       <TagsInput valor={tags} onChange={setTags} despesas={ds.despesas} />
       {modo === "fixa" && tags.length > 0 && <p className="text-xs text-muted">As tags não são aplicadas às recorrências (só aos lançamentos criados diretamente).</p>}
+      {(editar || modo === "unica") && (
+        <AnexosCampo
+          existentes={existentes}
+          pendentes={pendentes}
+          onPendentes={setPendentes}
+          removidos={removidos}
+          onRemover={(id) => setRemovidos((l) => [...l, id])}
+          nuvem={nuvem}
+          onTentarDeNovo={salvoId !== null ? tentarAnexosDeNovo : undefined}
+          desabilitado={enviandoAnexos}
+        />
+      )}
+      {!editar && modo !== "unica" && <p className="text-xs text-muted">Anexos estão disponíveis em lançamentos únicos (para parcelas e recorrências, anexe depois editando cada lançamento).</p>}
       {erro && <ErroBox>{erro}</ErroBox>}
-      <RodapeForm onCancelar={onFechar} />
+      <RodapeForm onCancelar={onFechar} enviando={enviandoAnexos} />
     </form>
   );
 }

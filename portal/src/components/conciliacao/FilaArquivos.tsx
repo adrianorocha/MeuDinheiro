@@ -55,9 +55,10 @@ interface CartaoProps {
   onDestino: (id: string, d: Destino | null) => void;
   onMapear: (id: string) => void;
   onRemover: (id: string) => void;
+  onReprocessar: (id: string) => void;
 }
 
-function CartaoArquivo({ e, ds, onDestino, onMapear, onRemover }: CartaoProps) {
+function CartaoArquivo({ e, ds, onDestino, onMapear, onRemover, onReprocessar }: CartaoProps) {
   const st = STATUS[e.status];
   const x = e.extrato;
   return (
@@ -91,12 +92,32 @@ function CartaoArquivo({ e, ds, onDestino, onMapear, onRemover }: CartaoProps) {
             </div>
           )}
           {e.status === "ERRO" && <p className="mt-1 text-xs text-neg">{e.erro}</p>}
+          {e.jaProcessadoEm !== undefined && e.status !== "ERRO" && (
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-warn" role="status">
+              Este arquivo já foi processado em {formatData(e.jaProcessadoEm)}.{" "}
+              {e.reprocessar ? (
+                <span>Será reprocessado (lançamentos já conciliados não duplicam).</span>
+              ) : (
+                <>
+                  <span>Ele fica de fora do lote.</span>
+                  <Button tamanho="sm" onClick={() => onReprocessar(e.id)}>
+                    Reprocessar mesmo assim
+                  </Button>
+                </>
+              )}
+            </p>
+          )}
           {e.status === "REVISAR" && <p className="mt-1 text-xs text-warn">Não foi possível detectar nem recuperar o mapeamento das colunas deste CSV.</p>}
         </div>
         <IconButton rotulo={`Remover ${e.nome}`} onClick={() => onRemover(e.id)}>
           <Trash2 size={16} aria-hidden />
         </IconButton>
       </div>
+      {e.status === "PRONTO" && e.dica && (
+        <p className="mt-2 text-xs text-warn" role="status">
+          {e.dica}
+        </p>
+      )}
       {e.status === "PRONTO" && (
         <div className="mt-3 max-w-md">
           <Select rotulo="Destino" value={destinoParaValor(e.destino)} onChange={(ev) => onDestino(e.id, valorParaDestino(ev.target.value))} erro={e.destino ? null : "Escolha a conta ou o cartão."}>
@@ -141,6 +162,7 @@ interface Props {
   onDestino: (id: string, d: Destino | null) => void;
   onMapear: (id: string) => void;
   onRemover: (id: string) => void;
+  onReprocessar: (id: string) => void;
 }
 
 /** Totais da fila: arquivos, transações e período coberto. */
@@ -172,7 +194,7 @@ export function TotaisFila({ itens }: { itens: EntradaFila[] }) {
 }
 
 /** Fila visual de arquivos: um cartão por arquivo com formato, resumo, destino editável e status. */
-export function FilaArquivos({ itens, ds, leitura, onDestino, onMapear, onRemover }: Props) {
+export function FilaArquivos({ itens, ds, leitura, onDestino, onMapear, onRemover, onReprocessar }: Props) {
   return (
     <div>
       {leitura && (
@@ -187,7 +209,7 @@ export function FilaArquivos({ itens, ds, leitura, onDestino, onMapear, onRemove
       <TotaisFila itens={itens} />
       <ul className="space-y-2">
         {itens.map((e) => (
-          <CartaoArquivo key={e.id} e={e} ds={ds} onDestino={onDestino} onMapear={onMapear} onRemover={onRemover} />
+          <CartaoArquivo key={e.id} e={e} ds={ds} onDestino={onDestino} onMapear={onMapear} onRemover={onRemover} onReprocessar={onReprocessar} />
         ))}
       </ul>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle, Copy, FastForward, Pencil, Receipt, Repeat, Split, Trash2, Unlink } from "lucide-react";
+import { Check, Circle, Copy, FastForward, Paperclip, Pencil, Receipt, Repeat, Split, Trash2, Unlink } from "lucide-react";
 import { useState } from "react";
 import { Input, Select } from "@/components/ui/Field";
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
@@ -17,7 +17,9 @@ import { acoes } from "@/lib/store/actions";
 import { useStore } from "@/lib/store/store";
 import { DividirModal } from "@/components/pessoas/DividirModal";
 import { AntecipacaoModal } from "./AntecipacaoModal";
+import { AnexosModal } from "./AnexosModal";
 import { ComprovanteModal } from "./ComprovanteModal";
+import { normalizarAnexos } from "@/lib/finance/anexos";
 import { LancamentoModal } from "./LancamentoModal";
 
 const ROTULO_NATUREZA: Partial<Record<Despesa["natureza"], string>> = {
@@ -48,6 +50,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
   const [antecipando, setAntecipando] = useState<Despesa | null>(null);
   const [comprovante, setComprovante] = useState<Despesa | null>(null);
   const [dividindo, setDividindo] = useState<Despesa | null>(null);
+  const [vendoAnexos, setVendoAnexos] = useState<Despesa | null>(null); // R60
   const [repN, setRepN] = useState("3");
   const [repIntervalo, setRepIntervalo] = useState("1");
   const [repUnidade, setRepUnidade] = useState<UnidadeRepeticao>("MESES");
@@ -172,6 +175,18 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                     </IconButton>
                   </>
                 )}
+                {(d.anexos?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    aria-label={`Ver ${normalizarAnexos(d.anexos).length} anexo(s) de ${d.descricao}`}
+                    title="Anexos"
+                    onClick={() => setVendoAnexos(d)}
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-0.5 rounded-lg px-2 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                  >
+                    <Paperclip size={16} aria-hidden />
+                    {normalizarAnexos(d.anexos).length}
+                  </button>
+                )}
                 <IconButton rotulo={`Comprovante de ${d.descricao}`} onClick={() => setComprovante(d)}>
                   <Receipt size={16} aria-hidden />
                 </IconButton>
@@ -206,6 +221,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
       </Modal>
       <DividirModal despesa={dividindo} onFechar={() => setDividindo(null)} />
       <ComprovanteModal despesa={comprovante} onFechar={() => setComprovante(null)} />
+      <AnexosModal despesa={vendoAnexos} onFechar={() => setVendoAnexos(null)} />
       <AntecipacaoModal aberto={antecipando !== null} onFechar={() => setAntecipando(null)} base={antecipando} />
       <LancamentoModal aberto={editando !== null} onFechar={() => setEditando(null)} editar={editando} />
       <Confirmar

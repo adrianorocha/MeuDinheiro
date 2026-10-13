@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox, Select } from "@/components/ui/Field";
 import { Card, CardTitulo, ErroBox } from "@/components/ui/Misc";
 import { analisarCsv, parseCsv, type ConfigCsv, type Delimitador } from "@/lib/conciliacao/csv";
+import { hashArquivo, MAX_BYTES_EXTRATO, validarArquivoExtrato } from "@/lib/conciliacao/importacao-arquivos";
 import { lembrarMapeamento, recuperarMapeamento } from "@/lib/conciliacao/mapeamento";
 import { parseOfx } from "@/lib/conciliacao/ofx";
 import { decodificarTexto } from "@/lib/conciliacao/texto-banco";
@@ -15,13 +16,17 @@ import { pareceOfx } from "@/lib/conciliacao/ofx";
 export interface ArquivoLido {
   nome: string;
   texto: string;
+  /** R63 - SHA-256 do conteúdo (para marcar o arquivo como processado) */
+  hash?: string;
 }
 
-export const MAX_BYTES = 25 * 1024 * 1024;
+export const MAX_BYTES = MAX_BYTES_EXTRATO;
 
 export async function lerArquivo(file: File): Promise<ArquivoLido> {
-  if (file.size > MAX_BYTES) throw new Error(`${file.name}: arquivo grande demais (máx. 25 MB).`);
-  return { nome: file.name, texto: decodificarTexto(new Uint8Array(await file.arrayBuffer())) };
+  const v = validarArquivoExtrato({ nome: file.name, tamanho: file.size, tipo: file.type });
+  if (!v.ok) throw new Error(v.motivo);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return { nome: file.name, texto: decodificarTexto(bytes), hash: await hashArquivo(bytes) };
 }
 
 /** Área de arrastar/soltar ou escolher arquivos (vários de uma vez). */
@@ -43,11 +48,11 @@ export function ZonaDrop({ onArquivos, compacto = false }: { onArquivos: (files:
     >
       <FileUp size={compacto ? 22 : 32} className="text-primary" aria-hidden />
       <span className="font-medium">{compacto ? "Adicionar mais arquivos" : "Arraste os arquivos aqui ou clique para escolher"}</span>
-      {!compacto && <span className="text-sm text-muted">OFX (v1 ou v2) ou CSV do seu banco. Envie vários de uma vez: eles entram numa fila e podem ser conciliados em lote.</span>}
+      {!compacto && <span className="text-sm text-muted">OFX (v1 ou v2) ou CSV do seu banco (PDF ainda não é lido). Envie vários de uma vez: eles entram numa fila e podem ser conciliados em lote.</span>}
       <input
         type="file"
         multiple
-        accept=".ofx,.qfx,.csv,.txt,text/csv,application/x-ofx"
+        accept=".ofx,.qfx,.csv,.txt,.pdf,text/csv,application/x-ofx"
         className="sr-only"
         aria-label="Escolher arquivos de extrato"
         onChange={(e) => {

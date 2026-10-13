@@ -3,20 +3,23 @@
 import { CircleCheck, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConciliacaoLote, type PassoLote, type Pendencia } from "@/components/conciliacao/ConciliacaoLote";
-import { DestinoResumo, rotuloDestino, sugerirDestino } from "@/components/conciliacao/DestinoResumo";
+import { DestinoResumo, rotuloDestino } from "@/components/conciliacao/DestinoResumo";
 import { ConfirmarArquivo, lerArquivo, SeletorArquivos, type ArquivoLido } from "@/components/conciliacao/EnvioArquivo";
+import { destinoDoArquivo } from "@/components/conciliacao/useFila";
 import { Revisao } from "@/components/conciliacao/Revisao";
 import { Button } from "@/components/ui/Button";
 import { Segmentado } from "@/components/ui/Field";
 import { Card, ErroBox, PageHeader } from "@/components/ui/Misc";
 import { casar, janelaPadrao, lancamentosDoDestino } from "@/lib/conciliacao/matching";
 import { gerarOfxExemplo } from "@/lib/conciliacao/exemplo";
+import { gravarHashes, lerHashes, registrarHash } from "@/lib/conciliacao/importacao-arquivos";
 import { useUltimoLote } from "@/lib/conciliacao/lote";
 import type { Plano } from "@/lib/conciliacao/plano";
 import { csvRelatorio, resumoConciliacao } from "@/lib/conciliacao/relatorio";
 import type { ArquivoExtrato, Destino } from "@/lib/conciliacao/tipos";
 import { baixarArquivo } from "@/lib/download";
 import { useAgora, useDataset, useNotificar } from "@/lib/hooks";
+import { gravar as gravarLocal, ler as lerLocal } from "@/lib/session";
 import { acoes } from "@/lib/store/actions";
 
 type Passo = 1 | 2 | 3 | 4;
@@ -102,7 +105,7 @@ export default function ConciliacaoPage() {
 
   function aoPronto(a: ArquivoExtrato) {
     setExtrato(a);
-    const sug = sugerirDestino(ds, a);
+    const sug = destinoDoArquivo(ds, lido?.nome ?? "", lido?.texto ?? "", a).destino;
     setDestino(sug);
     setJanela(sug ? janelaPadrao(sug) : 3);
     setPasso(2);
@@ -127,6 +130,7 @@ export default function ConciliacaoPage() {
     const r = acoes.aplicarConciliacao(plano);
     if (!r.ok) return setErro(r.erro);
     setErro(null);
+    if (lido?.hash) gravarHashes(gravarLocal, registrarHash(lerHashes(lerLocal), lido.hash, lido.nome, Date.now()));
     useUltimoLote.getState().definir({ inverso: r.inverso, resumo: r.resumo, rotuloDestino: rotuloDestino(ds, destino), em: agora });
     const resumo = resumoConciliacao(resultado, ds, destino, extrato);
     setRelatorio({

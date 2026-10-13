@@ -312,7 +312,8 @@ class MainRepository(
         if (Financas.cartaoDeDebito(antigo) != null && base.cartaoId == null && base.conta != antigo.conta &&
             base.grupoId == antigo.grupoId) base = base.copy(grupoId = null)
         if (antigo.natureza == Natureza.SALDO_INICIAL) base = base.copy(pago = true)
-        val novo = validar(base)
+        // R60: anexos só mudam por `atualizarAnexos` (um envio em segundo plano pode ter trocado o caminho enquanto o formulário estava aberto).
+        val novo = validar(base).copy(anexos = antigo.anexos)
         despesaDao.inserirDespesa(novo)
         recalcularAfetados(listOf(antigo, novo))
         atualizarSnapshotPatrimonial()
@@ -418,11 +419,44 @@ class MainRepository(
         atualizarSnapshotPatrimonial()
     }
 
-    suspend fun excluirDaLixeira(id: Int) = lixeiraDao.excluirPorIds(listOf(id))
-    suspend fun esvaziarLixeira() = lixeiraDao.limpar()
+    /**
+     * R60 — o que sai definitivamente da lixeira (excluir um item, esvaziar, purgar 30 dias) leva os arquivos dos anexos
+     * (Storage/local), em melhor esforço. **Mandar para a lixeira NÃO apaga arquivo**: restaurar mantém os anexos.
+     */
+    private suspend fun apagarArquivosDaLixeira(itens: List<Lixeira>) {
+        if (itens.isEmpty()) return
+        val anexos = itens.flatMap { runCatching { deLixeira(it).anexos }.getOrDefault(emptyList()) }
+        if (anexos.isNotEmpty()) com.meudinheiro.storage.AnexosGerenciador.get(context).excluirTodos(anexos)
+    }
+
+    suspend fun excluirDaLixeira(id: Int) {
+        apagarArquivosDaLixeira(listOfNotNull(lixeiraDao.obter(id)))
+        lixeiraDao.excluirPorIds(listOf(id))
+    }
+
+    suspend fun esvaziarLixeira() {
+        apagarArquivosDaLixeira(lixeiraDao.obterTodasStatic())
+        lixeiraDao.limpar()
+    }
 
     /** Remove definitivamente o que está na lixeira há mais de 30 dias. */
-    suspend fun purgarLixeira() = lixeiraDao.purgarAnteriores(agora() - 30L * 86_400_000L)
+    suspend fun purgarLixeira() {
+        val corte = agora() - 30L * 86_400_000L
+        apagarArquivosDaLixeira(lixeiraDao.obterTodasStatic().filter { it.excluidoEm < corte })
+        lixeiraDao.purgarAnteriores(corte)
+    }
+
+    /**
+     * R60 — troca só a lista de anexos do lançamento (sem mexer em saldo/limite). [transformar] recebe a lista atual do banco.
+     * `false` se o lançamento não existe mais (excluído/na lixeira).
+     */
+    suspend fun atualizarAnexos(id: Long, transformar: (List<com.meudinheiro.data.Anexo>) -> List<com.meudinheiro.data.Anexo>): Boolean =
+        db.withTransaction {
+            val atual = despesaDao.obterDespesaPorId(id) ?: return@withTransaction false
+            val novos = com.meudinheiro.domain.Anexos.normalizar(transformar(atual.anexos))
+            if (novos != atual.anexos) despesaDao.inserirDespesa(atual.copy(anexos = novos))
+            true
+        }
 
     // Nomes legados (mantidos para não quebrar chamadas existentes).
     suspend fun inserirDespesa(despesa: Despesa) { registrarLancamento(despesa) }

@@ -119,6 +119,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.storage) // R60: anexos (fotos/comprovantes)
     implementation(libs.kotlinx.coroutines.play.services)
 
     ksp("androidx.room:room-compiler:2.8.4")

@@ -80,7 +80,7 @@ object Analises {
         if (original.natureza != Natureza.NORMAL) return null
         return original.copy(
             id = 0, data = Date(agora), mes = Financas.mesDe(agora), ano = Financas.anoDe(agora),
-            pago = false, grupoId = null
+            pago = false, grupoId = null, anexos = emptyList() // R60: anexos não são copiados
         )
     }
 
@@ -104,7 +104,7 @@ object Analises {
                     add(Calendar.DAY_OF_YEAR, k * intervalo * if (unidade == UnidadeRepeticao.SEMANAS) 7 else 1)
                 }.timeInMillis
             }
-            base.copy(id = 0, data = Date(ms), mes = Financas.mesDe(ms), ano = Financas.anoDe(ms), pago = false, grupoId = grupoId)
+            base.copy(id = 0, data = Date(ms), mes = Financas.mesDe(ms), ano = Financas.anoDe(ms), pago = false, grupoId = grupoId, anexos = emptyList()) // R60: anexos não são copiados
         }
     }
 

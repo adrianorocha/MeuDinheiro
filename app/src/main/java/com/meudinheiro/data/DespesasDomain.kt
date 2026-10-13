@@ -21,7 +21,9 @@ data class DespesasDomain(
     val fitid: String? = null,
     val conciliadoEm: Long? = null,
     /** R56 */
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    /** R60 */
+    val anexos: List<Anexo> = emptyList()
 ) : Movimento {
     override val dataMs: Long get() = data
 }

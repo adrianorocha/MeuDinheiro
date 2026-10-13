@@ -58,7 +58,7 @@ import com.meudinheiro.ui.theme.NeonGreen
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA, CALENDARIO, RESUMO, REGRAS, PROJETOS, DIVIDAS, PESSOAS }
+private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA, CALENDARIO, RESUMO, REGRAS, PROJETOS, DIVIDAS, PESSOAS, IMPOSTO }
 
 private val TextoClaro = Color(0xFFE0E1DD)
 private val CardFundo = Color(0xFF1B263B)
@@ -82,6 +82,7 @@ fun FerramentasScreen(repository: MainRepository, userPrefs: UserPreferences, is
         Tela.PROJETOS -> ProjetosScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.DIVIDAS -> DividasScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.PESSOAS -> PessoasScreen(repository, isPrivate) { tela = Tela.HUB }
+        Tela.IMPOSTO -> ImpostoRendaScreen(repository, userPrefs, isPrivate) { tela = Tela.HUB }
         Tela.HUB -> Hub(repository, isPrivate, onBack) { tela = it }
     }
 }
@@ -136,6 +137,7 @@ private fun Hub(repository: MainRepository, isPrivate: Boolean, onBack: () -> Un
                 item { Atalho(Icons.Default.Assessment, "Projetos", "Acompanhe reformas, viagens… pelas tags dos lançamentos, com orçamento") { abrir(Tela.PROJETOS) } }
                 item { Atalho(Icons.Default.Assessment, "Dívidas", "Saldo devedor, pagamentos e simulador de quitação (bola de neve x avalanche)") { abrir(Tela.DIVIDAS) } }
                 item { Atalho(Icons.Default.Assessment, "Pessoas e rateios", "Quem te deve e quem você deve: despesas divididas, empréstimos e cobrança pronta para enviar") { abrir(Tela.PESSOAS) } }
+                item { Atalho(Icons.Default.Assessment, "Imposto de Renda", "Triagem para a declaração: rendimentos, despesas dedutíveis, bens e dívidas do ano (exporta PDF/CSV)") { abrir(Tela.IMPOSTO) } }
                 item { Atalho(Icons.Default.DeleteSweep, "Lixeira", if (lixeira.isEmpty()) "Lançamentos excluídos ficam 30 dias" else "${lixeira.size} item(ns) que podem ser restaurados") { abrir(Tela.LIXEIRA) } }
                 item { Atalho(Icons.Default.FactCheck, "Conferência de saldos", "Compare saldos e limites gravados com o extrato e recalcule se houver diferença") { abrir(Tela.CONFERENCIA) } }
                 item { Atalho(Icons.Default.Backup, "Backups automáticos", "Cópia semanal no aparelho, com restauração") { abrir(Tela.BACKUPS) } }

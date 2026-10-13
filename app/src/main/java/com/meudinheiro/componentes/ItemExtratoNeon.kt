@@ -113,6 +113,7 @@ fun ItemExtratoNeon(
                 color = Color.White.copy(alpha = 0.5f),
                 fontSize = 12.sp
             )
+            IndicadorAnexos(despesa.anexos) // R60
             if (mostrarOrigem) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

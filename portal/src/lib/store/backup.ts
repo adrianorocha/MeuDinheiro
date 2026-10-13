@@ -6,6 +6,7 @@ import { round2 } from "../finance/money";
 import type { Dataset, Entity } from "../finance/types";
 import { NATUREZAS } from "../finance/types";
 import { normalizarTags } from "../finance/tags";
+import { normalizarAnexos } from "../finance/anexos";
 import { normalizarGeral, type ConfigGeral } from "../finance/configuracoes";
 
 const num = z.number().finite();
@@ -45,6 +46,7 @@ const despesaSchema = z.object({
   fitid: z.string().nullish(),
   conciliadoEm: num.nullish(),
   tags: z.array(z.string()).nullish(),
+  anexos: z.array(z.unknown()).nullish(),
 });
 
 const despesaFixaSchema = z.object({
@@ -273,6 +275,7 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
       fitid: d.fitid ?? null,
       conciliadoEm: d.conciliadoEm ? d.conciliadoEm : null,
       ...(normalizarTags(d.tags).length > 0 ? { tags: normalizarTags(d.tags) } : {}),
+      ...(normalizarAnexos(d.anexos).length > 0 ? { anexos: normalizarAnexos(d.anexos) } : {}), // R60
     };
   });
   const ds: Dataset = {

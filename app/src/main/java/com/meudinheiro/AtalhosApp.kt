@@ -13,4 +13,13 @@ object AtalhosApp {
 
     fun pedirNovaDespesa() { novaDespesaPedida = true }
     fun consumir() { novaDespesaPedida = false }
+
+    /** R63 — abrir a revisão de extratos recebidos (compartilhados ou da pasta monitorada). */
+    const val ACAO_IMPORTAR_EXTRATOS = "com.meudinheiro.action.IMPORTAR_EXTRATOS"
+
+    var importarExtratosPedido by mutableStateOf(false)
+        private set
+
+    fun pedirImportarExtratos() { importarExtratosPedido = true }
+    fun consumirImportarExtratos() { importarExtratosPedido = false }
 }

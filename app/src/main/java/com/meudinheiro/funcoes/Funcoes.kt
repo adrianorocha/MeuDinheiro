@@ -67,6 +67,7 @@ class UserPreferences(private val context: Context) {
         private val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup")
         private val KEY_ALERTAS_ORCAMENTO = stringSetPreferencesKey("alertas_orcamento")
         private val KEY_PAINEL_503020 = stringPreferencesKey("painel_503020_config") // R54
+        private val KEY_IR_CONFIG = stringPreferencesKey("ir_config") // R61
         private val KEY_LIMITE_DIARIO_ATE_RECEITA = booleanPreferencesKey("limite_diario_ate_receita")
         private val KEY_LIMITE_DIARIO_AVISO = booleanPreferencesKey("limite_diario_aviso")
     }
@@ -110,6 +111,14 @@ class UserPreferences(private val context: Context) {
 
     suspend fun salvarPainel503020(texto: String, carimbar: Boolean = true) {
         context.dataStore.edit { it[KEY_PAINEL_503020] = texto }
+        if (carimbar) carimbarConfiguracao()
+    }
+
+    // ---- R61: escolhas do relatório de IR (JSON de `ImpostoRenda.Config.toDoc()`); mesmo esquema do painel (local-first + carimbo).
+    val irConfigFlow: Flow<String> = context.dataStore.data.map { it[KEY_IR_CONFIG].orEmpty() }
+
+    suspend fun salvarIrConfig(texto: String, carimbar: Boolean = true) {
+        context.dataStore.edit { it[KEY_IR_CONFIG] = texto }
         if (carimbar) carimbarConfiguracao()
     }
 

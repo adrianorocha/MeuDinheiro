@@ -1,9 +1,10 @@
 "use client";
 
 import { categoriasDisponiveis } from "@/lib/catalogo";
-import { Download, Plus, Receipt, Search } from "lucide-react";
+import { Download, Plus, Receipt, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
-import { LancamentoModal } from "@/components/lancamentos/LancamentoModal";
+import { LancamentoModal, type PredefinicaoLancamento } from "@/components/lancamentos/LancamentoModal";
+import { LancarPorTexto } from "@/components/lancamentos/LancarPorTexto";
 import { ListaLancamentos } from "@/components/lancamentos/ListaLancamentos";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
@@ -35,6 +36,9 @@ export default function LancamentosPage() {
   const [busca, setBusca] = useState("");
   const [limite, setLimite] = useState(PAGINA);
   const [novo, setNovo] = useState(false);
+  // R62 - "Lançar por texto": a frase vira uma predefinição do formulário (nunca salva sozinha)
+  const [porTexto, setPorTexto] = useState(false);
+  const [predef, setPredef] = useState<PredefinicaoLancamento | undefined>(undefined);
 
   const anos = useMemo(() => {
     const set = new Set<number>([atual.ano]);
@@ -106,7 +110,10 @@ export default function LancamentosPage() {
             >
               Exportar CSV
             </Button>
-            <Button variante="primary" icone={<Plus size={16} aria-hidden />} onClick={() => setNovo(true)}>
+            <Button icone={<Sparkles size={16} aria-hidden />} onClick={() => setPorTexto(true)}>
+              Lançar por texto
+            </Button>
+            <Button variante="primary" icone={<Plus size={16} aria-hidden />} onClick={() => { setPredef(undefined); setNovo(true); }}>
               Novo lançamento
             </Button>
           </>
@@ -236,7 +243,16 @@ export default function LancamentosPage() {
         </Card>
       )}
 
-      <LancamentoModal aberto={novo} onFechar={() => setNovo(false)} />
+      <LancarPorTexto
+        aberto={porTexto}
+        onFechar={() => setPorTexto(false)}
+        onPreencher={(p) => {
+          setPredef(p);
+          setPorTexto(false);
+          setNovo(true);
+        }}
+      />
+      <LancamentoModal aberto={novo} onFechar={() => setNovo(false)} predefinicao={predef} />
     </>
   );
 }

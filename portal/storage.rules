@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// R60 - anexos (fotos/comprovantes) dos lançamentos.
+// Caminho: usuarios/{uid}/anexos/{despesaId}/{arquivo}, onde {uid} é o DONO dos dados (o mesmo uid de users/{uid}/... no Firestore).
+// - O dono lê/grava/apaga tudo em usuarios/{uid}/**.
+// - R32 (conta compartilhada): quem consta em users/{dono}/membros/{membroUid} (Firestore) acessa os anexos do dono com o mesmo
+//   critério do firestore.rules (firestore.exists). Se preferir limitar os anexos ao dono, remova a função ehMembro.
+// - Gravação: até 5 MB e só image/jpeg, image/png ou application/pdf. Todo o resto é negado.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function logado() {
+      return request.auth != null;
+    }
+
+    function ehMembro(dono) {
+      return logado() && firestore.exists(/databases/(default)/documents/users/$(dono)/membros/$(request.auth.uid));
+    }
+
+    function acessoAoDono(dono) {
+      return logado() && (request.auth.uid == dono || ehMembro(dono));
+    }
+
+    function arquivoPermitido() {
+      return request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/jpeg|image/png|application/pdf');
+    }
+
+    match /usuarios/{uid}/{allPaths=**} {
+      allow read, delete: if acessoAoDono(uid);
+      allow create, update: if acessoAoDono(uid) && arquivoPermitido();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 import {
   getFirestore,
   initializeFirestore,
@@ -28,6 +29,11 @@ function app(): FirebaseApp {
 
 export function getFirebaseAuth(): Auth {
   return getAuth(app());
+}
+
+/** R60 - Cloud Storage (anexos de lançamentos). Exige o bucket em NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET. */
+export function getStorageClient(): FirebaseStorage {
+  return getStorage(app());
 }
 
 let db: Firestore | null = null;
