@@ -100,7 +100,7 @@ dependencies {
     implementation("com.google.guava:guava:33.4.8-android")
 
 // Google ML Kit (Para o OCR/Código de Barras)
-    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     implementation("androidx.glance:glance:1.1.0")
     implementation("androidx.glance:glance-appwidget:1.1.0")
