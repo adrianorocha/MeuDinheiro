@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.meudinheiro.data.Anexo
 import com.meudinheiro.data.MIGRATION_10_11
+import com.meudinheiro.data.MIGRATION_11_12
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -27,7 +28,7 @@ class Migracao10Para11Test {
                     "'BRL', 1.0, 1, 'NORMAL', NULL, 'Ana', NULL, NULL, '[\"casa\"]')"
             )
         }
-        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig10_11.db", MIGRATION_10_11)
+        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig10_11.db", MIGRATION_10_11, MIGRATION_11_12)
         try {
             val d = db.despesaDao().obterTodasStatic().single()
             assertEquals("Mercado", d.descricao)

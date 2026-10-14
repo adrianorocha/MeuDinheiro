@@ -39,7 +39,11 @@ enum class TipoAviso(
     SUCESSO("avisos_recibos", "Recibos", 0xFF1DB954.toInt(), "CONCLUÍDO", "OK"),
     FALHA("avisos_recibos", "Recibos", 0xFFFF5252.toInt(), "NÃO REALIZADO", "!"),
     BACKUP("avisos_backup", "Backup", 0xFF00B8D4.toInt(), "SEGURANÇA", "B"),
-    EXTRATO("avisos_extratos", "Extratos", 0xFF00B8D4.toInt(), "CONCILIAR", "E")
+    EXTRATO("avisos_extratos", "Extratos", 0xFF00B8D4.toInt(), "CONCILIAR", "E"),
+    /** R64 — sugestão de lançamento a partir de notificação do banco (nunca lança sozinha). */
+    SUGESTAO("avisos_sugestoes", "Sugestões de lançamento", 0xFF00B8D4.toInt(), "SUGESTÃO", "?"),
+    /** R65 — push (FCM) sem tipo local equivalente: resumo semanal e convites. */
+    PUSH("avisos_push", "Notificações push", 0xFF00B8D4.toInt(), "AVISO", "i")
 }
 
 /**
@@ -57,8 +61,13 @@ data class Aviso(
     val despesaId: Long? = null,
     val textoPublico: String = "Você tem um aviso financeiro",
     /** Ação do Intent que abre o app ao tocar na notificação (nula = só abrir). */
-    val acao: String? = null
+    val acao: String? = null,
+    /** R64 — botões extras (ex.: Confirmar / Ignorar). */
+    val botoes: List<BotaoAviso> = emptyList()
 )
+
+/** R64 — botão de ação de uma notificação de [Aviso]; exige o aparelho desbloqueado (mexe no seu dinheiro). */
+data class BotaoAviso(val rotulo: String, val intent: PendingIntent)
 
 object Notificacoes {
     const val TAG = "aviso"
@@ -88,6 +97,8 @@ object Notificacoes {
         canal("avisos_recibos", "Recibos", "Confirmação de transferências e lançamentos", NotificationManager.IMPORTANCE_DEFAULT, TipoAviso.SUCESSO.cor, false)
         canal("avisos_backup", "Backup", "Lembrete semanal para guardar seus dados", NotificationManager.IMPORTANCE_LOW, TipoAviso.BACKUP.cor, false)
         canal("avisos_extratos", "Extratos", "Extratos novos encontrados na pasta monitorada, para conciliar", NotificationManager.IMPORTANCE_DEFAULT, TipoAviso.EXTRATO.cor, false)
+        canal("avisos_sugestoes", "Sugestões de lançamento", "Sugestões criadas a partir de notificações do banco (só se você ativar a captura)", NotificationManager.IMPORTANCE_DEFAULT, TipoAviso.SUGESTAO.cor, false)
+        canal("avisos_push", "Notificações push", "Resumo semanal e convites enviados pela nuvem (só se você ativar)", NotificationManager.IMPORTANCE_DEFAULT, TipoAviso.PUSH.cor, false)
     }
 
     private fun podeNotificar(context: Context) =
@@ -162,6 +173,10 @@ object Notificacoes {
                 .bigText((aviso.linhas.firstOrNull() ?: aviso.resumo))
                 .setBigContentTitle(aviso.titulo).setSummaryText(t.rotulo)
         )
+
+        aviso.botoes.forEach { bt ->
+            b.addAction(NotificationCompat.Action.Builder(R.drawable.ic_check, bt.rotulo, bt.intent).setAuthenticationRequired(true).build())
+        }
 
         if (aviso.despesaId != null) {
             val pagar = PendingIntent.getBroadcast(

@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { gravarPerfil } from "@/lib/firebase/compartilhar";
 import { getFirebaseAuth } from "@/lib/firebase/client";
+import { useCompartilhamento } from "@/lib/compartilhamento";
 import { useSession } from "@/lib/session";
 import { iniciarConfigNuvem } from "@/lib/firebase/configNuvem";
 import { FirebaseAdapter } from "@/lib/store/firebase-adapter";
@@ -50,10 +51,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return undefined;
   }, [modo, hidratado, uidUsuario, raizUid]);
 
+  // R67: meu papel na conta em uso e se há outros membros (só para a UI; as regras do servidor decidem).
+  useEffect(() => {
+    if (!hidratado) return;
+    void useCompartilhamento.getState().carregar();
+  }, [hidratado, modo, uidUsuario, raizUid]);
+
   // R57: configurações sincronizadas (documento único). Sem Firebase/login, o local segue como hoje.
   useEffect(() => {
     if (!hidratado || modo !== "firebase" || !uidUsuario) return;
     return iniciarConfigNuvem(raizUid ?? uidUsuario);
+  }, [modo, hidratado, uidUsuario, raizUid]);
+
+  // R65: renova o token de web push (se o usuário ligou o recurso neste navegador). Silencioso; sem VAPID não faz nada.
+  useEffect(() => {
+    if (!hidratado || modo !== "firebase" || !uidUsuario) return;
+    void import("@/lib/firebase/push").then((m) => m.sincronizarPush(uidUsuario, raizUid)).catch(() => undefined);
   }, [modo, hidratado, uidUsuario, raizUid]);
 
   return <>{children}</>;

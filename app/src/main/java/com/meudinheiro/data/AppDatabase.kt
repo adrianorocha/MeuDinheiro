@@ -215,6 +215,13 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+/** 11 → 12: R67 — autor (uid) do lançamento em contas compartilhadas: coluna TEXT nula (dados antigos = sem autor identificado). */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE despesas ADD COLUMN autorUid TEXT")
+    }
+}
+
 /** 7 → 8: R47 — pausar recorrência (despesas/receitas fixas), com retomada automática opcional. */
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -230,7 +237,7 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         PatrimonioHistorico::class, Cartao::class, SyncMeta::class, Lixeira::class,
         RegraCategoria::class, Projeto::class, Configuracao::class, Divida::class, Pessoa::class, Acerto::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -268,7 +275,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DB_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     // Só em downgrade (APK antigo sobre banco novo). Upgrades NUNCA apagam dados.
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()

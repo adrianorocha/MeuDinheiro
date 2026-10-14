@@ -23,7 +23,9 @@ data class DespesasDomain(
     /** R56 */
     val tags: List<String> = emptyList(),
     /** R60 */
-    val anexos: List<Anexo> = emptyList()
+    val anexos: List<Anexo> = emptyList(),
+    /** R67 */
+    val autorUid: String? = null
 ) : Movimento {
     override val dataMs: Long get() = data
 }

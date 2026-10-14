@@ -58,7 +58,7 @@ import com.meudinheiro.ui.theme.NeonGreen
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA, CALENDARIO, RESUMO, REGRAS, PROJETOS, DIVIDAS, PESSOAS, IMPOSTO }
+private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA, CALENDARIO, RESUMO, REGRAS, PROJETOS, DIVIDAS, PESSOAS, IMPOSTO, SUGESTOES }
 
 private val TextoClaro = Color(0xFFE0E1DD)
 private val CardFundo = Color(0xFF1B263B)
@@ -69,6 +69,13 @@ private val CardFundo = Color(0xFF1B263B)
 fun FerramentasScreen(repository: MainRepository, userPrefs: UserPreferences, isPrivate: Boolean, onBack: () -> Unit) {
     var tela by remember { mutableStateOf(Tela.HUB) }
     BackHandler { if (tela == Tela.HUB) onBack() else tela = Tela.HUB }
+    // R64: o toque na notificação de uma sugestão abre direto a fila.
+    androidx.compose.runtime.LaunchedEffect(com.meudinheiro.AtalhosCaptura.sugestoesPedidas) {
+        if (com.meudinheiro.AtalhosCaptura.sugestoesPedidas) {
+            tela = Tela.SUGESTOES
+            com.meudinheiro.AtalhosCaptura.consumirSugestoes()
+        }
+    }
 
     when (tela) {
         Tela.RELATORIOS -> RelatoriosScreen(repository, isPrivate) { tela = Tela.HUB }
@@ -83,6 +90,7 @@ fun FerramentasScreen(repository: MainRepository, userPrefs: UserPreferences, is
         Tela.DIVIDAS -> DividasScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.PESSOAS -> PessoasScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.IMPOSTO -> ImpostoRendaScreen(repository, userPrefs, isPrivate) { tela = Tela.HUB }
+        Tela.SUGESTOES -> SugestoesLancamentoScreen(isPrivate) { tela = Tela.HUB }
         Tela.HUB -> Hub(repository, isPrivate, onBack) { tela = it }
     }
 }
@@ -140,7 +148,8 @@ private fun Hub(repository: MainRepository, isPrivate: Boolean, onBack: () -> Un
                 item { Atalho(Icons.Default.Assessment, "Imposto de Renda", "Triagem para a declaração: rendimentos, despesas dedutíveis, bens e dívidas do ano (exporta PDF/CSV)") { abrir(Tela.IMPOSTO) } }
                 item { Atalho(Icons.Default.DeleteSweep, "Lixeira", if (lixeira.isEmpty()) "Lançamentos excluídos ficam 30 dias" else "${lixeira.size} item(ns) que podem ser restaurados") { abrir(Tela.LIXEIRA) } }
                 item { Atalho(Icons.Default.FactCheck, "Conferência de saldos", "Compare saldos e limites gravados com o extrato e recalcule se houver diferença") { abrir(Tela.CONFERENCIA) } }
-                item { Atalho(Icons.Default.Backup, "Backups automáticos", "Cópia semanal no aparelho, com restauração") { abrir(Tela.BACKUPS) } }
+                item { Atalho(Icons.Default.FactCheck, "Sugestões de lançamento", "Pix, compras e saques detectados nas notificações do banco (opcional, em Configurações): confirme, ignore ou apague") { abrir(Tela.SUGESTOES) } }
+                item { Atalho(Icons.Default.Backup, "Backups e histórico", "Backup diário opcional, restauração segura, exportar tudo (ZIP) e histórico de alterações") { abrir(Tela.BACKUPS) } }
             } else if (busca.vazio) {
                 item { Text("Nada encontrado para \"$termo\".", color = Color.White.copy(0.7f), modifier = Modifier.padding(top = 16.dp)) }
             } else {

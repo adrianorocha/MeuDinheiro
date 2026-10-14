@@ -55,7 +55,13 @@ data class Despesa(
      */
     val tags: List<String> = emptyList(),
     /** R60 — anexos (fotos/comprovantes; máx. 5). Coluna TEXT (array JSON); a migração 10→11 cria a coluna com DEFAULT '[]' (sem defaultValue no Room, como `tags`). Vazio = campo ausente no Firestore. */
-    val anexos: List<Anexo> = emptyList()
+    val anexos: List<Anexo> = emptyList(),
+    /**
+     * R67 — uid (Firebase Auth) de quem criou o lançamento. Opcional: nulo em dados antigos e no modo local-only. O NOME de quem
+     * lançou continua em [autor] (equivale ao `autorNome` do contrato; "Importação" = lançado pelo conciliador). A migração 11→12
+     * cria a coluna sem DEFAULT (nula); vai ao documento Firestore só quando preenchido.
+     */
+    val autorUid: String? = null
 ) : Movimento {
     override val dataMs: Long get() = data.time
 }

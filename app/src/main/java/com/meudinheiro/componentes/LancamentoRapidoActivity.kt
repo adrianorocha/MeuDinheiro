@@ -81,7 +81,10 @@ class LancamentoRapidoActivity : FragmentActivity() {
                 valor = it.getStringExtra(EXTRA_VALOR).orEmpty(),
                 categoria = it.getStringExtra(EXTRA_CATEGORIA).orEmpty(),
                 conta = it.getStringExtra(EXTRA_CONTA).orEmpty(),
-                cartaoId = it.getIntExtra(EXTRA_CARTAO, -1).takeIf { id -> id > 0 }
+                cartaoId = it.getIntExtra(EXTRA_CARTAO, -1).takeIf { id -> id > 0 },
+                revisar = it.getBooleanExtra(EXTRA_REVISAR, false),
+                debito = it.getBooleanExtra(EXTRA_DEBITO, false),
+                sugestaoId = it.getStringExtra(EXTRA_SUGESTAO_ID)
             )
         }
         setContent {
@@ -98,13 +101,20 @@ class LancamentoRapidoActivity : FragmentActivity() {
         const val EXTRA_CATEGORIA = "atalho_categoria"
         const val EXTRA_CONTA = "atalho_conta"
         const val EXTRA_CARTAO = "atalho_cartao"
+        /** R64 — abre preenchido mas NÃO lança sozinho: o usuário revisa (categoria, conta) e confirma (biometria ao salvar). */
+        const val EXTRA_REVISAR = "atalho_revisar"
+        const val EXTRA_DEBITO = "atalho_debito"
+        const val EXTRA_SUGESTAO_ID = "atalho_sugestao_id"
         const val PREFS = "widget_prefs"
         const val KEY_ORIGEM = "ultima_origem" // "c:<numero da conta>" ou "k:<id do cartão>"
     }
 }
 
 /** Atalho de 1 toque do widget: abre já preenchido e lança logo após a autenticação. */
-private class AtalhoExtra(val descricao: String, val valor: String, val categoria: String, val conta: String, val cartaoId: Int?)
+private class AtalhoExtra(
+    val descricao: String, val valor: String, val categoria: String, val conta: String, val cartaoId: Int?,
+    val revisar: Boolean = false, val debito: Boolean = false, val sugestaoId: String? = null
+)
 
 private sealed interface Origem {
     val chave: String
@@ -165,19 +175,21 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
     var valorTxt by remember { mutableStateOf(atalho?.valor?.replace('.', ',').orEmpty()) }
     var descricao by remember { mutableStateOf(atalho?.descricao.orEmpty()) }
     var categoria by remember { mutableStateOf(atalho?.categoria?.ifBlank { null }) }
-    var categoriaManual by remember { mutableStateOf(atalho != null) }
-    var origemChave by remember { mutableStateOf<String?>(atalho?.let { a -> a.cartaoId?.let { "k:$it" } ?: "c:${a.conta}" }) }
+    var categoriaManual by remember { mutableStateOf(atalho != null && !atalho.revisar) }
+    var origemChave by remember { mutableStateOf<String?>(atalho?.let { a -> a.cartaoId?.let { "k:$it" } ?: a.conta.takeIf { c -> c.isNotBlank() }?.let { c -> "c:$c" } }) }
     var erro by remember { mutableStateOf<String?>(null) }
-    var modalidade by remember { mutableStateOf(Financas.Modalidade.CREDITO) } // R42: só vale para cartão MÚLTIPLO
+    var modalidade by remember { mutableStateOf(if (atalho?.debito == true) Financas.Modalidade.DEBITO else Financas.Modalidade.CREDITO) } // R42: só vale para cartão MÚLTIPLO
     var salvando by remember { mutableStateOf(false) }
     val foco = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         val d = carregar(context)
         dados = d
-        if (atalho == null) {
-            origemChave = d.origemInicial?.takeIf { k -> d.origens.any { it.chave == k } } ?: d.origens.firstOrNull()?.chave
-            runCatching { foco.requestFocus() }
+        if (atalho == null || atalho.revisar) {
+            // R64 (revisar): mantém a conta/cartão sugerido se existir; senão a última usada / primeira.
+            origemChave = origemChave?.takeIf { k -> d.origens.any { it.chave == k } }
+                ?: d.origemInicial?.takeIf { k -> d.origens.any { it.chave == k } } ?: d.origens.firstOrNull()?.chave
+            if (atalho == null) runCatching { foco.requestFocus() }
         }
     }
 
@@ -204,7 +216,7 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
         salvando = true
         autenticarParaLancar(
             context, d.exigirBiometria, "Confirmar lançamento", "Autentique para lançar ${formatarMoedaBR(valor, false)}",
-            onNegado = { salvando = false; if (atalho != null) onFechar() else erro = "Autenticação necessária para lançar." }
+            onNegado = { salvando = false; if (atalho != null && !atalho.revisar) onFechar() else erro = "Autenticação necessária para lançar." }
         ) { escopo.launch {
             val agora = System.currentTimeMillis()
             val lanc = LancamentoRapido.montar(
@@ -221,6 +233,12 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
             }
             context.getSharedPreferences(LancamentoRapidoActivity.PREFS, Context.MODE_PRIVATE).edit().putString(LancamentoRapidoActivity.KEY_ORIGEM, origem.chave).apply()
             runCatching { SaldoWidget().updateAll(context) }
+            atalho?.sugestaoId?.let { sid -> // R64: a sugestão virou lançamento
+                runCatching {
+                    com.meudinheiro.captura.SugestoesStore.marcar(context, sid, com.meudinheiro.domain.NotificacaoBancaria.Estado.ENCAMINHADA)
+                    com.meudinheiro.captura.NotificadorSugestoes.cancelar(context, sid)
+                }
+            }
             Toast.makeText(context, mensagemDeSucesso(lanc, d, tipo), Toast.LENGTH_LONG).show()
             onFechar()
         } }
@@ -228,7 +246,7 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
 
     // Atalho: com tudo preenchido, só falta confirmar (biometria) — lança assim que os dados carregam.
     LaunchedEffect(dados) {
-        if (atalho != null && dados != null && !salvando) salvar()
+        if (atalho != null && !atalho.revisar && dados != null && !salvando) salvar()
     }
 
     Box(

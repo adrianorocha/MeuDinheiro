@@ -75,8 +75,10 @@ import { chaveTag, normalizarTags, validarProjeto } from "../finance/tags";
 import type { Categoria, DespesaFixa, Investimento, Meta, Projeto, RegraCategoria } from "../finance/types";
 import { aplicarConciliacao, desfazerConciliacao, desfazerLote, type Plano, type PlanoInverso } from "../conciliacao/plano";
 import { useSession } from "../session";
+import { estamparNovos, type Identidade } from "../finance/autoria";
 import { limparAnexosDaLixeira } from "../firebase/anexosArquivos";
 import { useStore } from "./store";
+import { trilhaStore } from "../backups/instancias";
 
 /** Quem está lançando (R32); null no modo local. */
 function autorAtual(): string | null {
@@ -84,8 +86,41 @@ function autorAtual(): string | null {
   return s.modo === "firebase" ? (s.user?.email ?? null) : null;
 }
 
-function exec() {
-  return useStore.getState().executar;
+/** R67: identidade de quem lança (uid + nome); null no modo local (autor vazio). */
+function identidadeAtual(): Identidade | null {
+  const s = useSession.getState();
+  return s.modo === "firebase" && s.user ? { uid: s.user.uid, nome: s.user.email ?? "Membro" } : null;
+}
+
+type Executar = ReturnType<typeof useStore.getState>["executar"];
+
+/**
+ * Ponto ÚNICO de execução das ações do usuário: os lançamentos NOVOS ganham autor/autorUid (R67) quando vazios.
+ * `modo` "executor" (duplicar/repetir): o autor é quem executa, nunca o do original; "nenhum": não carimba
+ * (restaurar da lixeira, antecipação - itens derivados mantêm o autor original).
+ */
+function exec(modo: "preencher" | "executor" | "nenhum" = "preencher"): Executar {
+  const executar = useStore.getState().executar;
+  if (modo === "nenhum") return executar;
+  return ((fn) =>
+    executar((ds, ctx) => {
+      const r = fn(ds, ctx);
+      return r.ok ? { ...r, ds: estamparNovos(ds, r.ds, identidadeAtual(), modo) } : r;
+    })) as Executar;
+}
+
+/** R66: ponto ÚNICO da trilha de alterações. Roda a operação e registra o diff dos lançamentos; falha de log nunca propaga. */
+function rastreado<R extends { ok: boolean }>(run: () => R, dica?: "RESTAURAR_LIXEIRA"): R {
+  const antes = useStore.getState().ds;
+  const r = run();
+  if (r.ok) {
+    try {
+      trilhaStore.registrarDiff(antes, useStore.getState().ds, Date.now(), dica);
+    } catch {
+      /* auditoria é informativa */
+    }
+  }
+  return r;
 }
 
 type Falha = { ok: false; erro: string };
@@ -94,28 +129,28 @@ const falha = (erro: string): Falha => ({ ok: false, erro });
 /** Ações de domínio: aplicam as regras puras (R1–R17) e persistem o resultado. */
 export const acoes = {
   // lançamentos
-  addLancamento: (input: NovoLancamento) => exec()((ds, ctx) => adicionarLancamento(ds, { autor: autorAtual(), ...input }, ctx)),
-  editLancamento: (id: number, patch: EdicaoLancamento) => exec()((ds) => editarLancamento(ds, id, patch)),
-  removerLancamento: (id: number, opcoes?: { grupoParcelas?: boolean }) => exec()((ds, ctx) => excluirLancamento(ds, id, opcoes, ctx)),
+  addLancamento: (input: NovoLancamento) => rastreado(() => exec()((ds, ctx) => adicionarLancamento(ds, { autor: autorAtual(), ...input }, ctx))),
+  editLancamento: (id: number, patch: EdicaoLancamento) => rastreado(() => exec()((ds) => editarLancamento(ds, id, patch))),
+  removerLancamento: (id: number, opcoes?: { grupoParcelas?: boolean }) => rastreado(() => exec()((ds, ctx) => excluirLancamento(ds, id, opcoes, ctx))),
   // conciliação de extratos (R38)
   aplicarConciliacao: (plano: Plano) => exec()((ds, ctx) => aplicarConciliacao(ds, plano, ctx.agora)),
   desfazerLoteConciliacao: (inverso: PlanoInverso) => exec()((ds) => ({ ok: true as const, ds: desfazerLote(ds, inverso) })),
   desfazerConciliacao: (id: number) => exec()((ds) => desfazerConciliacao(ds, id)),
-  duplicarLancamento: (id: number) => exec()((ds, ctx) => duplicarLancamento(ds, id, ctx)),
+  duplicarLancamento: (id: number) => rastreado(() => exec("executor")((ds, ctx) => duplicarLancamento(ds, id, ctx))),
   repetirLancamento: (id: number, opcoes: { n: number; intervalo: number; unidade: UnidadeRepeticao }) =>
-    exec()((ds, ctx) => repetirLancamento(ds, id, opcoes, ctx)),
-  restaurarLixeira: (id: number) => exec()((ds, ctx) => restaurarDaLixeira(ds, id, ctx)),
+    rastreado(() => exec("executor")((ds, ctx) => repetirLancamento(ds, id, opcoes, ctx))),
+  restaurarLixeira: (id: number) => rastreado(() => exec("nenhum")((ds, ctx) => restaurarDaLixeira(ds, id, ctx)), "RESTAURAR_LIXEIRA"),
   esvaziarLixeira: () => {
     const antes = useStore.getState().ds.lixeira;
     const r = exec()((ds) => ({ ok: true as const, ds: esvaziarLixeira(ds) }));
     if (r.ok) void limparAnexosDaLixeira(antes, []); // R60: apaga os arquivos dos anexos (melhor esforço)
     return r;
   },
-  alternarPago: (id: number) => exec()((ds) => alternarPago(ds, id)),
-  darBaixa: (id: number) => exec()((ds) => marcarPago(ds, id)),
+  alternarPago: (id: number) => rastreado(() => exec()((ds) => alternarPago(ds, id))),
+  darBaixa: (id: number) => rastreado(() => exec()((ds) => marcarPago(ds, id))),
   // antecipação de pagamento (R40)
-  anteciparPagamento: (input: Antecipacao) => exec()((ds, ctx) => anteciparPagamento(ds, input, ctx)),
-  adiantarOcorrenciaFixa: (input: AdiantamentoFixa) => exec()((ds, ctx) => adiantarOcorrenciaFixa(ds, input, ctx)),
+  anteciparPagamento: (input: Antecipacao) => exec("nenhum")((ds, ctx) => anteciparPagamento(ds, input, ctx)),
+  adiantarOcorrenciaFixa: (input: AdiantamentoFixa) => exec("nenhum")((ds, ctx) => adiantarOcorrenciaFixa(ds, input, ctx)),
 
   // contas
   criarConta: (input: NovaConta) => exec()((ds, ctx) => criarConta(ds, input, ctx)),

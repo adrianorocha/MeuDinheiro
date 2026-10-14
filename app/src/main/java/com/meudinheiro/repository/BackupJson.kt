@@ -150,7 +150,9 @@ object BackupJson {
             // R56: backup antigo não tem o campo (Gson deixa nulo) — vira lista vazia; sempre normalizada.
             tags = Tags.normalizar(d.tags as List<String?>?),
             // R60: backup antigo não tem `anexos` (Gson deixa nulo) — vira lista vazia; sempre saneada.
-            anexos = com.meudinheiro.domain.Anexos.normalizar(d.anexos as List<com.meudinheiro.data.Anexo?>?)
+            anexos = com.meudinheiro.domain.Anexos.normalizar(d.anexos as List<com.meudinheiro.data.Anexo?>?),
+            // R67: backup antigo não tem `autorUid` (Gson deixa nulo); vazio vira nulo.
+            autorUid = d.autorUid?.takeIf { it.isNotBlank() }
         )
     }
 

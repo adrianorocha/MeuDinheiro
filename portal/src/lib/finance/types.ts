@@ -54,6 +54,11 @@ export interface Despesa {
   tags?: string[];
   /** R60 - anexos (fotos/comprovantes; máx. 5); ausente em dados antigos = sem anexos. */
   anexos?: Anexo[];
+  /**
+   * R67 - uid (Firebase Auth) de quem criou o lançamento; ausente em dados antigos e no modo local. O NOME de quem lançou continua
+   * em `autor` (o `autorNome` do contrato). Só vai ao documento quando preenchido.
+   */
+  autorUid?: string;
 }
 
 export interface DespesaFixa {

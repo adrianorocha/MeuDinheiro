@@ -14,6 +14,8 @@ import type { Despesa } from "@/lib/finance/types";
 import { formatData } from "@/lib/format";
 import { useAgora, useDataset } from "@/lib/hooks";
 import { acoes } from "@/lib/store/actions";
+import { useCompartilhamento, usePode } from "@/lib/compartilhamento";
+import { rotuloAutor } from "@/lib/finance/autoria";
 import { useStore } from "@/lib/store/store";
 import { DividirModal } from "@/components/pessoas/DividirModal";
 import { AntecipacaoModal } from "./AntecipacaoModal";
@@ -44,6 +46,9 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
   const ds = useDataset();
   const agora = useAgora();
   const avisar = useStore((s) => s.avisar);
+  // R67: LEITOR só consulta (esconde ações que alteram); "por <nome>" só em contas com membros. As regras do servidor decidem de verdade.
+  const podeEditar = usePode("LANCAMENTO_EDITAR");
+  const temMembros = useCompartilhamento((s) => s.temMembros);
   const [editando, setEditando] = useState<Despesa | null>(null);
   const [excluindo, setExcluindo] = useState<Despesa | null>(null);
   const [repetindo, setRepetindo] = useState<Despesa | null>(null);
@@ -128,7 +133,7 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                 <p className="truncate text-xs text-muted">
                   {formatData(d.data)} · {d.categoria}
                   {!semOrigem && ` · ${nomeOrigem(d)}`}
-                  {d.autor && ` · por ${d.autor}`}
+                  {rotuloAutor(d.autor, temMembros) && ` · ${rotuloAutor(d.autor, temMembros)}`}
                   {d.moedaOriginal !== "BRL" && ` · ${d.moedaOriginal} ${d.valorOriginal.toFixed(2).replace(".", ",")} @ ${String(d.cotacaoNaData).replace(".", ",")}`}
                 </p>
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -145,12 +150,12 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
               </div>
               <Money valor={entrada ? d.valor : -d.valor} tom="auto" className="text-sm font-semibold" />
               <div className="flex shrink-0 items-center">
-                {ALTERNAVEL.has(d.natureza) && (
+                {podeEditar && ALTERNAVEL.has(d.natureza) && (
                   <IconButton rotulo={d.pago ? "Marcar como pendente" : "Marcar como pago"} aria-pressed={d.pago} onClick={() => alternar(d)}>
                     {d.pago ? <Check size={18} className="text-pos" aria-hidden /> : <Circle size={18} aria-hidden />}
                   </IconButton>
                 )}
-                {d.natureza === "NORMAL" && (
+                {podeEditar && d.natureza === "NORMAL" && (
                   <>
                     {d.conciliadoEm != null && (
                       <IconButton rotulo={`Desfazer conciliação de ${d.descricao}`} onClick={() => desconciliar(d)}>
@@ -190,14 +195,16 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                 <IconButton rotulo={`Comprovante de ${d.descricao}`} onClick={() => setComprovante(d)}>
                   <Receipt size={16} aria-hidden />
                 </IconButton>
-                {EDITAVEL.has(d.natureza) && (
+                {podeEditar && EDITAVEL.has(d.natureza) && (
                   <IconButton rotulo={`Editar ${d.descricao}`} onClick={() => setEditando(d)}>
                     <Pencil size={16} aria-hidden />
                   </IconButton>
                 )}
-                <IconButton rotulo={`Excluir ${d.descricao}`} onClick={() => pedirExclusao(d)}>
-                  <Trash2 size={16} aria-hidden />
-                </IconButton>
+                {podeEditar && (
+                  <IconButton rotulo={`Excluir ${d.descricao}`} onClick={() => pedirExclusao(d)}>
+                    <Trash2 size={16} aria-hidden />
+                  </IconButton>
+                )}
               </div>
             </li>
           );

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Compartilhar } from "@/components/config/Compartilhar";
+import { NotificacoesPush } from "@/components/config/NotificacoesPush";
 import { PinConfig } from "@/components/config/PinConfig";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Input, Segmentado } from "@/components/ui/Field";
@@ -191,6 +192,7 @@ export default function ConfiguracoesPage() {
         </Card>
 
         <PinConfig />
+        {modo === "firebase" && <NotificacoesPush />}
         {modo === "firebase" && <Compartilhar />}
 
         <Card className="border-neg/40 lg:col-span-2" aria-labelledby="t-perigo">

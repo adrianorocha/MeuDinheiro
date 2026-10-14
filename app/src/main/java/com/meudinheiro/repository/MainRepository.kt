@@ -29,6 +29,7 @@ import com.meudinheiro.data.ResumoDto
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.data.TransferenciaAgendada
 import com.meudinheiro.domain.Analises
+import com.meudinheiro.domain.Autoria
 import com.meudinheiro.domain.ConferenciaSaldos
 import com.meudinheiro.domain.ConfigGeral
 import com.meudinheiro.domain.Projetos
@@ -115,6 +116,19 @@ class MainRepository(
     private val configuracaoLocal by lazy { com.meudinheiro.storage.ConfiguracaoLocal(db, UserPreferences(context)) }
 
     private fun agora() = System.currentTimeMillis()
+
+    /** R66 — trilha local de alterações (`files/trilha/alteracoes.jsonl`). Falha de log NUNCA derruba a operação. */
+    private val trilha by lazy { com.meudinheiro.domain.TrilhaArquivo(java.io.File(context.filesDir, "trilha/alteracoes.jsonl")) }
+
+    private inline fun registrarTrilha(montar: () -> com.meudinheiro.domain.EntradaTrilha) {
+        try { trilha.registrarSeguro(montar()) } catch (_: Throwable) { /* auditoria é só informativa */ }
+    }
+
+    /** R66 — registra na trilha um evento que não passa pelas operações de lançamento (ex.: restauração de backup). */
+    fun registrarEventoNaTrilha(entrada: com.meudinheiro.domain.EntradaTrilha) = registrarTrilha { entrada }
+
+    /** R66 — leitura da trilha (mais recentes primeiro). */
+    fun lerTrilha(): List<com.meudinheiro.domain.EntradaTrilha> = trilha.ler()
 
     /* ======================= DERIVADOS (R3 / R4) ======================= */
 
@@ -236,6 +250,12 @@ class MainRepository(
 
     /** Grava um lançamento e atualiza saldo/limite na mesma transação. Retorna o id gerado. */
     suspend fun registrarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null): Long {
+        val id = registrarLancamentoBase(despesa, modalidade)
+        registrarTrilha { com.meudinheiro.domain.Trilha.criar(agora(), despesa.copy(id = id)) }
+        return id
+    }
+
+    private suspend fun registrarLancamentoBase(despesa: Despesa, modalidade: Financas.Modalidade?): Long {
         val comAutor = completarAutor(despesa)
         return db.withTransaction {
             val d = validar(comModalidade(comAutor, modalidade))
@@ -246,16 +266,33 @@ class MainRepository(
         }
     }
 
-    /** Nome de quem lança (R32): usa o nome do perfil quando o lançamento não traz autor. */
+    /** Nome de quem lança (R32) e uid (R67, só no modo nuvem): preenche o que o lançamento não traz. */
     private suspend fun completarAutor(d: Despesa): Despesa {
-        if (!d.autor.isNullOrBlank()) return d
         val nome = runCatching { UserPreferences(context).userNameFlow.first().trim() }.getOrDefault("")
-        return if (nome.isBlank()) d else d.copy(autor = nome)
+        return Autoria.completar(d, nome, uidAutor())
     }
+
+    /** Lançamento criado por duplicar/repetir: o autor é quem executa (R67). */
+    private suspend fun completarAutorExecutor(d: Despesa): Despesa =
+        completarAutor(d.copy(autor = null, autorUid = null))
+
+    /** uid do usuário logado na nuvem; vazio (null) em modo local-only ou sem Firebase. */
+    private suspend fun uidAutor(): String? = runCatching {
+        if (UserPreferences(context).storageModeFlow.first() != com.meudinheiro.storage.StorageMode.FIREBASE) null
+        else com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+    }.getOrNull()
 
     /** R8 — compra parcelada (parcelas já nascem consistentes com saldo/limite). */
     suspend fun registrarParcelado(
         modelo: Despesa, parcelas: Int, modalidade: Financas.Modalidade? = null, parcelaAtual: Int = 1
+    ): List<Long> {
+        val ids = registrarParceladoBase(modelo, parcelas, modalidade, parcelaAtual)
+        registrarTrilha { com.meudinheiro.domain.Trilha.criar(agora(), modelo.copy(id = ids.firstOrNull() ?: 0L), if (ids.size > 1) "${ids.size} parcelas" else null) }
+        return ids
+    }
+
+    private suspend fun registrarParceladoBase(
+        modelo: Despesa, parcelas: Int, modalidade: Financas.Modalidade?, parcelaAtual: Int
     ): List<Long> {
         val comAutor = completarAutor(modelo)
         return db.withTransaction {
@@ -278,7 +315,7 @@ class MainRepository(
         val original = despesaDao.obterDespesaPorId(id) ?: throw RegraFinanceiraException("Lançamento não encontrado.")
         val copia = Analises.duplicar(original, agora())
             ?: throw RegraFinanceiraException("Este tipo de lançamento não pode ser duplicado.")
-        return registrarLancamento(copia.copy(autor = null))
+        return registrarLancamento(copia.copy(autor = null, autorUid = null))
     }
 
     /** R23 — cria [n] repetições futuras do lançamento (a cada [intervalo] dias, semanas ou meses). */
@@ -290,8 +327,9 @@ class MainRepository(
         } catch (e: IllegalArgumentException) {
             throw RegraFinanceiraException(e.message ?: "Repetição inválida.")
         }
+        val doExecutor = lista.map { completarAutorExecutor(it) }
         return db.withTransaction {
-            val validas = lista.map { validar(it) }
+            val validas = doExecutor.map { validar(it) }
             validas.forEach { despesaDao.inserirDespesa(it) }
             recalcularAfetados(validas)
             atualizarSnapshotPatrimonial()
@@ -299,7 +337,16 @@ class MainRepository(
         }
     }
 
-    suspend fun atualizarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) = db.withTransaction {
+    suspend fun atualizarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) {
+        val antes = runCatching { despesaDao.obterDespesaPorId(despesa.id) }.getOrNull()
+        atualizarLancamentoBase(despesa, modalidade)
+        if (antes != null) registrarTrilha {
+            val depois = runCatching { despesaDao.obterDespesaPorId(despesa.id) }.getOrNull() ?: despesa
+            com.meudinheiro.domain.Trilha.editar(agora(), antes, depois)
+        }
+    }
+
+    private suspend fun atualizarLancamentoBase(despesa: Despesa, modalidade: Financas.Modalidade?) = db.withTransaction {
         val antigo = despesaDao.obterDespesaPorId(despesa.id)
             ?: throw RegraFinanceiraException("Lançamento não encontrado.")
         if (antigo.natureza in LancamentoAcoes.BLOQUEADAS_EDICAO) throw RegraFinanceiraException(LancamentoAcoes.MSG_NAO_EDITAVEL)
@@ -323,7 +370,14 @@ class MainRepository(
      * R11 — exclui o lançamento (e o par, se for transferência) e recalcula os derivados. Com [grupoParcelas] e
      * lançamento de parcelamento (`parc:`), exclui todas as parcelas do grupo. Retorna quantos foram removidos.
      */
-    suspend fun excluirLancamento(id: Long, grupoParcelas: Boolean = false): Int = db.withTransaction {
+    suspend fun excluirLancamento(id: Long, grupoParcelas: Boolean = false): Int {
+        val antes = runCatching { despesaDao.obterDespesaPorId(id) }.getOrNull()
+        val n = excluirLancamentoBase(id, grupoParcelas)
+        if (antes != null && n > 0) registrarTrilha { com.meudinheiro.domain.Trilha.excluir(agora(), antes, if (n > 1) "$n itens" else null) }
+        return n
+    }
+
+    private suspend fun excluirLancamentoBase(id: Long, grupoParcelas: Boolean): Int = db.withTransaction {
         val d = despesaDao.obterDespesaPorId(id) ?: return@withTransaction 0
         LancamentoAcoes.motivoExclusaoBloqueada(d.natureza)?.let { throw RegraFinanceiraException(it) }
         val afetados = if (d.natureza == Natureza.TRANSFERENCIA && d.grupoId != null) {
@@ -343,7 +397,13 @@ class MainRepository(
     }
 
     /** R12 — alterna pago/pendente. Em compra de cartão só o limite muda; em conta, o saldo. */
-    suspend fun alternarPago(id: Long, pago: Boolean) = db.withTransaction {
+    suspend fun alternarPago(id: Long, pago: Boolean) {
+        val antes = runCatching { despesaDao.obterDespesaPorId(id) }.getOrNull()
+        alternarPagoBase(id, pago)
+        if (antes != null && antes.pago != pago) registrarTrilha { com.meudinheiro.domain.Trilha.pago(agora(), antes, pago) }
+    }
+
+    private suspend fun alternarPagoBase(id: Long, pago: Boolean) = db.withTransaction {
         val d = despesaDao.obterDespesaPorId(id) ?: return@withTransaction
         if (d.natureza != Natureza.NORMAL && d.natureza != Natureza.AJUSTE) throw RegraFinanceiraException(LancamentoAcoes.MSG_NAO_ALTERNAVEL)
         if (d.pago == pago) return@withTransaction
@@ -398,7 +458,15 @@ class MainRepository(
     fun lixeiraFlow(): Flow<List<Lixeira>> = lixeiraDao.observar()
 
     /** Restaura o lançamento (e o par, se for transferência), recalculando saldo e limite. */
-    suspend fun restaurarDaLixeira(id: Int): Unit = db.withTransaction {
+    suspend fun restaurarDaLixeira(id: Int) {
+        val item = runCatching { lixeiraDao.obter(id) }.getOrNull()
+        restaurarDaLixeiraBase(id)
+        if (item != null) registrarTrilha {
+            com.meudinheiro.domain.EntradaTrilha(agora(), com.meudinheiro.domain.AcaoTrilha.RESTAURAR_LIXEIRA, null, item.descricao, item.valor)
+        }
+    }
+
+    private suspend fun restaurarDaLixeiraBase(id: Int): Unit = db.withTransaction {
         val item = lixeiraDao.obter(id) ?: return@withTransaction
         val primeiro = deLixeira(item)
         val itens = if (primeiro.natureza == Natureza.TRANSFERENCIA && primeiro.grupoId != null) {
@@ -1481,6 +1549,11 @@ class MainRepository(
      * continuam válidos) e recalculando os derivados. Tudo ou nada: falhou, nada muda.
      */
     suspend fun restaurarBackupCompleto(json: String) {
+        restaurarBackupCompletoBase(json)
+        registrarTrilha { com.meudinheiro.domain.EntradaTrilha(agora(), com.meudinheiro.domain.AcaoTrilha.RESTAURAR_BACKUP, null, "Backup restaurado") }
+    }
+
+    private suspend fun restaurarBackupCompletoBase(json: String) {
         val backup = try {
             BackupJson.fromJson(json)
         } catch (e: IllegalArgumentException) {

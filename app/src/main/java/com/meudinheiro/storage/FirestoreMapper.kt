@@ -101,7 +101,9 @@ object FirestoreMapper {
     ) +
         // R56: `tags` só vai ao documento quando há tags; R60: idem `anexos` (lista de mapas); vazio = campo ausente (dados antigos intactos)
         (if (d.tags.isEmpty()) emptyMap() else mapOf("tags" to d.tags)) +
-        (if (d.anexos.isEmpty()) emptyMap() else mapOf("anexos" to d.anexos.map(::anexoToDoc)))
+        (if (d.anexos.isEmpty()) emptyMap() else mapOf("anexos" to d.anexos.map(::anexoToDoc))) +
+        // R67: `autorUid` só vai ao documento quando preenchido (compatível com versões antigas)
+        (if (d.autorUid.isNullOrBlank()) emptyMap() else mapOf("autorUid" to d.autorUid))
 
     /** R60 */
     fun anexoToDoc(a: Anexo): Doc = mapOf(
@@ -143,7 +145,8 @@ object FirestoreMapper {
             fitid = d.strOuNulo("fitid"),
             conciliadoEm = d.longOuNulo("conciliadoEm"),
             tags = Tags.normalizar((d["tags"] as? List<*>)?.map { it as? String }),
-            anexos = anexosFromDoc(d["anexos"])
+            anexos = anexosFromDoc(d["anexos"]),
+            autorUid = d.strOuNulo("autorUid")?.takeIf { it.isNotBlank() }
         )
     }
 
@@ -360,7 +363,7 @@ object FirestoreMapper {
             colecao("categorias", emptySet(), { categorias.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::categoriaFromDoc,
                 { categorias.inserirTodas(it) }, { ids -> categorias.excluirPorIds(ids.map(String::toInt)) }),
             colecao("despesas", setOf("mes", "ano"), { despesas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::despesaFromDoc,
-                { despesas.inserirTodas(it) }, { ids -> despesas.excluirPorIds(ids.map(String::toLong)) }, ignorarSeVazio = setOf("tags", "anexos")),
+                { despesas.inserirTodas(it) }, { ids -> despesas.excluirPorIds(ids.map(String::toLong)) }, ignorarSeVazio = setOf("tags", "anexos", "autorUid")),
             colecao("despesasFixas", emptySet(), { fixas.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::fixaFromDoc,
                 { fixas.inserirTodas(it) }, { ids -> fixas.excluirPorIds(ids.map(String::toInt)) }),
             colecao("orcamentos", emptySet(), { orcamentos.obterTodasStatic() }, { it.id.toString() }, ::toDoc, ::orcamentoFromDoc,

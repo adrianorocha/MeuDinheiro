@@ -478,6 +478,17 @@ fun Configuracao(
                     }
                 }
 
+                // SEÇÃO: R65 — notificações push (FCM), opt-in
+                item { SectionTitle("NOTIFICAÇÕES PUSH", NeonCyan) }
+                item {
+                    PremiumConfigCard {
+                        PushConfigCard(
+                            userPrefs = userPrefs,
+                            onMensagem = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+                        )
+                    }
+                }
+
                 // SEÇÃO: ONDE OS DADOS SÃO GRAVADOS (celular × Firebase)
                 item { SectionTitle("ARMAZENAMENTO DE DADOS", NeonCyan) }
                 item {
@@ -578,6 +589,10 @@ fun Configuracao(
                 // SEÇÃO: IMPORTAÇÃO DE EXTRATOS (R63)
                 item { SectionTitle("IMPORTAÇÃO DE EXTRATOS") }
                 item { SecaoImportacaoExtratos(mainRepository, userPrefs) }
+
+                // SEÇÃO: CAPTURA DE NOTIFICAÇÕES DO BANCO (R64) — opt-in, desligada por padrão
+                item { SectionTitle("CAPTURA DE NOTIFICAÇÕES DO BANCO") }
+                item { SecaoCapturaNotificacoes() }
 
                 // SEÇÃO: DESTRUIÇÃO
                 item { SectionTitle("ZONA DE RISCO", NeonRed) }
@@ -689,7 +704,7 @@ internal fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun ConfiguracaoSwitchItem(
+internal fun ConfiguracaoSwitchItem(
     icone: androidx.compose.ui.graphics.vector.ImageVector,
     titulo: String,
     descricao: String,

@@ -23,3 +23,14 @@ object AtalhosApp {
     fun pedirImportarExtratos() { importarExtratosPedido = true }
     fun consumirImportarExtratos() { importarExtratosPedido = false }
 }
+
+/** R64 — abrir a fila "Sugestões de lançamento" (toque na notificação de uma sugestão). */
+object AtalhosCaptura {
+    const val ACAO_SUGESTOES = "com.meudinheiro.action.SUGESTOES"
+
+    var sugestoesPedidas by mutableStateOf(false)
+        private set
+
+    fun pedirSugestoes() { sugestoesPedidas = true }
+    fun consumirSugestoes() { sugestoesPedidas = false }
+}

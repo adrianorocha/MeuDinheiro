@@ -1,11 +1,15 @@
 rules_version = '2';
 
-// R60 - anexos (fotos/comprovantes) dos lançamentos.
+// R60 - anexos (fotos/comprovantes) dos lançamentos; R67 - papéis da conta compartilhada.
 // Caminho: usuarios/{uid}/anexos/{despesaId}/{arquivo}, onde {uid} é o DONO dos dados (o mesmo uid de users/{uid}/... no Firestore).
-// - O dono lê/grava/apaga tudo em usuarios/{uid}/**.
-// - R32 (conta compartilhada): quem consta em users/{dono}/membros/{membroUid} (Firestore) acessa os anexos do dono com o mesmo
-//   critério do firestore.rules (firestore.exists). Se preferir limitar os anexos ao dono, remova a função ehMembro.
-// - Gravação: até 5 MB e só image/jpeg, image/png ou application/pdf. Todo o resto é negado.
+// O papel vem do documento users/{dono}/membros/{uid} (Firestore) - o mesmo critério do firestore.rules:
+//   - DONO (uid == dono): lê, grava e apaga tudo em usuarios/{dono}/**.
+//   - ADMIN: lê, grava e APAGA.
+//   - EDITOR: lê e grava (cria/atualiza) - NÃO apaga.
+//   - LEITOR: só lê.
+//   - Membro sem campo `papel` (R32) = EDITOR. Papel desconhecido ou não membro = sem acesso. Negar por padrão.
+// Gravação: até 5 MB e só image/jpeg, image/png ou application/pdf. Todo o resto é negado.
+// Limite do Storage: cada chamada firestore.get/exists conta no teto de acessos entre serviços (até 10 por requisição).
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -13,12 +17,28 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function ehMembro(dono) {
-      return logado() && firestore.exists(/databases/(default)/documents/users/$(dono)/membros/$(request.auth.uid));
+    function docMembro(dono) {
+      return /databases/(default)/documents/users/$(dono)/membros/$(request.auth.uid);
     }
 
-    function acessoAoDono(dono) {
-      return logado() && (request.auth.uid == dono || ehMembro(dono));
+    // 'DONO' | 'ADMIN' | 'EDITOR' | 'LEITOR' | 'NENHUM'
+    function papelDe(dono) {
+      return !logado() ? 'NENHUM'
+        : request.auth.uid == dono ? 'DONO'
+        : firestore.exists(docMembro(dono)) ? firestore.get(docMembro(dono)).data.get('papel', 'EDITOR')
+        : 'NENHUM';
+    }
+
+    function podeLer(dono) {
+      return papelDe(dono) in ['DONO', 'ADMIN', 'EDITOR', 'LEITOR'];
+    }
+
+    function podeEditar(dono) {
+      return papelDe(dono) in ['DONO', 'ADMIN', 'EDITOR'];
+    }
+
+    function ehAdmin(dono) {
+      return papelDe(dono) in ['DONO', 'ADMIN'];
     }
 
     function arquivoPermitido() {
@@ -28,8 +48,9 @@ service firebase.storage {
     }
 
     match /usuarios/{uid}/{allPaths=**} {
-      allow read, delete: if acessoAoDono(uid);
-      allow create, update: if acessoAoDono(uid) && arquivoPermitido();
+      allow read: if podeLer(uid);
+      allow create, update: if podeEditar(uid) && arquivoPermitido();
+      allow delete: if ehAdmin(uid);
     }
 
     match /{allPaths=**} {

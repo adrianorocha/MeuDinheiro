@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -49,8 +50,32 @@ class StorageManager(context: Context) {
     /** uid cujo dados estão em uso: o do próprio usuário (vazio) ou o de quem compartilhou com ele (R32). */
     val raizUid: Flow<String> = prefs.cloudRootUidFlow
 
+    /** R67 — meu papel na conta em uso. Local-only/conta própria = DONO (tudo liberado); a UI só esconde botões, quem barra são as regras. */
+    private val _papel = MutableStateFlow(com.meudinheiro.domain.Papel.DONO)
+    val papel: StateFlow<com.meudinheiro.domain.Papel> = _papel.asStateFlow()
+
+    /** R67 — a conta em uso tem outros membros (mostra "por <nome>" e o filtro "Quem lançou"). */
+    private val _temMembros = MutableStateFlow(false)
+    val temMembros: StateFlow<Boolean> = _temMembros.asStateFlow()
+
     @Volatile
     private var sessao: SyncSession? = null
+
+    /** Relê papel e existência de membros da conta em uso (ao iniciar a sessão e depois de mudanças no compartilhamento). */
+    suspend fun atualizarCompartilhamento() {
+        val uid = auth.uidAtual
+        if (uid == null || prefs.storageModeFlow.first() != StorageMode.FIREBASE) {
+            _papel.value = com.meudinheiro.domain.Papel.DONO
+            _temMembros.value = false
+            return
+        }
+        val raiz = prefs.cloudRootUidFlow.first().ifBlank { uid }
+        runCatching {
+            val c = Compartilhamento(auth)
+            _papel.value = c.meuPapel(raiz)
+            _temMembros.value = raiz != uid || c.membros(raiz).isNotEmpty()
+        }.onFailure { if (it is CancellationException) throw it }
+    }
 
     fun iniciar() {
         combine(prefs.storageModeFlow, authUidOuNulo(), prefs.cloudRootUidFlow) { modo, uid, raiz -> Triple(modo, uid, raiz) }
@@ -65,13 +90,32 @@ class StorageManager(context: Context) {
                         else -> {
                             emit(Unit)
                             runCatching { Compartilhamento(auth).registrarPerfil() } // permite ser convidado por e-mail
+                            scope.launch { atualizarCompartilhamento() }
                             executarSessao(raiz.ifBlank { uid })
                         }
                     }
                 }
             }
             .launchIn(scope)
+        iniciarPush()
     }
+
+    /**
+     * R65 — mantém o token FCM deste aparelho em `users/<uid>/dispositivos/<id>` conforme (login × nuvem × interruptor × prefs).
+     * Fora do sincronismo de dados. Falhas são silenciosas (ver [com.meudinheiro.push.PushDispositivo.aviso]).
+     */
+    private fun iniciarPush() {
+        combine(prefs.storageModeFlow, authUidOuNulo(), prefs.cloudRootUidFlow, prefs.pushEnabledFlow, prefs.pushPrefsFlow) { modo, uid, raiz, ligado, p ->
+            PushEstado(uid, modo == StorageMode.FIREBASE, raiz, ligado, p)
+        }
+            .distinctUntilChanged()
+            .onEach { e ->
+                com.meudinheiro.push.PushDispositivo.sincronizar(appContext, e.uid, e.nuvem, e.ligado, e.raiz, e.prefs)
+            }
+            .launchIn(scope)
+    }
+
+    private data class PushEstado(val uid: String?, val nuvem: Boolean, val raiz: String, val ligado: Boolean, val prefs: com.meudinheiro.domain.PushPrefs)
 
     /** O Firebase pode estar indisponível (ex.: google-services ausente): nesse caso o app segue em modo local. */
     private fun authUidOuNulo() = runCatching { auth.uidFlow }.getOrElse {
@@ -135,6 +179,8 @@ class StorageManager(context: Context) {
     suspend fun usarMeusDados() = prefs.saveCloudRootUid("")
 
     suspend fun sair() {
+        // R65: remove o token deste aparelho ENQUANTO ainda há sessão (as regras só deixam o próprio uid apagar)
+        runCatching { com.meudinheiro.push.PushDispositivo.removerAntesDeSair(appContext, auth.uidAtual) }
         prefs.saveCloudRootUid("")
         auth.sair()
         db.syncMetaDao().limpar()

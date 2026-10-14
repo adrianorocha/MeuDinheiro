@@ -121,6 +121,9 @@ class MainActivity : AppCompatActivity() {
         } else if (intent?.action == AtalhosApp.ACAO_IMPORTAR_EXTRATOS) {
             AtalhosApp.pedirImportarExtratos() // R63: a revisão abre na tela principal, depois do login/biometria
             intent.action = null
+        } else if (intent?.action == com.meudinheiro.AtalhosCaptura.ACAO_SUGESTOES) {
+            com.meudinheiro.AtalhosCaptura.pedirSugestoes() // R64: abre Ferramentas > Sugestões de lançamento
+            intent.action = null
         }
     }
 

@@ -23,6 +23,11 @@ export function firebaseConfigurado(): boolean {
   return Boolean(config.apiKey && config.projectId && config.appId && config.authDomain);
 }
 
+/** R65 - usado pelo web push (firebase/messaging). */
+export function getFirebaseApp(): FirebaseApp {
+  return app();
+}
+
 function app(): FirebaseApp {
   return getApps().length > 0 ? getApp() : initializeApp(config);
 }

@@ -45,6 +45,7 @@ Firestore (modo nuvem, sincroniza com o app) ou no navegador (modo local).
    | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `storageBucket` |
    | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
    | `NEXT_PUBLIC_FIREBASE_APP_ID` | `appId` |
+   | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | (opcional, R65) chave pública de Web Push certificates do Cloud Messaging; sem ela o botão de notificações push fica oculto |
 
    As variáveis `NEXT_PUBLIC_*` são embutidas no build; reinicie o `npm run dev` ou refaça o `npm run build` ao alterá-las.
 7. (Opcional) Hospedar: `npm run build && firebase deploy --only hosting` (`firebase.json` publica `out/`).

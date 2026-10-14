@@ -70,7 +70,42 @@ class UserPreferences(private val context: Context) {
         private val KEY_IR_CONFIG = stringPreferencesKey("ir_config") // R61
         private val KEY_LIMITE_DIARIO_ATE_RECEITA = booleanPreferencesKey("limite_diario_ate_receita")
         private val KEY_LIMITE_DIARIO_AVISO = booleanPreferencesKey("limite_diario_aviso")
+        // R65 — push (FCM): interruptor geral (opt-in, padrão desligado) e preferências por tipo
+        private val KEY_PUSH_ENABLED = booleanPreferencesKey("push_enabled")
+        private val KEY_PUSH_VENCIMENTOS = booleanPreferencesKey("push_vencimentos")
+        private val KEY_PUSH_ORCAMENTO = booleanPreferencesKey("push_orcamento")
+        private val KEY_PUSH_RESUMO = booleanPreferencesKey("push_resumo_semanal")
+        private val KEY_PUSH_CONVITES = booleanPreferencesKey("push_convites")
     }
+
+    // ---- R65: notificações push (FCM). Interruptor geral NASCE DESLIGADO; cada tipo nasce ligado.
+    val pushEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_PUSH_ENABLED] ?: false }
+
+    suspend fun savePushEnabled(v: Boolean) {
+        context.dataStore.edit { it[KEY_PUSH_ENABLED] = v }
+    }
+
+    val pushPrefsFlow: Flow<com.meudinheiro.domain.PushPrefs> = context.dataStore.data.map { p ->
+        com.meudinheiro.domain.PushPrefs(
+            vencimentos = p[KEY_PUSH_VENCIMENTOS] ?: true,
+            orcamento = p[KEY_PUSH_ORCAMENTO] ?: true,
+            resumoSemanal = p[KEY_PUSH_RESUMO] ?: true,
+            convites = p[KEY_PUSH_CONVITES] ?: true
+        )
+    }
+
+    suspend fun savePushPref(tipo: com.meudinheiro.domain.TipoPush, ligado: Boolean) {
+        context.dataStore.edit {
+            val chave = when (tipo) {
+                com.meudinheiro.domain.TipoPush.VENCIMENTOS -> KEY_PUSH_VENCIMENTOS
+                com.meudinheiro.domain.TipoPush.ORCAMENTO -> KEY_PUSH_ORCAMENTO
+                com.meudinheiro.domain.TipoPush.RESUMO_SEMANAL -> KEY_PUSH_RESUMO
+                com.meudinheiro.domain.TipoPush.CONVITE -> KEY_PUSH_CONVITES
+            }
+            it[chave] = ligado
+        }
+    }
+
 
     // ---- armazenamento de dados (local × Firebase) ----
     val storageModeFlow: Flow<StorageMode> = context.dataStore.data
@@ -87,7 +122,7 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it[KEY_CLOUD_ROOT_UID] = uid }
     }
 
-    // ---- backup automático (R33)
+    // ---- backup automático (R33; R66: diário; continua LIGADO por padrão como no R33)
     val autoBackupEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_AUTO_BACKUP] ?: true }
 
     suspend fun saveAutoBackupEnabled(v: Boolean) {

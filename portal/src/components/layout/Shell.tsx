@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Clock,
   CreditCard,
+  DatabaseBackup,
   Eye,
   FileText,
   EyeOff,
@@ -29,6 +30,7 @@ import {
   Tags,
   TrendingDown,
   TrendingUp,
+  UserCog,
   Users,
   ListChecks,
   Wallet,
@@ -72,6 +74,7 @@ const ITENS: ItemNav[] = [
   { href: "/projetos/", rotulo: "Projetos", icone: FolderKanban },
   { href: "/dividas/", rotulo: "Dívidas", icone: TrendingDown },
   { href: "/pessoas/", rotulo: "Pessoas", icone: Users },
+  { href: "/membros/", rotulo: "Membros", icone: UserCog },
   { href: "/relatorios/", rotulo: "Relatórios", icone: BarChart3 },
   { href: "/imposto-de-renda/", rotulo: "Imposto de Renda", icone: FileText },
   { href: "/resumo/", rotulo: "Resumo", icone: Sparkles },
@@ -79,6 +82,7 @@ const ITENS: ItemNav[] = [
   { href: "/calendario/", rotulo: "Calendário", icone: CalendarDays },
   { href: "/conciliacao/", rotulo: "Conciliação", icone: GitCompareArrows },
   { href: "/lixeira/", rotulo: "Lixeira", icone: Trash2 },
+  { href: "/backups/", rotulo: "Backups", icone: DatabaseBackup },
   { href: "/configuracoes/", rotulo: "Configurações", icone: Settings },
 ];
 

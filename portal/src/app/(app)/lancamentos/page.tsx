@@ -17,6 +17,9 @@ import { lancamentosParaCsv } from "@/lib/csv";
 import { baixarArquivo } from "@/lib/download";
 import { useAgora, useDataset } from "@/lib/hooks";
 import { chaveTag, tagsUsadas, temTag } from "@/lib/finance/tags";
+import { autoresDistintos, filtrarQuemLancou, type SelecaoQuem } from "@/lib/finance/autoria";
+import { useCompartilhamento, usePode } from "@/lib/compartilhamento";
+import { useSession } from "@/lib/session";
 
 const PAGINA = 100;
 
@@ -31,6 +34,11 @@ export default function LancamentosPage() {
   const [tipo, setTipo] = useState("");
   const [status, setStatus] = useState("");
   const [autor, setAutor] = useState("");
+  // R67: visão "Conjunta" (padrão) x "Minhas despesas" e filtro "Quem lançou" (só em contas com membros).
+  const temMembros = useCompartilhamento((s) => s.temMembros);
+  const podeCriar = usePode("LANCAMENTO_CRIAR");
+  const meuUid = useSession((s) => s.user?.uid ?? null);
+  const [quem, setQuem] = useState<string>(""); // "" = conjunta | "eu" | "u:<uid>"
   const [conciliacao, setConciliacao] = useState("");
   const [tag, setTag] = useState("");
   const [busca, setBusca] = useState("");
@@ -53,9 +61,11 @@ export default function LancamentosPage() {
     return [...nomes.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [ds.categorias, ds.despesas]);
 
+  const outrosAutores = useMemo(() => autoresDistintos(ds.despesas, meuUid), [ds.despesas, meuUid]);
+
   const filtrados = useMemo(() => {
     const termo = normalizaNome(busca);
-    return ds.despesas
+    const lista = ds.despesas
       .filter((d) => {
         const m = mesAnoDe(d.data);
         if (ano && String(m.ano) !== ano) return false;
@@ -70,14 +80,16 @@ export default function LancamentosPage() {
         if (status === "pago" && !d.pago) return false;
         if (status === "pendente" && d.pago) return false;
         if (tag && !temTag(d, tag)) return false;
-        if (autor && (d.autor ?? "") !== autor) return false;
+        if (!temMembros && autor && (d.autor ?? "") !== autor) return false;
         if (conciliacao === "sim" && d.conciliadoEm == null) return false;
         if (conciliacao === "nao" && d.conciliadoEm != null) return false;
         if (termo && !normalizaNome(`${d.descricao} ${d.categoria}`).includes(termo)) return false;
         return true;
       })
       .sort((a, b) => b.data - a.data || b.id - a.id);
-  }, [ds.despesas, mes, ano, conta, categoria, tipo, status, autor, conciliacao, busca, tag]);
+    const selecaoQuem: SelecaoQuem = quem === "eu" ? { tipo: "EU" } : quem.startsWith("u:") ? { tipo: "MEMBRO", uid: quem.slice(2) } : { tipo: "TODOS" };
+    return temMembros ? filtrarQuemLancou(lista, selecaoQuem, meuUid) : lista;
+  }, [ds.despesas, mes, ano, conta, categoria, tipo, status, autor, conciliacao, busca, tag, temMembros, quem, meuUid]);
 
   const tagsDisponiveis = useMemo(() => tagsUsadas(ds.despesas), [ds.despesas]);
 
@@ -110,12 +122,16 @@ export default function LancamentosPage() {
             >
               Exportar CSV
             </Button>
-            <Button icone={<Sparkles size={16} aria-hidden />} onClick={() => setPorTexto(true)}>
-              Lançar por texto
-            </Button>
-            <Button variante="primary" icone={<Plus size={16} aria-hidden />} onClick={() => { setPredef(undefined); setNovo(true); }}>
-              Novo lançamento
-            </Button>
+            {podeCriar && (
+              <Button icone={<Sparkles size={16} aria-hidden />} onClick={() => setPorTexto(true)}>
+                Lançar por texto
+              </Button>
+            )}
+            {podeCriar && (
+              <Button variante="primary" icone={<Plus size={16} aria-hidden />} onClick={() => { setPredef(undefined); setNovo(true); }}>
+                Novo lançamento
+              </Button>
+            )}
           </>
         }
       />
@@ -182,7 +198,28 @@ export default function LancamentosPage() {
               ))}
             </Select>
           )}
-          {autores.length > 0 && (
+          {temMembros && (
+            <>
+              <div role="group" aria-label="Visão" className="col-span-2 flex items-end gap-2 lg:col-span-1">
+                <Button type="button" tamanho="sm" variante={quem === "" ? "primary" : undefined} aria-pressed={quem === ""} onClick={() => { setQuem(""); setLimite(PAGINA); }}>
+                  Conjunta
+                </Button>
+                <Button type="button" tamanho="sm" variante={quem === "eu" ? "primary" : undefined} aria-pressed={quem === "eu"} onClick={() => { setQuem("eu"); setLimite(PAGINA); }}>
+                  Minhas despesas
+                </Button>
+              </div>
+              <Select rotulo="Quem lançou" value={quem} onChange={(e) => { setQuem(e.target.value); setLimite(PAGINA); }}>
+                <option value="">Todos</option>
+                <option value="eu">Eu</option>
+                {outrosAutores.map((a) => (
+                  <option key={a.uid} value={`u:${a.uid}`}>
+                    {a.nome}
+                  </option>
+                ))}
+              </Select>
+            </>
+          )}
+          {!temMembros && autores.length > 0 && (
             <Select rotulo="Quem lançou" value={autor} onChange={(e) => { setAutor(e.target.value); setLimite(PAGINA); }}>
               <option value="">Todos</option>
               {autores.map((a) => (

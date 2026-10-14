@@ -47,6 +47,7 @@ const despesaSchema = z.object({
   conciliadoEm: num.nullish(),
   tags: z.array(z.string()).nullish(),
   anexos: z.array(z.unknown()).nullish(),
+  autorUid: z.string().nullish(), // R67
 });
 
 const despesaFixaSchema = z.object({
@@ -276,6 +277,7 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
       conciliadoEm: d.conciliadoEm ? d.conciliadoEm : null,
       ...(normalizarTags(d.tags).length > 0 ? { tags: normalizarTags(d.tags) } : {}),
       ...(normalizarAnexos(d.anexos).length > 0 ? { anexos: normalizarAnexos(d.anexos) } : {}), // R60
+      ...(d.autorUid && d.autorUid.trim() ? { autorUid: d.autorUid.trim() } : {}), // R67
     };
   });
   const ds: Dataset = {

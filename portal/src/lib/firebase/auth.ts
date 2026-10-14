@@ -37,5 +37,8 @@ export async function recuperarSenha(email: string): Promise<void> {
 }
 
 export async function sair(): Promise<void> {
+  // R65: remove o token de push deste navegador ENQUANTO ainda há sessão (as regras só deixam o próprio uid apagar). Best effort.
+  const uid = getFirebaseAuth().currentUser?.uid;
+  if (uid) await import("./push").then((m) => m.removerPushAoSair(uid)).catch(() => undefined);
   await signOut(getFirebaseAuth());
 }

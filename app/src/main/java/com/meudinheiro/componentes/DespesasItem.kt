@@ -66,7 +66,9 @@ fun DespesasItem(
     /** Menu completo de ações (⋮ e toque longo): ver [LancamentoAcoesHost]. Sem ele, mantém o diálogo antigo. */
     onAcoes: ((DespesasDomain) -> Unit)? = null,
     /** Pede a confirmação de exclusão (swipe para a esquerda) em vez de excluir direto. */
-    onPedirExclusao: ((DespesasDomain) -> Unit)? = null
+    onPedirExclusao: ((DespesasDomain) -> Unit)? = null,
+    /** R67: "por <nome>" discreto, só em contas com membros (nulo = não mostra; contas individuais ficam como antes). */
+    rotuloAutor: String? = null
 ) {
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
@@ -140,7 +142,8 @@ fun DespesasItem(
                 onTogglePago = onTogglePago,
                 onClick = onClick,
                 onLongClick = { if (onAcoes != null) onAcoes(item) else showDialog = true },
-                onMais = onAcoes?.let { f -> { f(item) } }
+                onMais = onAcoes?.let { f -> { f(item) } },
+                rotuloAutor = rotuloAutor
             )
         }
     )
@@ -296,7 +299,8 @@ fun CardItemContent(
     onTogglePago: ((DespesasDomain) -> Unit)?,
     onClick: (() -> Unit)?,
     onLongClick: () -> Unit,
-    onMais: (() -> Unit)? = null
+    onMais: (() -> Unit)? = null,
+    rotuloAutor: String? = null
 ) {
     val context = LocalContext.current
     val dataFormatada = remember(item.data) { DateUtils.formatarData(Date(item.data)) }
@@ -369,6 +373,12 @@ fun CardItemContent(
                     )
                 }
                 IndicadorAnexos(item.anexos) // R60
+                if (rotuloAutor != null) { // R67
+                    Text(
+                        text = rotuloAutor, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             // ==========================================
