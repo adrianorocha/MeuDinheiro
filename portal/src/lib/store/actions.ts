@@ -66,6 +66,8 @@ import {
   excluirPessoa,
   quitarAcerto,
   salvarPessoa,
+  vincularLancamentos,
+  type VinculoLancamentos,
   type AcertoAvulso,
   type DivisaoDespesa,
   type QuitacaoAcerto,
@@ -332,6 +334,8 @@ export const acoes = {
   criarAcertoAvulso: (input: AcertoAvulso) => exec()((ds, ctx) => criarAcertoAvulso(ds, input, ctx)),
   quitarAcerto: (input: QuitacaoAcerto) => exec()((ds, ctx) => quitarAcerto(ds, input, ctx)),
   excluirAcerto: (id: number) => exec()((ds) => excluirAcerto(ds, id)),
+  // R68 - vincular lançamentos existentes a uma pessoa (só cria acertos; não altera lançamentos nem saldos)
+  vincularLancamentos: (input: VinculoLancamentos) => exec()((ds, ctx) => vincularLancamentos(ds, input, ctx)),
 
   // categorias
   salvarCategoria: (dados: { nome: string; pic: string }, id?: number) =>

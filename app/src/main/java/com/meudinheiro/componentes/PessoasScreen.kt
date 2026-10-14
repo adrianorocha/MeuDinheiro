@@ -92,12 +92,14 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
     var criandoPessoa by remember { mutableStateOf(false) }
     var avulso by remember { mutableStateOf<Pair<String, Int?>?>(null) }
     var quitando by remember { mutableStateOf<Acerto?>(null) }
+    var vinculando by remember { mutableStateOf<Pair<Boolean, Int?>?>(null) }
     var cobrando by remember { mutableStateOf<Pessoa?>(null) }
     var excluirPessoa by remember { mutableStateOf<Pessoa?>(null) }
     var excluirAcerto by remember { mutableStateOf<Acerto?>(null) }
     var periodo by remember { mutableStateOf(PeriodoRateio.MES) }
     var abertos by remember { mutableStateOf(setOf<Int>()) }
     var aviso by remember { mutableStateOf<String?>(null) }
+    var avisoOk by remember { mutableStateOf<String?>(null) }
 
     fun moeda(c: Long) = formatarMoedaBR(Dinheiro.reais(c), isPrivate)
     val fmt = remember { SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")) }
@@ -111,27 +113,35 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
         Rateios.resumo(despesas, acertos, if (periodo == PeriodoRateio.MES) ini..fim else null)
     }
     val idsDespesas = remember(despesas) { despesas.map { it.id }.toHashSet() }
+    val despesasPorId = remember(despesas) { despesas.associateBy { it.id } }
     val totalReceber = saldos.sumOf { it.aReceber }
     val totalPagar = saldos.sumOf { it.aPagar }
 
     @Composable
     fun LinhaAcerto(a: Acerto) {
         val orfao = a.despesaId != null && a.despesaId !in idsDespesas
+        val origem = a.despesaId?.let { despesasPorId[it] }
+        val vinculo = a.grupoRateio?.startsWith("vinculo:") == true
         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(a.descricao, color = Color.White, fontSize = 13.sp, maxLines = 1)
                 Text(
                     listOfNotNull(
                         fmt.format(Date(a.data)), if (a.tipo == Rateios.A_RECEBER) "a receber" else "a pagar",
-                        if (a.grupoRateio != null) "rateio" else null, if (orfao) "lançamento removido" else null,
+                        if (a.grupoRateio != null) (if (vinculo) "vinculado" else "rateio") else null, if (orfao) "lançamento removido" else null,
                         if (a.quitado && a.quitadoEm != null) "quitado em ${fmt.format(Date(a.quitadoEm))}" else null
                     ).joinToString(" · "),
                     color = if (orfao) NeonOrange else Color.White.copy(0.55f), fontSize = 11.sp
                 )
+                origem?.let { Text("lançamento de ${SimpleDateFormat("dd/MM", Locale("pt", "BR")).format(it.data)} — ${it.descricao}", color = Color.White.copy(0.55f), fontSize = 11.sp, maxLines = 1) }
             }
             Text(formatarMoedaBR(a.valor, isPrivate), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             if (!a.quitado) TextButton(onClick = { quitando = a }) { Text(if (a.tipo == Rateios.A_RECEBER) "Receber" else "Pagar", color = NeonCyan, fontSize = 12.sp) }
-            IconButton(onClick = { excluirAcerto = a }) { Icon(Icons.Default.Delete, "Excluir acerto", tint = NeonRed) }
+            if (vinculo) {
+                if (!a.quitado) TextButton(onClick = { excluirAcerto = a }) { Text("Desvincular", color = NeonRed, fontSize = 12.sp) }
+            } else {
+                IconButton(onClick = { excluirAcerto = a }) { Icon(Icons.Default.Delete, "Excluir acerto", tint = NeonRed) }
+            }
         }
     }
 
@@ -154,6 +164,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
                 )
             }
             aviso?.let { msg -> item { Text(msg, color = NeonRed, fontSize = 13.sp) } }
+            avisoOk?.let { msg -> item { Text(msg, color = NeonGreen, fontSize = 13.sp) } }
             item {
                 Column(Modifier.fillMaxWidth().background(CardFundoR58, RoundedCornerShape(14.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -167,6 +178,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { avulso = Rateios.A_RECEBER to null }, enabled = pessoas.isNotEmpty()) { Text("Emprestei", color = NeonCyan) }
                         TextButton(onClick = { avulso = Rateios.A_PAGAR to null }, enabled = pessoas.isNotEmpty()) { Text("Devo", color = NeonCyan) }
+                        TextButton(onClick = { vinculando = true to null }, enabled = pessoas.isNotEmpty()) { Text("Vincular lançamentos", color = NeonCyan) }
                     }
                 }
             }
@@ -240,6 +252,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
                         TextButton(onClick = { cobrando = s.pessoa }, enabled = s.aReceber > 0) { Text("Cobrar", color = NeonCyan) }
                         TextButton(onClick = { avulso = Rateios.A_RECEBER to s.pessoa.id }) { Text("Emprestei", color = NeonCyan) }
                         TextButton(onClick = { avulso = Rateios.A_PAGAR to s.pessoa.id }) { Text("Devo", color = NeonCyan) }
+                        TextButton(onClick = { vinculando = true to s.pessoa.id }) { Text("Vincular", color = NeonCyan) }
                     }
                     if (s.pendentes.isNotEmpty()) {
                         Text("Pendentes", color = Color.White.copy(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -297,6 +310,22 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
         )
     }
 
+    vinculando?.let { (_, pessoaFixa) ->
+        VincularLancamentosDialog(
+            pessoas = pessoas, pessoaInicial = pessoaFixa, despesas = despesas, acertos = acertos, contas = contas, onDismiss = { vinculando = null },
+            onConfirmar = { pessoaId, tipo, itens, total, aoErro ->
+                scope.launch {
+                    try {
+                        val n = repository.vincularLancamentos(pessoaId, tipo, itens)
+                        aviso = null
+                        vinculando = null
+                        avisoOk = "$n lançamento(s) vinculado(s) (${FormatoCentavos.brl(total)}). Saldo e lançamentos não mudaram."
+                    } catch (e: RegraFinanceiraException) { aoErro(e.message) }
+                }
+            }
+        )
+    }
+
     cobrando?.let { p -> CobrarDialog(p, acertos.filter { it.pessoaId == p.id }) { cobrando = null } }
 
     excluirPessoa?.let { p ->
@@ -319,9 +348,21 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
     excluirAcerto?.let { a ->
         AlertDialog(
             onDismissRequest = { excluirAcerto = null }, containerColor = DeepSpaceBlue,
-            title = { Text("Excluir acerto", color = Color.White) },
-            text = { Text("Excluir “${a.descricao}” (${formatarMoedaBR(a.valor, false)})? O lançamento de origem, se houver, não é alterado.", color = Color.White.copy(0.8f)) },
-            confirmButton = { TextButton(onClick = { scope.launch { repository.excluirAcerto(a.id) }; excluirAcerto = null }) { Text("Excluir", color = NeonRed) } },
+            title = { Text(if (a.grupoRateio?.startsWith("vinculo:") == true) "Desvincular lançamento" else "Excluir acerto", color = Color.White) },
+            text = {
+                Text(
+                    if (a.grupoRateio?.startsWith("vinculo:") == true) "Desvincular “${a.descricao}” (${formatarMoedaBR(a.valor, false)})? Só o controle é removido; o lançamento e o saldo não mudam."
+                    else "Excluir “${a.descricao}” (${formatarMoedaBR(a.valor, false)})? O lançamento de origem, se houver, não é alterado.",
+                    color = Color.White.copy(0.8f)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    // Desvincular exclui só o acerto NÃO quitado; quitado nunca é apagado por esta ação.
+                    if (!(a.quitado && a.grupoRateio?.startsWith("vinculo:") == true)) scope.launch { repository.excluirAcerto(a.id) }
+                    excluirAcerto = null
+                }) { Text(if (a.grupoRateio?.startsWith("vinculo:") == true) "Desvincular" else "Excluir", color = NeonRed) }
+            },
             dismissButton = { TextButton(onClick = { excluirAcerto = null }) { Text("Cancelar", color = Color.White.copy(0.7f)) } }
         )
     }

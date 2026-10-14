@@ -4,6 +4,7 @@ import { recalcularTudo } from "./calc";
 import { conta, dataset, dt, desp } from "./fixtures";
 import { excluirLancamento } from "./operations";
 import {
+  comprometidoAReceber,
   criarAcertoAvulso,
   desfazerRateio,
   dividirDespesa,
@@ -16,6 +17,7 @@ import {
   salvarPessoa,
   saldosPorPessoa,
   textoCobranca,
+  vincularLancamentos,
 } from "./rateios";
 import type { Acerto, Dataset } from "./types";
 
@@ -280,5 +282,142 @@ describe("R59 - backup", () => {
     const parcial = importarBackup(JSON.stringify({ pessoas: [{ id: 3, nome: "Z" }], acertos: [{ id: 4, pessoaId: 3, valor: 12.345, descricao: "d", despesaId: 777 }] }), ctx.agora);
     if (!parcial.ok) throw new Error(parcial.erro);
     expect(parcial.dataset.acertos[0]).toMatchObject({ tipo: "A_RECEBER", valor: 12.35, quitado: false, despesaId: 777, quitadoEm: null, grupoRateio: null });
+  });
+});
+
+// ---------------------------------------------------------------- R68 (mesmos cenários de RateiosTest.kt)
+function baseVinculo(): Dataset {
+  const ds = dataset({
+    contas: [conta({ id: 1, conta: "111" })],
+    despesas: [
+      desp({ id: 100, descricao: "Saldo inicial", valor: 1000, tipo: "CREDITO", natureza: "SALDO_INICIAL", conta: "111" }),
+      desp({ id: 200, descricao: "Pizza", valor: 100, data: dt(2025, 6, 10), conta: "111", categoria: "Alimentação" }),
+      desp({ id: 201, descricao: "Cinema", valor: 60, data: dt(2025, 6, 12), conta: "111", categoria: "Lazer" }),
+      desp({ id: 202, descricao: "Transferência", valor: 30, natureza: "TRANSFERENCIA", conta: "111" }),
+      desp({ id: 203, descricao: "Pagamento de fatura", valor: 30, natureza: "PAGAMENTO_FATURA", conta: "111" }),
+      desp({ id: 204, descricao: "Aporte meta", valor: 30, natureza: "APORTE_META", conta: "111" }),
+      desp({ id: 205, descricao: "Resgate meta", valor: 30, tipo: "CREDITO", natureza: "RESGATE_META", conta: "111" }),
+      desp({ id: 206, descricao: "Ajuste", valor: 30, natureza: "AJUSTE", conta: "111" }),
+      desp({ id: 300, descricao: "Salário", valor: 500, tipo: "CREDITO", data: dt(2025, 6, 5), conta: "111", categoria: "Salário" }),
+    ],
+    pessoas: [
+      { id: 1, nome: "Ana", contato: null },
+      { id: 2, nome: "Bia", contato: null },
+    ],
+  });
+  return recalcularTudo(ds);
+}
+
+describe("R68 - vincular lançamentos existentes", () => {
+  it("vincula 1 lançamento: só cria acerto, saldo e lançamentos intactos", () => {
+    const ds = baseVinculo();
+    const r = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200 }] }, ctx);
+    if (!r.ok) throw new Error(r.erro);
+    expect(r.ds.despesas).toBe(ds.despesas);
+    expect(r.ds.contas).toBe(ds.contas);
+    expect(r.ds.cartoes).toBe(ds.cartoes);
+    expect(r.acertos).toHaveLength(1);
+    expect(r.acertos[0]).toMatchObject({ pessoaId: 1, tipo: "A_RECEBER", valor: 100, descricao: "Pizza", data: dt(2025, 6, 10), despesaId: 200, quitado: false, quitadoEm: null, grupoRateio: "vinculo:200" });
+    expect(saldosPorPessoa(r.ds.pessoas, r.ds.acertos)[0]).toMatchObject({ aReceber: 10000, liquido: 10000 });
+  });
+
+  it("vincula vários de uma vez, com valor parcial e A_PAGAR", () => {
+    const ds = baseVinculo();
+    const r = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 40.5 }, { despesaId: 201 }] }, ctx);
+    if (!r.ok) throw new Error(r.erro);
+    expect(r.acertos.map((a) => a.valor)).toEqual([40.5, 60]);
+    expect(new Set(r.acertos.map((a) => a.id)).size).toBe(2);
+    // A_PAGAR não tem o teto dos A_RECEBER (mas é ≤ valor do lançamento)
+    expect(vincularLancamentos(r.ds, { pessoaId: 2, tipo: "A_PAGAR", itens: [{ despesaId: 200 }] }, ctx)).toMatchObject({ ok: true });
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 100.01 }] }, ctx)).toMatchObject({ ok: false });
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 0 }] }, ctx)).toMatchObject({ ok: false });
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_PAGAR", itens: [{ despesaId: 200, valor: 100.01 }] }, ctx)).toMatchObject({ ok: false });
+  });
+
+  it("teto: A_RECEBER de outras pessoas e divisões contam; indicador nunca fica negativo", () => {
+    const ds = baseVinculo();
+    const a = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 70 }] }, ctx);
+    if (!a.ok) throw new Error(a.erro);
+    expect(comprometidoAReceber(a.ds.acertos, 200)).toBe(7000);
+    expect(vincularLancamentos(a.ds, { pessoaId: 2, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 30.01 }] }, ctx)).toMatchObject({ ok: false });
+    const cabe = vincularLancamentos(a.ds, { pessoaId: 2, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 30 }] }, ctx);
+    if (!cabe.ok) throw new Error(cabe.erro);
+    expect(gastoLiquido(ds.despesas[1], cabe.ds.acertos)).toBe(0);
+    // divisão que passaria do total com o vínculo existente é recusada; a que cabe segue funcionando
+    expect(dividirDespesa(a.ds, { despesaId: 200, modo: "IGUAL", participantes: [{ pessoaId: 2 }] }, ctx)).toMatchObject({ ok: false });
+    expect(dividirDespesa(a.ds, { despesaId: 200, modo: "VALOR", participantes: [{ pessoaId: 2, valor: 3000 }] }, ctx)).toMatchObject({ ok: true });
+  });
+
+  it("recusa naturezas internas, lançamento/pessoa inexistente e itens repetidos", () => {
+    const ds = baseVinculo();
+    for (const id of [100, 202, 203, 204, 205, 206]) {
+      expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_PAGAR", itens: [{ despesaId: id }] }, ctx)).toMatchObject({ ok: false });
+    }
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 999 }] }, ctx)).toEqual({ ok: false, erro: "Lançamento não encontrado." });
+    expect(vincularLancamentos(ds, { pessoaId: 9, tipo: "A_RECEBER", itens: [{ despesaId: 200 }] }, ctx)).toEqual({ ok: false, erro: "Pessoa não encontrada." });
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [] }, ctx)).toMatchObject({ ok: false });
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200 }, { despesaId: 200 }] }, ctx)).toMatchObject({ ok: false });
+  });
+
+  it("duplicidade: mesma pessoa e mesmo tipo é recusada; tipo ou pessoa diferente passa", () => {
+    const ds = baseVinculo();
+    const a = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 10 }] }, ctx);
+    if (!a.ok) throw new Error(a.erro);
+    const dup = vincularLancamentos(a.ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 5 }] }, ctx);
+    expect(dup).toMatchObject({ ok: false });
+    if (!dup.ok) expect(dup.erro).toContain("já vinculado");
+    expect(vincularLancamentos(a.ds, { pessoaId: 1, tipo: "A_PAGAR", itens: [{ despesaId: 200, valor: 5 }] }, ctx)).toMatchObject({ ok: true });
+    expect(vincularLancamentos(a.ds, { pessoaId: 2, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 5 }] }, ctx)).toMatchObject({ ok: true });
+  });
+
+  it("atomicidade: um item inválido não cria nenhum acerto", () => {
+    const ds = baseVinculo();
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200 }, { despesaId: 202 }, { despesaId: 201 }] }, ctx)).toMatchObject({ ok: false });
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200 }, { despesaId: 201, valor: 999 }] }, ctx)).toMatchObject({ ok: false });
+    expect(ds.acertos).toEqual([]);
+  });
+
+  it("receita (CREDITO): só A_PAGAR", () => {
+    const ds = baseVinculo();
+    expect(vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 300 }] }, ctx)).toMatchObject({ ok: false });
+    const r = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_PAGAR", itens: [{ despesaId: 300, valor: 250 }] }, ctx);
+    if (!r.ok) throw new Error(r.erro);
+    expect(r.acertos[0]).toMatchObject({ tipo: "A_PAGAR", valor: 250, despesaId: 300 });
+    expect(saldosPorPessoa(r.ds.pessoas, r.ds.acertos)[0]).toMatchObject({ aPagar: 25000, liquido: -25000 });
+  });
+
+  it("desfazer a divisão NÃO apaga vínculos (grupo vinculo:); desvincular é excluirAcerto", () => {
+    const ds = baseVinculo();
+    const v = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 20 }] }, ctx);
+    if (!v.ok) throw new Error(v.erro);
+    const d = dividirDespesa(v.ds, { despesaId: 200, modo: "VALOR", participantes: [{ pessoaId: 2, valor: 3000 }] }, ctx);
+    if (!d.ok) throw new Error(d.erro);
+    const x = desfazerRateio(d.ds, 200);
+    if (!x.ok) throw new Error(x.erro);
+    expect(x.removidos).toBe(1);
+    expect(x.ds.acertos).toEqual(v.ds.acertos);
+    expect(excluirAcerto(x.ds, v.acertos[0].id)).toMatchObject({ ok: true });
+  });
+
+  it("indicador gastoLiquido/resumoRateios reflete o vínculo", () => {
+    const ds = baseVinculo();
+    const v = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200, valor: 35.5 }] }, ctx);
+    if (!v.ok) throw new Error(v.erro);
+    expect(gastoLiquido(ds.despesas[1], v.ds.acertos)).toBe(6450);
+    const resumo = resumoRateios(v.ds.despesas, v.ds.acertos);
+    expect(resumo).toMatchObject({ totalRateado: 10000, aReceberTerceiros: 3550, liquido: 6450 });
+    expect(resumo.itens[0]).toMatchObject({ despesaId: 200, pendente: 3550, orfao: false });
+  });
+
+  it("backup: ida e volta com vínculo e backup antigo sem acertos continua importando", () => {
+    const ds = baseVinculo();
+    const v = vincularLancamentos(ds, { pessoaId: 1, tipo: "A_RECEBER", itens: [{ despesaId: 200 }] }, ctx);
+    if (!v.ok) throw new Error(v.erro);
+    const volta = importarBackup(JSON.stringify(exportarBackup(v.ds)), ctx.agora);
+    if (!volta.ok) throw new Error(volta.erro);
+    expect(volta.dataset.acertos).toEqual(v.ds.acertos);
+    const antigo = importarBackup(JSON.stringify({ versaoBackup: 2, despesas: [] }), ctx.agora);
+    if (!antigo.ok) throw new Error(antigo.erro);
+    expect(antigo.dataset.acertos).toEqual([]);
   });
 });

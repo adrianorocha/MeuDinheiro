@@ -245,6 +245,83 @@ class DividasRateiosRepositoryTest {
         assertEquals(5000L, Rateios.saldosPorPessoa(db.pessoaDao().obterTodasStatic(), acertos()).first { it.pessoa.id == ana }.aReceber)
     }
 
+    // ------------------------------------------------------------------ R68 - vincular lançamentos existentes
+
+    private fun cinema() = runBlocking {
+        repo.registrarLancamento(
+            Despesa(descricao = "Cinema", valor = 60.0, data = Date(1_760_100_000_000), categoria = "Lazer", conta = "111", pic = "p",
+                tipo = TipoDespesa.DEBITO, mes = 0, ano = 0, pago = true)
+        )
+    }
+
+    @Test fun `R68 vincular cria so acertos - lancamentos e saldo identicos`() = runBlocking {
+        val (ana, bia) = duasPessoas()
+        val p = pizza()
+        val c = cinema()
+        val antes = despesas().sortedBy { it.id }
+        val saldoAntes = saldo()
+        val n = repo.vincularLancamentos(ana, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(p, 40.0), Rateios.ItemVinculo(c)))
+        assertEquals(2, n)
+        assertEquals(antes, despesas().sortedBy { it.id })
+        assertEquals(saldoAntes, saldo(), 0.0)
+        val a = acertos().first { it.despesaId == p }
+        assertEquals("vinculo:$p", a.grupoRateio)
+        assertEquals(40.0, a.valor, 0.0)
+        assertEquals("Pizza", a.descricao)
+        assertEquals(3L, Rateios.saldosPorPessoa(db.pessoaDao().obterTodasStatic(), acertos()).first { it.pessoa.id == ana }.aReceber / 3333L)
+        // duplicidade e teto
+        exige { runBlocking { repo.vincularLancamentos(ana, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(p, 5.0))) } }
+        exige { runBlocking { repo.vincularLancamentos(bia, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(p, 60.01))) } }
+        repo.vincularLancamentos(bia, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(p, 60.0)))
+        assertEquals(0L, Rateios.gastoLiquido(despesas().first { it.id == p }, acertos()))
+    }
+
+    @Test fun `R68 atomico - item invalido nao cria nenhum acerto`() = runBlocking {
+        val (ana, _) = duasPessoas()
+        val p = pizza()
+        val saldoInicial = runBlocking { repo.registrarLancamento(Despesa(descricao = "Transf", valor = 10.0, data = Date(1_760_000_000_000), categoria = "T", conta = "111", pic = "p", tipo = TipoDespesa.DEBITO, mes = 0, ano = 0, pago = true, natureza = Natureza.TRANSFERENCIA)) }
+        exige { runBlocking { repo.vincularLancamentos(ana, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(p), Rateios.ItemVinculo(saldoInicial))) } }
+        assertTrue(acertos().isEmpty())
+    }
+
+    @Test fun `R68 desfazer a divisao nao apaga o vinculo e desvincular e excluir o acerto`() = runBlocking {
+        val (ana, bia) = duasPessoas()
+        val p = pizza()
+        repo.vincularLancamentos(ana, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(p, 20.0)))
+        repo.dividirDespesa(p, Rateios.Modo.VALOR, listOf(Rateios.Participante(bia, valor = 3000)))
+        exige { runBlocking { repo.dividirDespesa(p + 0, Rateios.Modo.VALOR, listOf(Rateios.Participante(bia, valor = 100))) } } // já dividido
+        assertEquals(2, acertos().size)
+        repo.desfazerRateio(p)
+        val resta = acertos().single()
+        assertEquals("vinculo:$p", resta.grupoRateio)
+        repo.excluirAcerto(resta.id)
+        assertTrue(acertos().isEmpty())
+    }
+
+    @Test fun `R68 divisao que passaria do total com vinculo existente e recusada`() = runBlocking {
+        val (ana, bia) = duasPessoas()
+        val p = pizza()
+        repo.vincularLancamentos(ana, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(p, 70.0)))
+        exige { runBlocking { repo.dividirDespesa(p, Rateios.Modo.IGUAL, listOf(Rateios.Participante(bia))) } }
+        repo.dividirDespesa(p, Rateios.Modo.VALOR, listOf(Rateios.Participante(bia, valor = 3000)))
+        assertEquals(0L, Rateios.gastoLiquido(despesas().single { it.id == p }, acertos()))
+    }
+
+    @Test fun `R68 receita so A_PAGAR e backup ida e volta com vinculo`() = runBlocking {
+        val (ana, _) = duasPessoas()
+        val salario = repo.registrarLancamento(
+            Despesa(descricao = "Salário", valor = 500.0, data = Date(1_760_000_000_000), categoria = "Salário", conta = "111", pic = "p",
+                tipo = TipoDespesa.CREDITO, mes = 0, ano = 0, pago = true)
+        )
+        exige { runBlocking { repo.vincularLancamentos(ana, Rateios.A_RECEBER, listOf(Rateios.ItemVinculo(salario))) } }
+        repo.vincularLancamentos(ana, Rateios.A_PAGAR, listOf(Rateios.ItemVinculo(salario, 250.0)))
+        val a0 = acertos()
+        val json = repo.gerarBackup()
+        repo.limparBancoDeDadosCompleto()
+        repo.restaurarBackupCompleto(json)
+        assertEquals(a0, acertos())
+    }
+
     // ------------------------------------------------------------------ backup
 
     @Test fun `backup ida e volta inclui dividas, pessoas e acertos`() = runBlocking {

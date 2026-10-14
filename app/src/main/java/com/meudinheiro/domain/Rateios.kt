@@ -161,4 +161,72 @@ object Rateios {
         pix?.trim()?.takeIf { it.isNotEmpty() }?.let { linhas += "Chave PIX: $it" }
         return linhas.joinToString("\n")
     }
+    // ------------------------------------------------------------ R68 — vincular lançamentos já existentes
+
+    fun grupoVinculo(despesaId: Long) = "vinculo:$despesaId"
+
+    /** Centavos já comprometidos com acertos A_RECEBER de um lançamento (quitados ou não, qualquer pessoa, qualquer origem). */
+    fun comprometidoAReceber(acertos: List<Acerto>, despesaId: Long): Long =
+        acertos.filter { it.tipo == A_RECEBER && it.despesaId == despesaId }.sumOf { Dinheiro.centavos(it.valor) }
+
+    /** Centavos vinculados por [vincular] (grupo `vinculo:`) a um lançamento: entram no teto da divisão (`dividirDespesa`). */
+    fun vinculadoAReceber(acertos: List<Acerto>, despesaId: Long): Long =
+        acertos.filter { it.tipo == A_RECEBER && it.despesaId == despesaId && it.grupoRateio == grupoVinculo(despesaId) }.sumOf { Dinheiro.centavos(it.valor) }
+
+    /** [valor] em reais; `null` = valor do lançamento. Parcial permitido (≤ valor do lançamento). */
+    data class ItemVinculo(val despesaId: Long, val valor: Double? = null)
+
+    sealed class ResultadoVinculo {
+        data class Ok(val acertos: List<Acerto>) : ResultadoVinculo()
+        data class Erro(val mensagem: String) : ResultadoVinculo()
+    }
+
+    /**
+     * Vincula lançamentos JÁ EXISTENTES a uma pessoa (paridade com `vincularLancamentos` do portal). Devolve SOMENTE os acertos a
+     * inserir (`id = 0`); lançamentos, contas, cartões e KPIs não são tocados. Tudo ou nada: o primeiro item inválido devolve [ResultadoVinculo.Erro].
+     *
+     * Regras: só natureza NORMAL; receita (CREDITO) só aceita A_PAGAR; A_RECEBER ≤ total − A_RECEBER já comprometidos (o "quanto você realmente
+     * gastou" nunca fica negativo); A_PAGAR ≤ valor do lançamento; mesmo lançamento + mesma pessoa + mesmo tipo = "já vinculado".
+     * O grupo `vinculo:<id>` difere de `rateio:<id>`: "Desfazer divisão" nunca apaga vínculos; desvincular = excluir o acerto (não quitado).
+     */
+    fun vincular(
+        despesaPorId: (Long) -> Despesa?, acertos: List<Acerto>, pessoas: List<Pessoa>, pessoaId: Int, tipo: String, itens: List<ItemVinculo>
+    ): ResultadoVinculo {
+        val pessoa = pessoas.firstOrNull { it.id == pessoaId } ?: return ResultadoVinculo.Erro("Pessoa não encontrada.")
+        if (tipo != A_RECEBER && tipo != A_PAGAR) return ResultadoVinculo.Erro("Tipo de acerto inválido.")
+        if (itens.isEmpty()) return ResultadoVinculo.Erro("Escolha ao menos um lançamento.")
+        if (itens.map { it.despesaId }.toSet().size != itens.size) return ResultadoVinculo.Erro("O mesmo lançamento foi escolhido duas vezes.")
+
+        val novos = ArrayList<Acerto>()
+        for (item in itens) {
+            val d = despesaPorId(item.despesaId) ?: return ResultadoVinculo.Erro("Lançamento não encontrado.")
+            val rotulo = "“${d.descricao}”"
+            if (d.natureza != Natureza.NORMAL) {
+                return ResultadoVinculo.Erro("$rotulo: só lançamentos comuns podem ser vinculados (não vale transferência, fatura, meta, ajuste nem saldo inicial).")
+            }
+            if (tipo == A_RECEBER && d.tipo == com.meudinheiro.data.TipoDespesa.CREDITO) {
+                return ResultadoVinculo.Erro("$rotulo é uma receita: só dá para registrar “Eu devo a ela” (repasse).")
+            }
+            val total = Dinheiro.centavos(d.valor)
+            val v = item.valor
+            if (v != null && !v.isFinite()) return ResultadoVinculo.Erro("$rotulo: o valor deve ser maior que zero.")
+            val centavos = if (v == null) total else Dinheiro.centavos(v)
+            if (centavos <= 0) return ResultadoVinculo.Erro("$rotulo: o valor deve ser maior que zero.")
+            if (centavos > total) return ResultadoVinculo.Erro("$rotulo: o valor passa do valor do lançamento (${FormatoCentavos.brl(total)}).")
+            if (acertos.any { it.pessoaId == pessoa.id && it.tipo == tipo && it.despesaId == d.id }) {
+                return ResultadoVinculo.Erro("$rotulo: já vinculado a ${pessoa.nome}. Desvincule (exclua o acerto) para vincular de novo com outro valor.")
+            }
+            if (tipo == A_RECEBER) {
+                val resta = total - comprometidoAReceber(acertos, d.id)
+                if (centavos > resta) {
+                    return ResultadoVinculo.Erro("$rotulo: só restam ${FormatoCentavos.brl(maxOf(resta, 0L))} para vincular (o resto já está com outros acertos a receber).")
+                }
+            }
+            novos += Acerto(
+                pessoaId = pessoa.id, tipo = tipo, valor = Dinheiro.reais(centavos), descricao = d.descricao, data = d.data.time,
+                despesaId = d.id, quitado = false, quitadoEm = null, grupoRateio = grupoVinculo(d.id)
+            )
+        }
+        return ResultadoVinculo.Ok(novos)
+    }
 }

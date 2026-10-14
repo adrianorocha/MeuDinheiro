@@ -330,6 +330,21 @@ class ContaSaldoViewModel(
         }
     }
 
+    /** R68 — vincula lançamentos existentes a uma pessoa: só cria acertos; saldo e lançamentos não mudam. */
+    fun vincularLancamentos(
+        pessoaId: Int, tipo: String, itens: List<com.meudinheiro.domain.Rateios.ItemVinculo>, aoConcluir: () -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val n = repository.vincularLancamentos(pessoaId, tipo, itens)
+                _uiEvent.tryEmit("Vínculo | $n lançamento(s) vinculado(s). Saldo e lançamentos não mudaram. | Sucesso")
+                withContext(Dispatchers.Main) { aoConcluir() }
+            } catch (e: Exception) {
+                avisarErro("Vínculo", e)
+            }
+        }
+    }
+
     fun desfazerRateio(despesaId: Long, aoConcluir: () -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             try {

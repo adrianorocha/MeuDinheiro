@@ -222,6 +222,11 @@ export function dividirDespesa(ds: Dataset, input: DivisaoDespesa, ctx: Ctx): Op
   for (const p of input.participantes) if (!ds.pessoas.some((x) => x.id === p.pessoaId)) return erro("Pessoa não encontrada.");
   const r = ratear(toCents(d.valor), input.modo, input.participantes, input.vocePercentual);
   if (!r.ok) return erro(r.erro);
+  // R68: vínculos já feitos ("vinculo:") contam como comprometidos; a divisão não pode passar do total.
+  const vinculado = ds.acertos.filter((a) => a.tipo === "A_RECEBER" && a.despesaId === d.id && a.grupoRateio === grupoVinculoDe(d.id)).reduce((s, a) => s + toCents(a.valor), 0);
+  if (vinculado > 0 && r.cotas.reduce((s, c) => s + c.centavos, 0) + vinculado > toCents(d.valor)) {
+    return erro(`Este lançamento já tem ${brlCentavos(vinculado)} vinculados a pessoas; a divisão passaria do valor da despesa.`);
+  }
   let lista = ds.acertos;
   const criados: Acerto[] = [];
   for (const c of r.cotas) {
@@ -350,4 +355,84 @@ export function quitarAcerto(ds: Dataset, input: QuitacaoAcerto, ctx: Ctx): Op<{
 export function excluirAcerto(ds: Dataset, id: number): Op {
   if (!ds.acertos.some((a) => a.id === id)) return erro("Acerto não encontrado.");
   return { ok: true, ds: { ...ds, acertos: removerItem(ds.acertos, id) } };
+}
+
+// ------------------------------------------------------------ R68 - vincular lançamentos já existentes
+
+export const grupoVinculoDe = (despesaId: number) => `vinculo:${despesaId}`;
+
+/**
+ * Centavos já comprometidos com acertos A_RECEBER de um lançamento (quitados ou não, qualquer pessoa, qualquer origem).
+ */
+export function comprometidoAReceber(acertos: readonly Acerto[], despesaId: number): number {
+  return acertos.filter((a) => a.tipo === "A_RECEBER" && a.despesaId === despesaId).reduce((s, a) => s + toCents(a.valor), 0);
+}
+
+export interface ItemVinculo {
+  despesaId: number;
+  /** Em reais; ausente = valor do lançamento. Parcial permitido (≤ valor do lançamento). */
+  valor?: number;
+}
+
+export interface VinculoLancamentos {
+  pessoaId: number;
+  /** A_RECEBER = "ela me deve"; A_PAGAR = "eu devo a ela" */
+  tipo: TipoAcerto;
+  itens: ItemVinculo[];
+}
+
+/**
+ * Vincula lançamentos JÁ EXISTENTES a uma pessoa: cria SOMENTE acertos (`despesaId`, data e descrição do lançamento,
+ * `grupoRateio = "vinculo:<despesaId>"`). Lançamentos, contas, cartões e KPIs não mudam (mesma referência). Tudo ou nada.
+ *
+ * Regras: só natureza NORMAL; receita (CREDITO) só aceita A_PAGAR; A_RECEBER ≤ total − A_RECEBER já comprometidos (para o "quanto você
+ * realmente gastou" nunca ficar negativo); A_PAGAR ≤ valor do lançamento; mesmo lançamento + mesma pessoa + mesmo tipo = "já vinculado".
+ * O grupo `vinculo:` é diferente de `rateio:`, então "Desfazer divisão" nunca apaga vínculos; desvincular = `excluirAcerto` (não quitado).
+ */
+export function vincularLancamentos(ds: Dataset, input: VinculoLancamentos, ctx: Ctx): Op<{ acertos: Acerto[] }> {
+  const pessoa = ds.pessoas.find((p) => p.id === input.pessoaId);
+  if (!pessoa) return erro("Pessoa não encontrada.");
+  if (input.tipo !== "A_RECEBER" && input.tipo !== "A_PAGAR") return erro("Tipo de acerto inválido.");
+  if (input.itens.length === 0) return erro("Escolha ao menos um lançamento.");
+  if (new Set(input.itens.map((i) => i.despesaId)).size !== input.itens.length) return erro("O mesmo lançamento foi escolhido duas vezes.");
+
+  const novos: { d: Despesa; centavos: number }[] = [];
+  for (const item of input.itens) {
+    const d = ds.despesas.find((x) => x.id === item.despesaId);
+    if (!d) return erro("Lançamento não encontrado.");
+    const rotulo = `“${d.descricao}”`;
+    if (d.natureza !== "NORMAL") return erro(`${rotulo}: só lançamentos comuns podem ser vinculados (não vale transferência, fatura, meta, ajuste nem saldo inicial).`);
+    if (input.tipo === "A_RECEBER" && d.tipo === "CREDITO") return erro(`${rotulo} é uma receita: só dá para registrar “Eu devo a ela” (repasse).`);
+    const total = toCents(d.valor);
+    const centavos = item.valor === undefined ? total : toCents(item.valor);
+    if (!Number.isFinite(centavos) || !(centavos > 0)) return erro(`${rotulo}: o valor deve ser maior que zero.`);
+    if (centavos > total) return erro(`${rotulo}: o valor passa do valor do lançamento (${brlCentavos(total)}).`);
+    if (ds.acertos.some((a) => a.pessoaId === pessoa.id && a.tipo === input.tipo && a.despesaId === d.id)) {
+      return erro(`${rotulo}: já vinculado a ${pessoa.nome}. Desvincule (exclua o acerto) para vincular de novo com outro valor.`);
+    }
+    if (input.tipo === "A_RECEBER") {
+      const resta = total - comprometidoAReceber(ds.acertos, d.id);
+      if (centavos > resta) return erro(`${rotulo}: só restam ${brlCentavos(Math.max(resta, 0))} para vincular (o resto já está com outros acertos a receber).`);
+    }
+    novos.push({ d, centavos });
+  }
+
+  let lista = ds.acertos;
+  const criados: Acerto[] = [];
+  for (const { d, centavos } of novos) {
+    const novo = inserirItem(lista, {
+      pessoaId: pessoa.id,
+      tipo: input.tipo,
+      valor: fromCents(centavos),
+      descricao: d.descricao,
+      data: d.data,
+      despesaId: d.id,
+      quitado: false,
+      quitadoEm: null,
+      grupoRateio: grupoVinculoDe(d.id),
+    }, ctx);
+    lista = novo.lista;
+    criados.push(novo.item);
+  }
+  return { ok: true, ds: { ...ds, acertos: lista }, acertos: criados };
 }

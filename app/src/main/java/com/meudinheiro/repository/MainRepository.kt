@@ -38,6 +38,7 @@ import com.meudinheiro.domain.Tags
 import com.meudinheiro.domain.Texto
 import com.meudinheiro.domain.Dinheiro
 import com.meudinheiro.domain.Dividas
+import com.meudinheiro.domain.FormatoCentavos
 import com.meudinheiro.domain.Rateios
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.domain.LancamentoAcoes
@@ -1431,6 +1432,11 @@ class MainRepository(
             when (val r = Rateios.ratear(Dinheiro.centavos(d.valor), modo, participantes, vocePercentual)) {
                 is Rateios.Resultado.Erro -> throw RegraFinanceiraException(r.mensagem)
                 is Rateios.Resultado.Ok -> {
+                    // R68: vínculos já feitos contam como comprometidos; a divisão não pode passar do total.
+                    val vinculado = Rateios.vinculadoAReceber(acertoDao.obterTodasStatic(), d.id)
+                    if (vinculado > 0 && r.cotas.sumOf { it.centavos } + vinculado > Dinheiro.centavos(d.valor)) {
+                        throw RegraFinanceiraException("Este lançamento já tem ${FormatoCentavos.brl(vinculado)} vinculados a pessoas; a divisão passaria do valor da despesa.")
+                    }
                     acertoDao.inserirTodas(
                         r.cotas.map { c ->
                             Acerto(
@@ -1443,6 +1449,23 @@ class MainRepository(
                 }
             }
         }
+
+    /**
+     * R68 — vincula lançamentos JÁ EXISTENTES a uma pessoa: cria SOMENTE acertos (grupo `vinculo:<despesaId>`). Não cria, altera nem exclui
+     * lançamento; saldo de conta, limite de cartão e KPIs não mudam. Atômico (uma transação): um item inválido não cria nenhum.
+     * Devolve a quantidade de acertos criados.
+     */
+    suspend fun vincularLancamentos(pessoaId: Int, tipo: String, itens: List<Rateios.ItemVinculo>): Int = db.withTransaction {
+        val cache = HashMap<Long, Despesa?>()
+        for (i in itens) cache[i.despesaId] = despesaDao.obterDespesaPorId(i.despesaId)
+        when (val r = Rateios.vincular({ cache[it] }, acertoDao.obterTodasStatic(), pessoaDao.obterTodasStatic(), pessoaId, tipo, itens)) {
+            is Rateios.ResultadoVinculo.Erro -> throw RegraFinanceiraException(r.mensagem)
+            is Rateios.ResultadoVinculo.Ok -> {
+                acertoDao.inserirTodas(r.acertos)
+                r.acertos.size
+            }
+        }
+    }
 
     /** Remove os acertos do rateio (só se nenhum foi quitado). O lançamento não muda. */
     suspend fun desfazerRateio(despesaId: Long): Int = db.withTransaction {

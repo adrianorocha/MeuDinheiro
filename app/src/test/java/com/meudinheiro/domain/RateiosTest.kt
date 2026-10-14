@@ -117,4 +117,87 @@ class RateiosTest {
         assertEquals(1, Rateios.resumo(listOf(d), acertos, ms(2025, 6, 1)..ms(2025, 6, 30)).itens.size)
         assertEquals(0, Rateios.resumo(listOf(d), acertos, ms(2025, 7, 1)..ms(2025, 7, 31)).itens.size)
     }
+
+    // ---------------------------------------------------------------- R68 (mesmos cenários de rateios.test.ts)
+
+    private fun desp(id: Long, desc: String, valor: Double, tipo: TipoDespesa = TipoDespesa.DEBITO, natureza: String = Natureza.NORMAL) =
+        Despesa(id = id, descricao = desc, valor = valor, data = Date(ms(2025, 6, 10)), categoria = "Cat", conta = "111", pic = "p", tipo = tipo, mes = 6, ano = 2025, pago = true, natureza = natureza)
+
+    private val lanc = listOf(
+        desp(100, "Saldo inicial", 1000.0, TipoDespesa.CREDITO, Natureza.SALDO_INICIAL),
+        desp(200, "Pizza", 100.0), desp(201, "Cinema", 60.0),
+        desp(202, "Transferência", 30.0, natureza = Natureza.TRANSFERENCIA), desp(203, "Pagamento de fatura", 30.0, natureza = Natureza.PAGAMENTO_FATURA),
+        desp(204, "Aporte meta", 30.0, natureza = Natureza.APORTE_META), desp(205, "Resgate meta", 30.0, TipoDespesa.CREDITO, Natureza.RESGATE_META),
+        desp(206, "Ajuste", 30.0, natureza = Natureza.AJUSTE), desp(300, "Salário", 500.0, TipoDespesa.CREDITO)
+    )
+    private val gente = listOf(Pessoa(1, "Ana"), Pessoa(2, "Bia"))
+
+    private fun vincular(acertos: List<Acerto>, pessoa: Int, tipo: String, vararg itens: Rateios.ItemVinculo) =
+        Rateios.vincular({ id -> lanc.firstOrNull { it.id == id } }, acertos, gente, pessoa, tipo, itens.toList())
+
+    private fun ok(r: Rateios.ResultadoVinculo) = (r as Rateios.ResultadoVinculo.Ok).acertos
+    private fun item(id: Long, valor: Double? = null) = Rateios.ItemVinculo(id, valor)
+    private fun naoOk(r: Rateios.ResultadoVinculo) = r is Rateios.ResultadoVinculo.Erro
+    private fun comIds(l: List<Acerto>) = l.mapIndexed { i, a -> a.copy(id = i + 1) }
+
+    @Test fun `R68 vincula 1 lancamento - so cria acerto com dados do lancamento`() {
+        val r = ok(vincular(emptyList(), 1, "A_RECEBER", item(200)))
+        assertEquals(1, r.size)
+        assertEquals(Acerto(id = 0, pessoaId = 1, tipo = "A_RECEBER", valor = 100.0, descricao = "Pizza", data = ms(2025, 6, 10), despesaId = 200, quitado = false, quitadoEm = null, grupoRateio = "vinculo:200"), r[0])
+        assertEquals(10000L, Rateios.saldosPorPessoa(gente, comIds(r))[0].liquido)
+    }
+
+    @Test fun `R68 vincula varios com valor parcial e A_PAGAR sem o teto de A_RECEBER`() {
+        val r = ok(vincular(emptyList(), 1, "A_RECEBER", item(200, 40.5), item(201)))
+        assertEquals(listOf(40.5, 60.0), r.map { it.valor })
+        assertTrue(vincular(comIds(r), 2, "A_PAGAR", item(200)) is Rateios.ResultadoVinculo.Ok)
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_RECEBER", item(200, 100.01))))
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_RECEBER", item(200, 0.0))))
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_PAGAR", item(200, 100.01))))
+    }
+
+    @Test fun `R68 teto - A_RECEBER de outras pessoas conta e o indicador nunca fica negativo`() {
+        val a = comIds(ok(vincular(emptyList(), 1, "A_RECEBER", item(200, 70.0))))
+        assertEquals(7000L, Rateios.comprometidoAReceber(a, 200))
+        assertTrue(naoOk(vincular(a, 2, "A_RECEBER", item(200, 30.01))))
+        val cabe = a + comIds(ok(vincular(a, 2, "A_RECEBER", item(200, 30.0)))).map { it.copy(id = 9) }
+        assertEquals(0L, Rateios.gastoLiquido(lanc[1], cabe))
+    }
+
+    @Test fun `R68 recusa naturezas internas, inexistentes e repetidos`() {
+        for (id in listOf(100L, 202L, 203L, 204L, 205L, 206L)) assertTrue(naoOk(vincular(emptyList(), 1, "A_PAGAR", item(id))))
+        assertEquals(Rateios.ResultadoVinculo.Erro("Lançamento não encontrado."), vincular(emptyList(), 1, "A_RECEBER", item(999)))
+        assertEquals(Rateios.ResultadoVinculo.Erro("Pessoa não encontrada."), vincular(emptyList(), 9, "A_RECEBER", item(200)))
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_RECEBER")))
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_RECEBER", item(200), item(200))))
+    }
+
+    @Test fun `R68 duplicidade - mesma pessoa e tipo recusa, outro tipo ou pessoa passa`() {
+        val a = comIds(ok(vincular(emptyList(), 1, "A_RECEBER", item(200, 10.0))))
+        val dup = vincular(a, 1, "A_RECEBER", item(200, 5.0))
+        assertTrue((dup as Rateios.ResultadoVinculo.Erro).mensagem.contains("já vinculado"))
+        assertTrue(vincular(a, 1, "A_PAGAR", item(200, 5.0)) is Rateios.ResultadoVinculo.Ok)
+        assertTrue(vincular(a, 2, "A_RECEBER", item(200, 5.0)) is Rateios.ResultadoVinculo.Ok)
+    }
+
+    @Test fun `R68 atomicidade - item invalido nao devolve nenhum acerto`() {
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_RECEBER", item(200), item(202), item(201))))
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_RECEBER", item(200), item(201, 999.0))))
+    }
+
+    @Test fun `R68 receita so aceita A_PAGAR`() {
+        assertTrue(naoOk(vincular(emptyList(), 1, "A_RECEBER", item(300))))
+        val r = ok(vincular(emptyList(), 1, "A_PAGAR", item(300, 250.0)))
+        assertEquals(-25000L, Rateios.saldosPorPessoa(gente, comIds(r))[0].liquido)
+    }
+
+    @Test fun `R68 indicador reflete o vinculo`() {
+        val a = comIds(ok(vincular(emptyList(), 1, "A_RECEBER", item(200, 35.5))))
+        assertEquals(6450L, Rateios.gastoLiquido(lanc[1], a))
+        val r = Rateios.resumo(lanc, a)
+        assertEquals(10000L, r.totalRateado)
+        assertEquals(3550L, r.aReceberTerceiros)
+        assertEquals(6450L, r.liquido)
+        assertEquals(3550L, r.itens[0].pendente)
+    }
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { Copy, HandCoins, MessageCircle, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Copy, HandCoins, Link2, MessageCircle, Pencil, Plus, Trash2, Unlink, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Checkbox, Input, InputValor, Segmentado, Select } from "@/components/ui/Field";
+import { VincularModal } from "@/components/pessoas/VincularModal";
 import { Badge, Card, CardTitulo, EmptyState, ErroBox, PageHeader } from "@/components/ui/Misc";
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
 import { Money } from "@/components/ui/Money";
@@ -218,6 +219,7 @@ export default function PessoasPage() {
   const [formPessoa, setFormPessoa] = useState<{ editar: Pessoa | null } | null>(null);
   const [avulso, setAvulso] = useState<{ tipo: TipoAcerto; pessoaId?: number } | null>(null);
   const [quitando, setQuitando] = useState<Acerto | null>(null);
+  const [vinculando, setVinculando] = useState<{ pessoaId?: number } | null>(null);
   const [cobrando, setCobrando] = useState<Pessoa | null>(null);
   const [excluirPessoa, setExcluirPessoa] = useState<Pessoa | null>(null);
   const [excluirAcerto, setExcluirAcerto] = useState<Acerto | null>(null);
@@ -234,13 +236,16 @@ export default function PessoasPage() {
     const intervalo = periodo === "MES" ? { inicio: new Date(d.getFullYear(), d.getMonth(), 1).getTime(), fim: new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999).getTime() } : undefined;
     return resumoRateios(ds.despesas, ds.acertos, intervalo);
   }, [ds.despesas, ds.acertos, periodo, agora]);
-  const despesaExiste = (id: number | null | undefined) => id != null && ds.despesas.some((d) => d.id === id);
+  const despesaDe = (id: number | null | undefined) => (id == null ? undefined : ds.despesas.find((d) => d.id === id));
+  const despesaExiste = (id: number | null | undefined) => despesaDe(id) !== undefined;
   const totalReceber = saldos.reduce((s, x) => s + x.aReceber, 0);
   const totalPagar = saldos.reduce((s, x) => s + x.aPagar, 0);
   const semPessoas = ds.pessoas.length === 0;
 
   function linha(a: Acerto) {
     const orfao = a.despesaId != null && !despesaExiste(a.despesaId);
+    const origem = despesaDe(a.despesaId);
+    const vinculo = !!a.grupoRateio && a.grupoRateio.startsWith("vinculo:");
     return (
       <li key={a.id} className="flex items-center gap-3 py-2 text-sm">
         <div className="min-w-0 flex-1">
@@ -249,9 +254,10 @@ export default function PessoasPage() {
             {formatData(a.data)}
             {a.quitado && a.quitadoEm != null ? ` · quitado em ${formatData(a.quitadoEm)}` : ""}
           </p>
+          {origem && <p className="truncate text-xs text-muted">lançamento de {formatData(origem.data).slice(0, 5)} — {origem.descricao}</p>}
           <div className="mt-0.5 flex flex-wrap gap-1">
             <Badge tom={a.tipo === "A_RECEBER" ? "pos" : "warn"}>{a.tipo === "A_RECEBER" ? "a receber" : "a pagar"}</Badge>
-            {a.grupoRateio && <Badge tom="primary">rateio</Badge>}
+            {a.grupoRateio && <Badge tom="primary">{vinculo ? "vinculado" : "rateio"}</Badge>}
             {orfao && <Badge tom="warn">lançamento removido</Badge>}
           </div>
         </div>
@@ -261,9 +267,17 @@ export default function PessoasPage() {
             {a.tipo === "A_RECEBER" ? "Receber" : "Pagar"}
           </Button>
         )}
-        <IconButton rotulo={`Excluir acerto ${a.descricao}`} onClick={() => setExcluirAcerto(a)}>
-          <Trash2 size={16} aria-hidden />
-        </IconButton>
+        {vinculo ? (
+          !a.quitado && (
+            <IconButton rotulo={`Desvincular ${a.descricao}`} onClick={() => setExcluirAcerto(a)}>
+              <Unlink size={16} aria-hidden />
+            </IconButton>
+          )
+        ) : (
+          <IconButton rotulo={`Excluir acerto ${a.descricao}`} onClick={() => setExcluirAcerto(a)}>
+            <Trash2 size={16} aria-hidden />
+          </IconButton>
+        )}
       </li>
     );
   }
@@ -283,6 +297,9 @@ export default function PessoasPage() {
             </Button>
             <Button disabled={semPessoas} onClick={() => setAvulso({ tipo: "A_PAGAR" })}>
               Devo
+            </Button>
+            <Button icone={<Link2 size={16} aria-hidden />} disabled={semPessoas} onClick={() => setVinculando({})}>
+              Vincular lançamentos
             </Button>
           </span>
         }
@@ -391,6 +408,9 @@ export default function PessoasPage() {
                 <Button tamanho="sm" onClick={() => setAvulso({ tipo: "A_PAGAR", pessoaId: s.pessoa.id })}>
                   Devo
                 </Button>
+                <Button tamanho="sm" onClick={() => setVinculando({ pessoaId: s.pessoa.id })}>
+                  Vincular lançamentos
+                </Button>
               </div>
 
               {s.pendentes.length > 0 && (
@@ -422,6 +442,7 @@ export default function PessoasPage() {
       <Modal aberto={avulso !== null} onFechar={() => setAvulso(null)} titulo={avulso?.tipo === "A_RECEBER" ? "Emprestei" : "Devo"}>
         {avulso && <AvulsoForm tipo={avulso.tipo} pessoaId={avulso.pessoaId} onFechar={() => setAvulso(null)} />}
       </Modal>
+      <VincularModal aberto={vinculando !== null} pessoaId={vinculando?.pessoaId} onFechar={() => setVinculando(null)} />
       <QuitarModal acerto={quitando} onFechar={() => setQuitando(null)} />
       <CobrarModal pessoa={cobrando} acertos={cobrando ? ds.acertos.filter((a) => a.pessoaId === cobrando.id) : []} onFechar={() => setCobrando(null)} />
       <Confirmar
@@ -441,13 +462,15 @@ export default function PessoasPage() {
       />
       <Confirmar
         aberto={excluirAcerto !== null}
-        titulo="Excluir acerto"
-        mensagem={excluirAcerto ? `Excluir o acerto “${excluirAcerto.descricao}” (${brlCentavos(Math.round(excluirAcerto.valor * 100))})? O lançamento de origem, se houver, não é alterado.` : ""}
-        rotuloConfirmar="Excluir"
+        titulo={excluirAcerto?.grupoRateio?.startsWith("vinculo:") ? "Desvincular lançamento" : "Excluir acerto"}
+        mensagem={excluirAcerto?.grupoRateio?.startsWith("vinculo:") ? `Desvincular “${excluirAcerto.descricao}” (${brlCentavos(Math.round(excluirAcerto.valor * 100))})? Só o controle é removido; o lançamento e o saldo não mudam.` : excluirAcerto ? `Excluir o acerto “${excluirAcerto.descricao}” (${brlCentavos(Math.round(excluirAcerto.valor * 100))})? O lançamento de origem, se houver, não é alterado.` : ""}
+        rotuloConfirmar={excluirAcerto?.grupoRateio?.startsWith("vinculo:") ? "Desvincular" : "Excluir"}
         perigo
         onCancelar={() => setExcluirAcerto(null)}
         onConfirmar={() => {
-          if (excluirAcerto) acoes.excluirAcerto(excluirAcerto.id);
+          if (excluirAcerto && !excluirAcerto.quitado) acoes.excluirAcerto(excluirAcerto.id);
+          else if (excluirAcerto && excluirAcerto.grupoRateio?.startsWith("vinculo:")) avisar("erro", "Acerto já quitado não pode ser desvinculado.");
+          else if (excluirAcerto) acoes.excluirAcerto(excluirAcerto.id);
           setExcluirAcerto(null);
         }}
       />
