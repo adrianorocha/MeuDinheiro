@@ -61,11 +61,11 @@ class RelatorioPessoasTest {
         assertTrue(!r.vazio)
         assertEquals(listOf("Ana", "Bruno"), r.pessoas.map { it.nome })
         val (ana, bruno) = r.pessoas
-        assertEquals(listOf(6000L, 1550L, 4450L, 3), listOf(ana.aReceber, ana.aPagar, ana.liquido, ana.nAcertos))
+        assertEquals(listOf(6000L, 1550L, 4450L, 3L), listOf(ana.aReceber, ana.aPagar, ana.liquido, ana.nAcertos.toLong()))
         assertEquals("te deve R\$ 44,50", ana.saldoTexto)
         assertEquals(Sentido.TE_DEVE, ana.sentido)
         assertEquals("11 99999-0000", ana.contato)
-        assertEquals(listOf(1000L, 10000L, -9000L, 4000L, 3), listOf(bruno.aReceber, bruno.aPagar, bruno.liquido, bruno.quitadoAReceber, bruno.nAcertos))
+        assertEquals(listOf(1000L, 10000L, -9000L, 4000L, 3L), listOf(bruno.aReceber, bruno.aPagar, bruno.liquido, bruno.quitadoAReceber, bruno.nAcertos.toLong()))
         assertEquals("você deve R\$ 90,00", bruno.saldoTexto)
         assertNull(bruno.contato)
         assertEquals(RelatorioPessoas.Resumo(7000, 11550, -4550, 4000, 0, 6, 2, 2), r.resumo)
@@ -104,7 +104,7 @@ class RelatorioPessoasTest {
         assertEquals("01/09/2026 a 30/09/2026", r.periodoTexto)
         assertEquals(RelatorioPessoas.Resumo(7000, 1550, 5450, 4000, 0, 5, 2, 2), r.resumo)
         val bruno = r.pessoas[1]
-        assertEquals(listOf(0L, 1000L, 2), listOf(bruno.aPagar, bruno.liquido, bruno.nAcertos))
+        assertEquals(listOf(0L, 1000L, 2L), listOf(bruno.aPagar, bruno.liquido, bruno.nAcertos.toLong()))
         assertEquals(2, gerar(periodo = ms(2026, 9, 5)..ms(2026, 9, 5)).resumo.nAcertos)
     }
 

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -22,8 +23,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -57,6 +60,11 @@ import com.meudinheiro.data.Pessoa
 import com.meudinheiro.domain.Dinheiro
 import com.meudinheiro.domain.FormatoCentavos
 import com.meudinheiro.domain.Rateios
+import com.meudinheiro.domain.RelatorioPessoas
+import com.meudinheiro.funcoes.RelatorioPessoasExport
+import com.meudinheiro.data.Despesa
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.repository.MainRepository
 import com.meudinheiro.repository.RegraFinanceiraException
@@ -94,6 +102,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
     var quitando by remember { mutableStateOf<Acerto?>(null) }
     var vinculando by remember { mutableStateOf<Pair<Boolean, Int?>?>(null) }
     var cobrando by remember { mutableStateOf<Pessoa?>(null) }
+    var relatorio by remember { mutableStateOf<Pair<Boolean, Int?>?>(null) }
     var excluirPessoa by remember { mutableStateOf<Pessoa?>(null) }
     var excluirAcerto by remember { mutableStateOf<Acerto?>(null) }
     var periodo by remember { mutableStateOf(PeriodoRateio.MES) }
@@ -151,7 +160,10 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
             TopAppBar(
                 title = { Text("Pessoas", color = TextoClaroR58, fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Voltar", tint = TextoClaroR58) } },
-                actions = { IconButton(onClick = { criandoPessoa = true }) { Icon(Icons.Default.Add, "Nova pessoa", tint = NeonCyan) } },
+                actions = {
+                    IconButton(onClick = { relatorio = true to null }, enabled = pessoas.isNotEmpty()) { Icon(Icons.Default.PictureAsPdf, "Relatório", tint = NeonCyan) }
+                    IconButton(onClick = { criandoPessoa = true }) { Icon(Icons.Default.Add, "Nova pessoa", tint = NeonCyan) }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         }
@@ -253,6 +265,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
                         TextButton(onClick = { avulso = Rateios.A_RECEBER to s.pessoa.id }) { Text("Emprestei", color = NeonCyan) }
                         TextButton(onClick = { avulso = Rateios.A_PAGAR to s.pessoa.id }) { Text("Devo", color = NeonCyan) }
                         TextButton(onClick = { vinculando = true to s.pessoa.id }) { Text("Vincular", color = NeonCyan) }
+                        TextButton(onClick = { relatorio = true to s.pessoa.id }) { Text("Relatório", color = NeonCyan) }
                     }
                     if (s.pendentes.isNotEmpty()) {
                         Text("Pendentes", color = Color.White.copy(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -326,6 +339,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
         )
     }
 
+    relatorio?.let { (_, pid) -> RelatorioPessoasDialog(pessoas, acertos, despesas, pid, isPrivate) { relatorio = null } }
     cobrando?.let { p -> CobrarDialog(p, acertos.filter { it.pessoaId == p.id }) { cobrando = null } }
 
     excluirPessoa?.let { p ->
@@ -511,5 +525,184 @@ private fun CobrarDialog(pessoa: Pessoa, acertos: List<Acerto>, onDismiss: () ->
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Fechar", color = Color.White.copy(0.7f)) } }
+    )
+}
+
+private enum class PeriodoRel(val rotulo: String, val atalho: RelatorioPessoas.Atalho?) {
+    ESTE_MES("Este mês", RelatorioPessoas.Atalho.ESTE_MES), MES_PASSADO("Mês passado", RelatorioPessoas.Atalho.MES_PASSADO),
+    TRES_MESES("3 meses", RelatorioPessoas.Atalho.TRES_MESES), ANO("Este ano", RelatorioPessoas.Atalho.ANO),
+    TUDO("Tudo", RelatorioPessoas.Atalho.TUDO), PERSONALIZADO("Personalizado", null)
+}
+
+/** "dd/MM/aaaa" -> epoch ms (início ou fim do dia, horário local); inválido -> null. */
+private fun dataDigitada(texto: String, fimDoDia: Boolean): Long? {
+    val f = SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).apply { isLenient = false }
+    val d = runCatching { f.parse(texto.trim()) }.getOrNull() ?: return null
+    return Calendar.getInstance().apply {
+        time = d
+        if (fimDoDia) { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999) }
+        else { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+    }.timeInMillis
+}
+
+/**
+ * R69 — relatório detalhado de Pessoas (PDF/PNG/JPEG): pessoas, período, situação, detalhes, agrupamento e formato, com pré-visualização
+ * dos totais. O modo privado vale só para esta tela; o arquivo gerado leva os valores reais (avisado no diálogo).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RelatorioPessoasDialog(pessoas: List<Pessoa>, acertos: List<Acerto>, despesas: List<Despesa>, pessoaInicial: Int?, isPrivate: Boolean, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val agora = remember { System.currentTimeMillis() }
+    var escolher by remember { mutableStateOf(pessoaInicial != null) }
+    var ids by remember { mutableStateOf(setOfNotNull(pessoaInicial)) }
+    var periodoSel by remember { mutableStateOf(PeriodoRel.TUDO) }
+    var de by remember { mutableStateOf("") }
+    var ate by remember { mutableStateOf("") }
+    var situacao by remember { mutableStateOf(RelatorioPessoas.Situacao.TODOS) }
+    var detalhes by remember { mutableStateOf(true) }
+    var agrupar by remember { mutableStateOf(RelatorioPessoas.Agrupar.POR_PESSOA) }
+    var rateios by remember { mutableStateOf(false) }
+    var formato by remember { mutableStateOf(RelatorioPessoasExport.Formato.PDF) }
+    var gerando by remember { mutableStateOf(false) }
+    var erro by remember { mutableStateOf<String?>(null) }
+
+    val chipCores = FilterChipDefaults.filterChipColors(selectedContainerColor = NeonCyan.copy(0.25f), selectedLabelColor = Color.White, labelColor = Color.White.copy(0.7f))
+
+    // período: atalho ou datas digitadas (erro em pt-BR, sem gerar)
+    var erroPeriodo: String? = null
+    val periodo: LongRange? = if (periodoSel == PeriodoRel.PERSONALIZADO) {
+        val a = dataDigitada(de, false)
+        val b = dataDigitada(ate, true)
+        when {
+            a == null || b == null -> { erroPeriodo = "Informe as duas datas (dd/mm/aaaa)."; null }
+            a > b -> { erroPeriodo = "A data inicial deve ser anterior à final."; null }
+            else -> a..b
+        }
+    } else periodoSel.atalho?.let { RelatorioPessoas.periodoPorAtalho(it, agora) }
+    val periodoInvalido = erroPeriodo != null
+
+    val relatorio = remember(pessoas, acertos, despesas, escolher, ids, periodo, periodoInvalido, situacao, detalhes, agrupar, rateios) {
+        if (periodoInvalido) null
+        else RelatorioPessoas.montar(
+            pessoas, acertos, despesas,
+            RelatorioPessoas.Opcoes(if (escolher) ids else emptySet(), periodo, situacao, detalhes, agrupar, rateios, agora)
+        )
+    }
+    val semEscolha = escolher && ids.isEmpty()
+    val podeGerar = !gerando && relatorio != null && !relatorio.vazio && !semEscolha
+    fun moeda(c: Long) = formatarMoedaBR(Dinheiro.reais(c), isPrivate)
+
+    AlertDialog(
+        onDismissRequest = { if (!gerando) onDismiss() }, containerColor = DeepSpaceBlue,
+        title = { Text("Relatório de pessoas", color = Color.White) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Pessoas", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = !escolher, onClick = { escolher = false }, label = { Text("Todas", fontSize = 12.sp) }, colors = chipCores)
+                    FilterChip(selected = escolher, onClick = { escolher = true }, label = { Text("Escolher", fontSize = 12.sp) }, colors = chipCores)
+                }
+                if (escolher) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    pessoas.forEach { p ->
+                        FilterChip(
+                            selected = p.id in ids, onClick = { ids = if (p.id in ids) ids - p.id else ids + p.id },
+                            label = { Text(p.nome, fontSize = 12.sp) }, colors = chipCores
+                        )
+                    }
+                }
+                Text("Período (data do acerto)", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PeriodoRel.values().forEach { p ->
+                        FilterChip(selected = periodoSel == p, onClick = { periodoSel = p }, label = { Text(p.rotulo, fontSize = 12.sp) }, colors = chipCores)
+                    }
+                }
+                if (periodoSel == PeriodoRel.PERSONALIZADO) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CampoR58(de, { de = it }, "De (dd/mm/aaaa)", Modifier.weight(1f), maxChars = 10)
+                        CampoR58(ate, { ate = it }, "Até (dd/mm/aaaa)", Modifier.weight(1f), maxChars = 10)
+                    }
+                }
+                erroPeriodo?.let { Text(it, color = NeonRed, fontSize = 12.sp) }
+                Text("Situação", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        RelatorioPessoas.Situacao.TODOS to "Todos", RelatorioPessoas.Situacao.PENDENTES to "Pendentes", RelatorioPessoas.Situacao.QUITADOS to "Quitados"
+                    ).forEach { (v, r) -> FilterChip(selected = situacao == v, onClick = { situacao = v }, label = { Text(r, fontSize = 12.sp) }, colors = chipCores) }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = detalhes, onCheckedChange = { detalhes = it }, colors = CheckboxDefaults.colors(checkedColor = NeonCyan))
+                    Text("Incluir detalhes (uma linha por acerto)", color = Color.White, fontSize = 12.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = rateios, onCheckedChange = { rateios = it }, colors = CheckboxDefaults.colors(checkedColor = NeonCyan))
+                    Text("Incluir bloco \"Rateios\" (quanto você realmente gastou, informativo)", color = Color.White, fontSize = 12.sp)
+                }
+                if (detalhes) {
+                    Text("Agrupar", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(RelatorioPessoas.Agrupar.POR_PESSOA to "Por pessoa", RelatorioPessoas.Agrupar.CRONOLOGICO to "Cronológico").forEach { (v, r) ->
+                            FilterChip(selected = agrupar == v, onClick = { agrupar = v }, label = { Text(r, fontSize = 12.sp) }, colors = chipCores)
+                        }
+                    }
+                }
+                Text("Formato", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RelatorioPessoasExport.Formato.values().forEach { f ->
+                        FilterChip(selected = formato == f, onClick = { formato = f }, label = { Text(f.name, fontSize = 12.sp) }, colors = chipCores)
+                    }
+                }
+                Column(Modifier.fillMaxWidth().background(Color.White.copy(0.06f), RoundedCornerShape(8.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Pré-visualização do resumo", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    val r = relatorio?.resumo
+                    when {
+                        semEscolha -> Text("Escolha ao menos uma pessoa.", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                        relatorio == null || r == null -> Text("Corrija o período para ver o resumo.", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                        relatorio.vazio -> Text(RelatorioPessoas.MSG_SEM_ACERTOS, color = NeonOrange, fontSize = 12.sp)
+                        else -> {
+                            @Composable fun linha(rot: String, v: String, cor: Color = Color.White) = Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(rot, color = Color.White.copy(0.7f), fontSize = 12.sp); Text(v, color = cor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            linha("A receber (pendente)", moeda(r.aReceberPendente), NeonGreen)
+                            linha("A pagar (pendente)", moeda(r.aPagarPendente), NeonOrange)
+                            linha(
+                                "Saldo líquido",
+                                moeda(Math.abs(r.saldoLiquido)) + if (r.saldoLiquido > 0) " (a seu favor)" else if (r.saldoLiquido < 0) " (contra você)" else " (quites)"
+                            )
+                            linha("Quitado (a receber / a pagar)", "${moeda(r.quitadoAReceber)} / ${moeda(r.quitadoAPagar)}")
+                            linha("Acertos / pessoas", "${r.nAcertos} / ${r.nPessoas} (${r.nPessoasComSaldo} com saldo)")
+                        }
+                    }
+                }
+                if (isPrivate) Text("O modo privado vale só para a tela: o arquivo gerado leva os valores reais.", color = NeonOrange, fontSize = 11.sp)
+                erro?.let { Text(it, color = NeonRed, fontSize = 12.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = podeGerar,
+                onClick = {
+                    val rel = relatorio ?: return@TextButton
+                    erro = null
+                    gerando = true
+                    scope.launch {
+                        try {
+                            val arquivos = withContext(Dispatchers.Default) { RelatorioPessoasExport.gerar(context, rel, formato, agora) }
+                            RelatorioPessoasExport.compartilhar(context, arquivos, formato)
+                            onDismiss()
+                        } catch (e: Exception) {
+                            erro = "Não foi possível gerar o relatório: " + (e.message ?: "tente de novo.")
+                        } finally {
+                            gerando = false
+                        }
+                    }
+                }
+            ) {
+                if (gerando) { CircularProgressIndicator(Modifier.size(16.dp), color = NeonCyan, strokeWidth = 2.dp); Text("  Gerando…", color = NeonCyan) }
+                else Text("Gerar", color = if (podeGerar) NeonCyan else Color.White.copy(0.4f))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !gerando) { Text("Cancelar", color = Color.White.copy(0.7f)) } }
     )
 }
