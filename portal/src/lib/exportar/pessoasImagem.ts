@@ -21,6 +21,7 @@ const M = 48;
 const CW = LARGURA_IMG - 2 * M;
 const H_CONT = 96;
 const H_RODAPE = 64;
+const H_PESSOA_CONT = 56;
 
 export const fonteImg = (peso: string | number, tam: number) => `${peso} ${tam}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
 
@@ -30,6 +31,7 @@ export type Bloco =
   | { tipo: "titulo"; h: number; texto: string; manter: true }
   | { tipo: "pessoa"; h: number; pessoa: PessoaRelatorio; manter: true }
   | { tipo: "linha"; h: number; linha: LinhaRelatorioPessoas; desc: string[]; origem: string[]; rateio: string[]; mostrarPessoa: boolean; corPessoa: string; iniciais: string }
+  | { tipo: "cont"; h: number; nome: string; iniciais: string; cor: string }
   | { tipo: "rateio"; h: number; item: ItemRateio; l1: string[]; l2: string[] }
   | { tipo: "rateioTotais"; h: number; total: number; terceiros: number; liquido: number };
 
@@ -113,8 +115,10 @@ export function planejarImagens(rel: RelatorioPessoas, m: Medidor, maxAltura = M
   const partes: Bloco[][] = [[]];
   let usado = 0;
   let capacidade = maxAltura - hCabecalho1 - H_RODAPE;
+  let atual: PessoaRelatorio | null = null;
   for (let i = 0; i < blocos.length; i++) {
     const b = blocos[i];
+    if (b.tipo === "pessoa") atual = b.pessoa;
     let precisa = b.h;
     if ("manter" in b && b.manter) {
       // cabeçalho/título + o próximo bloco (e, se o próximo também for "manter", só ele)
@@ -125,6 +129,11 @@ export function planejarImagens(rel: RelatorioPessoas, m: Medidor, maxAltura = M
       partes.push([]);
       usado = 0;
       capacidade = maxAltura - H_CONT - H_RODAPE;
+      // linhas de uma pessoa que continuam na parte seguinte: repete o nome (o cartão ficou na parte anterior)
+      if (b.tipo === "linha" && !b.mostrarPessoa && atual) {
+        partes[partes.length - 1].push({ tipo: "cont", h: H_PESSOA_CONT, nome: atual.nome, iniciais: atual.iniciais, cor: corAvatar(atual.corIndice) });
+        usado += H_PESSOA_CONT;
+      }
     }
     partes[partes.length - 1].push(b);
     usado += b.h;
@@ -283,6 +292,10 @@ function desenharBloco(ctx: Ctx, b: Bloco, y: number) {
       break;
     case "pessoa":
       desenharPessoa(ctx, b.pessoa, y);
+      break;
+    case "cont":
+      avatar(ctx, M + 22, y + 30, 16, b.iniciais, b.cor);
+      texto(ctx, `${b.nome} (continuação)`, M + 52, y + 38, 700, 22, b.cor);
       break;
     case "linha":
       desenharLinha(ctx, b, y);

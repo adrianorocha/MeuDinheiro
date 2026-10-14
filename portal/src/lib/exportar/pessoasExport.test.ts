@@ -55,6 +55,8 @@ describe("R69 - plano de imagens (altura dinâmica e divisão em partes)", () =>
       expect(p.total).toBe(plano.paginas.length);
       const ult = p.blocos[p.blocos.length - 1];
       expect(ult.tipo === "linha" || ult.tipo === "rateio" || ult.tipo === "rateioTotais").toBe(true);
+      // parte que começa no meio da lista de uma pessoa repete o nome dela
+      if (p.indice > 1 && p.blocos[0].tipo !== "pessoa" && p.blocos[0].tipo !== "titulo") expect(p.blocos[0].tipo).toBe("cont");
     }
     const ids = plano.paginas.flatMap((p) => p.blocos.flatMap((b) => (b.tipo === "linha" ? [b.linha.acertoId] : [])));
     expect(ids).toHaveLength(400);
