@@ -1,4 +1,4 @@
-import { cartaoIdDe, cartoesDoGrupo, recalcularTudo } from "../finance/calc";
+import { cartaoIdDe, cartoesDoGrupo, dataFechamentoFatura, faturaDaCompra, recalcularTudo, vencimentoFatura } from "../finance/calc";
 import { novoIdLong } from "../finance/ids";
 import { mesAnoDe, somaMeses } from "../finance/dates";
 import { montaDespesa } from "../finance/operations";
@@ -9,7 +9,7 @@ import { limparDescricao } from "../finance/texto";
 import type { Dataset, Despesa, Result } from "../finance/types";
 import { lancamentosDoDestino } from "./matching";
 import { detectarParcela, detectarParcelaExtrato, limparDescricaoBanco, semMarcadorParcela } from "./texto-banco";
-import type { Destino, ItemMatch, ResultadoMatching, TransacaoBanco } from "./tipos";
+import type { ArquivoExtrato, Destino, ItemMatch, ResultadoMatching, TransacaoBanco } from "./tipos";
 
 /** Opções de mescla (R38), independentes entre si. */
 export interface Mescla {
@@ -26,6 +26,59 @@ export type AcaoPlano =
 export interface Plano {
   destino: Destino;
   acoes: AcaoPlano[];
+  /**
+   * R70 - o extrato é de uma fatura de cartão já fechada e paga: os itens conciliados/criados ficam pagos
+   * (sem criar PAGAMENTO_FATURA nem mexer no saldo da conta; o limite volta pelo líquido dos itens).
+   */
+  faturaPaga?: boolean;
+}
+
+const SEM_ACENTO = /[̀-ͯ]/g;
+
+/** R70 - descrição de crédito que é o pagamento da própria fatura (não é compra nem estorno). */
+export function ehPagamentoDeFatura(descricao: string): boolean {
+  const t = descricao.normalize("NFD").replace(SEM_ACENTO, "").toLowerCase();
+  return /\b(pagamento|pagto|pgto)\b.*\b(fatura|efetuado|recebido|cartao)\b/.test(t) || /\b(pagamento|pagto|pgto)\s+(de\s+)?(fatura|efetuado|recebido)/.test(t);
+}
+
+export interface DeteccaoFaturaPaga {
+  /** todas as transações caem em faturas cujo fechamento já passou */
+  fechada: boolean;
+  /** todas as faturas já venceram */
+  vencida: boolean;
+  /** o extrato traz a linha de pagamento da fatura */
+  temPagamento: boolean;
+  /** fechada e (vencida ou com pagamento no extrato): padrão sugerido para "fatura paga" */
+  sugerirPaga: boolean;
+  /** maior fechamento e vencimento entre as faturas do arquivo (ms) */
+  fechamento: number;
+  vencimento: number;
+}
+
+/** R70 - descobre se o arquivo de um CARTÃO se refere a fatura(s) fechada(s) e paga(s). Conta: sempre null. */
+export function detectarFaturaPaga(ds: Pick<Dataset, "cartoes">, destino: Destino, extrato: Pick<ArquivoExtrato, "transacoes">, agora: number): DeteccaoFaturaPaga | null {
+  if (destino.tipo !== "CARTAO" || extrato.transacoes.length === 0) return null;
+  const cartao = ds.cartoes.find((c) => c.id === destino.cartaoId);
+  if (!cartao) return null;
+  const principal = cartoesDoGrupo(cartao, ds.cartoes)[0];
+  const hoje = new Date(agora);
+  const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).getTime();
+  let fechada = true;
+  let vencida = true;
+  let fechamento = 0;
+  let vencimento = 0;
+  let temPagamento = false;
+  for (const t of extrato.transacoes) {
+    const f = faturaDaCompra(principal, t.data);
+    const fech = dataFechamentoFatura(principal, f.mes, f.ano);
+    const venc = vencimentoFatura(principal, f.mes, f.ano);
+    if (fech >= inicioHoje) fechada = false;
+    if (venc >= inicioHoje) vencida = false;
+    fechamento = Math.max(fechamento, fech);
+    vencimento = Math.max(vencimento, venc);
+    if (t.valor > 0 && ehPagamentoDeFatura(t.descricao)) temPagamento = true;
+  }
+  return { fechada, vencida, temPagamento, sugerirPaga: fechada && (vencida || temPagamento), fechamento, vencimento };
 }
 
 /** Plano inverso: restaura os lançamentos alterados e remove os criados. */
@@ -75,15 +128,15 @@ export function montarPlano(
   resultado: ResultadoMatching,
   ds: DadosCategoria,
   destino: Destino,
-  opcoes: { sugeridos?: boolean; criar?: boolean; parcelasRestantes?: boolean } = {},
+  opcoes: { sugeridos?: boolean; criar?: boolean; parcelasRestantes?: boolean; faturaPaga?: boolean } = {},
 ): Plano {
   const acoes: AcaoPlano[] = [];
   for (const it of resultado.itens) {
     if (it.lancamentoId !== undefined && (it.classe === "AUTOMATICO" || (opcoes.sugeridos && it.classe === "SUGERIDO"))) {
       acoes.push(acaoConciliar(it, destino, it.lancamentoId));
-    } else if (opcoes.criar && it.classe === "SO_NO_EXTRATO") acoes.push(acaoCriar(it, ds, undefined, opcoes.parcelasRestantes, contaDoDestino(ds, destino)));
+    } else if (opcoes.criar && it.classe === "SO_NO_EXTRATO" && !(destino.tipo === "CARTAO" && it.transacao.valor > 0 && ehPagamentoDeFatura(it.transacao.descricao))) acoes.push(acaoCriar(it, ds, undefined, opcoes.parcelasRestantes, contaDoDestino(ds, destino)));
   }
-  return { destino, acoes };
+  return { destino, acoes, ...(opcoes.faturaPaga && destino.tipo === "CARTAO" ? { faturaPaga: true } : {}) };
 }
 
 export interface ResumoAplicacao {
@@ -104,6 +157,7 @@ type Op<T extends object> = Result<{ ds: Dataset } & T>;
  */
 export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op<{ inverso: PlanoInverso; resumo: ResumoAplicacao }> {
   const { destino } = plano;
+  const faturaPaga = plano.faturaPaga === true && destino.tipo === "CARTAO";
   let contaDestino: string;
   let cartaoDestino: number | null = null;
   if (destino.tipo === "CONTA") {
@@ -143,7 +197,7 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
       const valor = a.mescla.valor ? round2(Math.abs(t.valor)) : d.valor;
       const data = a.mescla.data ? t.data : d.data;
       const { mes, ano } = mesAnoDe(data);
-      const pago = a.mescla.pago && cartaoIdDe(d) === null ? true : d.pago;
+      const pago = (a.mescla.pago && cartaoIdDe(d) === null) || (faturaPaga && cartaoDestino !== null) ? true : d.pago;
       if (valor !== d.valor) resumo.valoresAlterados++;
       if (data !== d.data) resumo.datasAlteradas++;
       if (pago && !d.pago) resumo.pagosMarcados++;
@@ -222,7 +276,7 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
             conta: contaDestino,
             tipo: t.valor < 0 ? "DEBITO" : "CREDITO",
             cartaoId: cartaoDestino,
-            pago: cartaoDestino === null,
+            pago: cartaoDestino === null || faturaPaga,
             autor: AUTOR_IMPORTACAO,
             fitid: t.fitid,
             conciliadoEm: agora,

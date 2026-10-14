@@ -162,8 +162,8 @@ function chaveDe(d: Despesa): ChaveDecomposicao {
   }
 }
 
-const rotuloConta = (c: Conta) => `${c.banco} · ${c.conta}`;
-const rotuloCartao = (c: Cartao) => `${c.nome}${c.finalCartao ? ` ••${c.finalCartao}` : ""}`;
+export const rotuloConta = (c: Conta) => `${c.banco} · ${c.conta}`;
+export const rotuloCartao = (c: Cartao) => `${c.nome}${c.finalCartao ? ` ••${c.finalCartao}` : ""}`;
 
 function conferirConta(ds: Dataset, c: Conta, agora: number): ConferenciaConta {
   const soma = new Map<ChaveDecomposicao, { centavos: number; qtd: number }>();

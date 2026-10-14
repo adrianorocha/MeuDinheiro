@@ -10,6 +10,8 @@ import { diasDoPar, similaridadeDescricao } from "@/lib/conciliacao/matching";
 import {
   aplicarConciliacao,
   categoriaSugerida,
+  detectarFaturaPaga,
+
   mesclaPadrao,
   type AcaoPlano,
   type Mescla,
@@ -55,12 +57,12 @@ function padrao(it: ItemMatch, ds: Dataset, destino: Destino): Escolha {
   return { acao: "ignorar", mescla, categoria, parcelasRestantes: true };
 }
 
-function descreverAcao(e: Escolha, it: ItemMatch, d: Despesa | undefined, destino: Destino): string {
+function descreverAcao(e: Escolha, it: ItemMatch, d: Despesa | undefined, destino: Destino, faturaPaga = false): string {
   if (e.acao === "ignorar") return it.classe === "DUPLICADO" ? "Nada será feito (já conciliado antes)." : "Nada será feito (ignorado).";
   if (e.acao === "criar") {
     const p = destino.tipo === "CARTAO" && it.transacao.valor < 0 ? detectarParcelaExtrato(it.transacao.descricao, it.transacao.data) : null;
     const resto = p && p.i < p.n && e.parcelasRestantes ? ` Também lançará as parcelas ${p.i + 1}/${p.n} a ${p.n}/${p.n} em aberto (reserva ${formatBRL(Math.abs(it.transacao.valor) * (p.n - p.i))} do limite).` : "";
-    return `Criará um lançamento de ${formatBRL(Math.abs(it.transacao.valor))} em ${formatData(it.transacao.data)}, categoria "${e.categoria}", ${destino.tipo === "CONTA" ? "já pago" : "pendente na fatura"}.${resto}`;
+    return `Criará um lançamento de ${formatBRL(Math.abs(it.transacao.valor))} em ${formatData(it.transacao.data)}, categoria "${e.categoria}", ${destino.tipo === "CONTA" || faturaPaga ? "já pago" : "pendente na fatura"}.${resto}`;
   }
   if (!d) return "Escolha um lançamento.";
   const partes = [`Vinculará ao lançamento "${d.descricao}"`];
@@ -68,6 +70,7 @@ function descreverAcao(e: Escolha, it: ItemMatch, d: Despesa | undefined, destin
   if (e.mescla.valor && toCents(Math.abs(it.transacao.valor)) !== toCents(d.valor)) partes.push(`valor → ${formatBRL(Math.abs(it.transacao.valor))}`);
   if (e.mescla.descricao) partes.push(`descrição → "${limparDescricaoBanco(it.transacao.descricao)}"`);
   if (e.mescla.pago && destino.tipo === "CONTA" && !d.pago) partes.push("marcará como pago");
+  if (faturaPaga && destino.tipo === "CARTAO" && !d.pago) partes.push("marcará como pago (fatura paga)");
   return `${partes[0]}${partes.length > 1 ? ` · ${partes.slice(1).join(" · ")}` : ""}.`;
 }
 
@@ -78,10 +81,11 @@ interface LinhaProps {
   destino: Destino;
   porId: Map<number, Despesa>;
   conflito: boolean;
+  faturaPaga: boolean;
   onChange: (p: Partial<Escolha>) => void;
 }
 
-function Linha({ it, e, ds, destino, porId, conflito, onChange }: LinhaProps) {
+function Linha({ it, e, ds, destino, porId, conflito, faturaPaga, onChange }: LinhaProps) {
   const id = useId();
   const t = it.transacao;
   const d = e.lancamentoId !== undefined ? porId.get(e.lancamentoId) : undefined;
@@ -184,7 +188,7 @@ function Linha({ it, e, ds, destino, porId, conflito, onChange }: LinhaProps) {
         </div>
       )}
       <p className={`mt-2 text-xs ${conflito ? "text-neg" : "text-muted"}`} role={conflito ? "alert" : undefined}>
-        {conflito ? "Este lançamento foi escolhido para mais de uma linha do extrato." : descreverAcao(e, it, d, destino)}
+        {conflito ? "Este lançamento foi escolhido para mais de uma linha do extrato." : descreverAcao(e, it, d, destino, faturaPaga)}
       </p>
     </article>
   );
@@ -206,6 +210,7 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
   const [busca, setBusca] = useState("");
   const [soDif, setSoDif] = useState(false);
   const [previa, setPrevia] = useState(false);
+  const [faturaPagaManual, setFaturaPagaManual] = useState<boolean | null>(null);
 
   const porId = useMemo(() => new Map(ds.despesas.map((d) => [d.id, d])), [ds.despesas]);
   const escolha = (it: ItemMatch): Escolha => ({ ...padrao(it, ds, destino), ...over[it.indice] });
@@ -224,6 +229,9 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
   const nConciliar = escolhas.filter(({ e }) => e.acao === "conciliar").length;
   const nCriar = escolhas.filter(({ e }) => e.acao === "criar").length;
 
+  const deteccao = useMemo(() => detectarFaturaPaga(ds, destino, { transacoes: resultado.itens.map((i) => i.transacao) }, agora), [ds, destino, resultado.itens, agora]);
+  const faturaPaga = destino.tipo === "CARTAO" && (faturaPagaManual ?? deteccao?.sugerirPaga ?? false);
+
   const plano: Plano = useMemo(() => {
     const acoes: AcaoPlano[] = [];
     for (const it of resultado.itens) {
@@ -231,8 +239,8 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
       if (e.acao === "conciliar" && e.lancamentoId !== undefined) acoes.push({ tipo: "CONCILIAR", transacao: it.transacao, lancamentoId: e.lancamentoId, mescla: e.mescla });
       else if (e.acao === "criar") acoes.push({ tipo: "CRIAR", transacao: it.transacao, categoria: e.categoria, ...(e.parcelasRestantes ? { parcelasRestantes: true } : {}) });
     }
-    return { destino, acoes };
-  }, [resultado.itens, ds, destino, over]);
+    return { destino, acoes, ...(faturaPaga ? { faturaPaga: true } : {}) };
+  }, [resultado.itens, ds, destino, over, faturaPaga]);
 
   const termo = normalizar(busca);
   const visiveis = escolhas.filter(({ it, e }) => {
@@ -296,6 +304,19 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
       </div>
       <p className="mt-2 text-xs text-muted">{abaAtual.ajuda}</p>
 
+      {destino.tipo === "CARTAO" && (
+        <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3 text-sm">
+          <Checkbox rotulo="Esta é uma fatura fechada e paga: marcar os itens como pagos" checked={faturaPaga} onChange={(ev) => setFaturaPagaManual(ev.target.checked)} />
+          <p className="ml-6 text-xs text-muted">
+            {deteccao?.fechada
+              ? `Fatura fechada em ${formatData(deteccao.fechamento)}, vencimento ${formatData(deteccao.vencimento)}${deteccao.temPagamento ? " · o extrato traz o pagamento da fatura" : ""}. `
+              : "Esta fatura ainda não fechou; marque só se já foi paga. "}
+            Os itens conciliados/criados ficam pagos sem lançar pagamento nem alterar o saldo da conta; o limite volta pelo valor da fatura.
+            {faturaPaga && " Linhas de pagamento da fatura no extrato não são criadas."}
+          </p>
+        </div>
+      )}
+
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-48 flex-1">
           <Input rotulo="Buscar nesta aba" type="search" value={busca} onChange={(e) => setBusca(e.target.value)} autoComplete="off" />
@@ -333,7 +354,7 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
         ) : visiveis.length === 0 ? (
           <EmptyState titulo="Nenhuma linha nesta aba" descricao={busca || soDif ? "Ajuste os filtros." : undefined} />
         ) : (
-          visiveis.slice(0, 200).map(({ it, e }) => <Linha key={it.indice} it={it} e={e} ds={ds} destino={destino} porId={porId} conflito={e.acao === "conciliar" && e.lancamentoId !== undefined && (usos.get(e.lancamentoId) ?? 0) > 1} onChange={(p) => atualizar(it.indice, p)} />)
+          visiveis.slice(0, 200).map(({ it, e }) => <Linha key={it.indice} it={it} e={e} ds={ds} destino={destino} porId={porId} faturaPaga={faturaPaga} conflito={e.acao === "conciliar" && e.lancamentoId !== undefined && (usos.get(e.lancamentoId) ?? 0) > 1} onChange={(p) => atualizar(it.indice, p)} />)
         )}
         {visiveis.length > 200 && <p className="text-xs text-muted">Mostrando 200 de {visiveis.length}; use a busca para refinar.</p>}
       </div>

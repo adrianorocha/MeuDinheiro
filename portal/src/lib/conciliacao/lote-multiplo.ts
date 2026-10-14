@@ -1,6 +1,7 @@
+import { cartaoIdDe } from "../finance/calc";
 import type { Dataset } from "../finance/types";
 import { casar, janelaPadrao, lancamentosDoDestino } from "./matching";
-import { acaoConciliar, aplicarConciliacao, montarPlano, type AcaoPlano, type Plano, type PlanoInverso, type ResumoAplicacao } from "./plano";
+import { acaoConciliar, aplicarConciliacao, detectarFaturaPaga, montarPlano, type AcaoPlano, type Plano, type PlanoInverso, type ResumoAplicacao } from "./plano";
 import { limparDescricaoBanco } from "./texto-banco";
 import type { ArquivoExtrato, ClasseMatch, Destino, ResultadoMatching } from "./tipos";
 
@@ -45,9 +46,11 @@ export interface OpcoesLote {
   janelaDias?: number;
   /** tolerância relativa (0,02 = 2%) */
   toleranciaPct?: number;
+  /** R70 - arquivo de cartão = fatura fechada e paga: marca os itens como pagos. AUTO (padrão) decide por arquivo; SIM/NAO forçam. */
+  faturaPaga?: "AUTO" | "SIM" | "NAO";
 }
 
-export const OPCOES_LOTE_PADRAO: OpcoesLote = { sugeridos: false, criar: false, parcelasRestantes: true };
+export const OPCOES_LOTE_PADRAO: OpcoesLote = { sugeridos: false, criar: false, parcelasRestantes: true, faturaPaga: "AUTO" };
 
 export interface Contadores {
   transacoes: number;
@@ -147,6 +150,8 @@ export interface ParametrosLote {
   onProgresso?: (e: EventoLote) => void;
   /** consultado entre as etapas; true = parar após o arquivo corrente */
   sinalCancelar?: () => boolean;
+  /** relógio (padrão: Date.now) usado na detecção de fatura paga (R70) */
+  agora?: number;
   /** cede ao navegador entre etapas (padrão: setTimeout 0) */
   ceder?: () => Promise<void>;
 }
@@ -175,15 +180,15 @@ function sugeridoAltaConfianca(it: ResultadoMatching["itens"][number]): boolean 
 }
 
 /** Plano do lote: automáticos (sempre), sugeridos de alta confiança e criações conforme as opções; sem fitid repetido. */
-export function planoDoLote(resultado: ResultadoMatching, ds: Dataset, destino: Destino, opcoes: OpcoesLote): Plano {
-  const base = montarPlano(resultado, ds, destino, { criar: opcoes.criar, parcelasRestantes: opcoes.parcelasRestantes !== false });
+export function planoDoLote(resultado: ResultadoMatching, ds: Dataset, destino: Destino, opcoes: OpcoesLote, faturaPaga = false): Plano {
+  const base = montarPlano(resultado, ds, destino, { criar: opcoes.criar, parcelasRestantes: opcoes.parcelasRestantes !== false, faturaPaga });
   const acoes: AcaoPlano[] = [...base.acoes];
   if (opcoes.sugeridos) {
     for (const it of resultado.itens) if (sugeridoAltaConfianca(it) && it.lancamentoId !== undefined) acoes.push(acaoConciliar(it, destino, it.lancamentoId));
   }
   const vistos = new Set<string>();
   const unicas = acoes.filter((a) => (vistos.has(a.transacao.fitid) ? false : (vistos.add(a.transacao.fitid), true)));
-  return { destino, acoes: unicas };
+  return { destino, acoes: unicas, ...(base.faturaPaga ? { faturaPaga: true } : {}) };
 }
 
 function montarLinhas(resultado: ResultadoMatching, plano: Plano, aplicado: PlanoInverso | null): LinhaLote[] {
@@ -210,7 +215,7 @@ function linhasAtualizacao(ds: Dataset, plano: Plano, arquivo: string): LinhaAtu
     if (d) {
       if (a.mescla.valor && Math.round(Math.abs(t.valor) * 100) !== Math.round(d.valor * 100)) mudancas.push("valor");
       if (a.mescla.data && t.data !== d.data) mudancas.push("data");
-      if (a.mescla.pago && !d.pago) mudancas.push("pago");
+      if (!d.pago && (plano.faturaPaga ? true : a.mescla.pago && cartaoIdDe(d) === null)) mudancas.push("pago");
     }
     return { arquivo, descricaoBanco: t.descricao, lancamento: d?.descricao ?? "—", valor: t.valor, data: t.data, acao: "conciliar", mudancas };
   });
@@ -242,7 +247,15 @@ export interface ProcessamentoArquivo {
  * Processa UM arquivo de forma síncrona contra o estado atual: casa, monta o plano e aplica.
  * Um erro do `aplicar` vira resultado ERRO (nada é aplicado para este arquivo).
  */
-export function processarArquivo(arq: ArquivoParaLote, opcoes: OpcoesLote, getDs: () => Dataset, aplicar: ParametrosLote["aplicar"]): ProcessamentoArquivo {
+/** R70 - decide se o arquivo é de fatura fechada e paga (AUTO = detecção; só vale para cartão). */
+export function faturaPagaDoArquivo(ds: Dataset, arq: Pick<ArquivoParaLote, "extrato" | "destino">, opcoes: OpcoesLote, agora: number): boolean {
+  if (arq.destino.tipo !== "CARTAO") return false;
+  const modo = opcoes.faturaPaga ?? "AUTO";
+  if (modo !== "AUTO") return modo === "SIM";
+  return detectarFaturaPaga(ds, arq.destino, arq.extrato, agora)?.sugerirPaga === true;
+}
+
+export function processarArquivo(arq: ArquivoParaLote, opcoes: OpcoesLote, getDs: () => Dataset, aplicar: ParametrosLote["aplicar"], agora: number = Date.now()): ProcessamentoArquivo {
   const rotuloDestino = arq.rotuloDestino ?? "";
   const n = arq.extrato.transacoes.length;
   try {
@@ -250,7 +263,7 @@ export function processarArquivo(arq: ArquivoParaLote, opcoes: OpcoesLote, getDs
     const casado = casarArquivo(dsAntes, arq, opcoes);
     const classes = classesVazias();
     for (const it of casado.itens) classes[it.classe]++;
-    const plano = planoDoLote(casado, dsAntes, arq.destino, opcoes);
+    const plano = planoDoLote(casado, dsAntes, arq.destino, opcoes, faturaPagaDoArquivo(dsAntes, arq, opcoes, agora));
     const r = plano.acoes.length > 0 ? aplicar(plano) : { ok: true as const, inverso: { restaurar: [], remover: [] }, resumo: RESUMO_VAZIO() };
     const base = { id: arq.id, nome: arq.nome, rotuloDestino, classes, destino: arq.destino };
     if (!r.ok) {
@@ -317,7 +330,7 @@ export async function executarLote(p: ParametrosLote): Promise<ResultadoLote> {
     await ceder();
     etapa("APLICANDO");
     await ceder();
-    const proc = processarArquivo(arq, opcoes, p.getDs, p.aplicar);
+    const proc = processarArquivo(arq, opcoes, p.getDs, p.aplicar, p.agora);
     if (proc.plano && proc.dsAntes) {
       acumulado = somarContadores(acumulado, proc.resultado.contadores);
       emitir({ tipo: "linhas", indice: i, id: arq.id, linhas: linhasAtualizacao(proc.dsAntes, proc.plano, arq.nome), contadores: acumulado, pctGeral: percentualGeral(i, total, "APLICANDO") });
@@ -344,6 +357,7 @@ export function preverLote(ds: Dataset, arquivos: readonly ArquivoParaLote[], op
         if (r.ok) atual = r.ds;
         return r.ok ? { ok: true, inverso: r.inverso, resumo: r.resumo } : r;
       },
+      agora,
     ).resultado;
   });
 }

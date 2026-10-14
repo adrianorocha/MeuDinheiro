@@ -6,6 +6,7 @@ import { ConciliacaoLote, type PassoLote, type Pendencia } from "@/components/co
 import { DestinoResumo, rotuloDestino } from "@/components/conciliacao/DestinoResumo";
 import { ConfirmarArquivo, lerArquivo, SeletorArquivos, type ArquivoLido } from "@/components/conciliacao/EnvioArquivo";
 import { destinoDoArquivo } from "@/components/conciliacao/useFila";
+import { ReprocessarSaldos } from "@/components/conciliacao/ReprocessarSaldos";
 import { Revisao } from "@/components/conciliacao/Revisao";
 import { Button } from "@/components/ui/Button";
 import { Segmentado } from "@/components/ui/Field";
@@ -231,6 +232,9 @@ export default function ConciliacaoPage() {
           <p className="mt-3 text-xs text-muted">O botão de desfazer vale enquanto esta aba estiver aberta. Depois, use &quot;Desfazer conciliação&quot; em cada lançamento (Lançamentos).</p>
         </Card>
       )}
+      </div>
+      <div className="mt-6">
+        <ReprocessarSaldos />
       </div>
     </>
   );

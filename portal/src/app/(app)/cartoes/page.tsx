@@ -1,10 +1,11 @@
 "use client";
 
-import { CircleCheck, CreditCard, Landmark, Pencil, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { CircleCheck, CreditCard, Landmark, Pencil, Plus, RefreshCw, ShoppingBag, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { LimiteComprometido } from "@/components/cartoes/LimiteComprometido";
 import { PagarFaturaModal } from "@/components/cartoes/PagarFaturaModal";
+import { ReprocessarFaturaModal } from "@/components/cartoes/ReprocessarFaturaModal";
 import { LancamentoModal } from "@/components/lancamentos/LancamentoModal";
 import { ListaLancamentos } from "@/components/lancamentos/ListaLancamentos";
 import { Button, IconButton } from "@/components/ui/Button";
@@ -166,6 +167,7 @@ export default function CartoesPage() {
   const [excluir, setExcluir] = useState<Cartao | null>(null);
   const [pagar, setPagar] = useState(false);
   const [jaPaga, setJaPaga] = useState(false);
+  const [reprocessar, setReprocessar] = useState(false);
   const [compra, setCompra] = useState(false);
   /** Filtro da lista de lançamentos: null = todos os cartões do grupo. */
   const [filtroId, setFiltroId] = useState<number | null>(null);
@@ -395,9 +397,19 @@ export default function CartoesPage() {
                   <dt className="text-xs text-muted">Em aberto</dt>
                   <dd className="text-sm font-semibold">
                     <Money valor={resumo.emAberto} />
+                    {Math.abs(resumo.total - resumo.emAberto) >= 0.005 && (
+                      <span className="block text-xs font-normal text-muted">
+                        já pago/abatido: <Money valor={resumo.total - resumo.emAberto} />
+                      </span>
+                    )}
                   </dd>
                 </div>
               </dl>
+              {resumo.total < 0 && (
+                <p role="alert" className="mt-3 rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm">
+                  O total desta fatura está negativo: os créditos superam as compras. Em geral é o pagamento da fatura anterior que veio no extrato do cartão (já registrado na conta). Use &quot;Reprocessar fatura&quot; para revisar e remover esses créditos.
+                </p>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 {resumo.paga ? <Badge tom="pos">Fatura paga</Badge> : resumo.itens.length === 0 ? <Badge>Sem compras</Badge> : <Badge tom="warn">Em aberto</Badge>}
                 <Button variante="primary" disabled={comprometimentoCartao(selecionado, ds.cartoes, ds.despesas, agora).emAbertoTotal <= 0} onClick={() => { setJaPaga(false); setPagar(true); }}>
@@ -405,6 +417,9 @@ export default function CartoesPage() {
                 </Button>
                 <Button icone={<CircleCheck size={14} aria-hidden />} disabled={comprometimentoCartao(selecionado, ds.cartoes, ds.despesas, agora).emAbertoTotal <= 0} onClick={() => { setJaPaga(true); setPagar(true); }}>
                   Já foi paga
+                </Button>
+                <Button icone={<RefreshCw size={14} aria-hidden />} onClick={() => setReprocessar(true)}>
+                  Reprocessar fatura
                 </Button>
                 {conta && <span className="text-xs text-muted">Débito na conta {conta.banco} · {conta.conta}</span>}
               </div>
@@ -457,7 +472,10 @@ export default function CartoesPage() {
         {formCartao && <CartaoForm editar={formCartao.editar} onFechar={() => setFormCartao(null)} />}
       </Modal>
       {selecionado && periodo && (
+        <>
+        <ReprocessarFaturaModal aberto={reprocessar} onFechar={() => setReprocessar(false)} alvo={{ cartaoId: selecionado.id, mes: periodo.mes, ano: periodo.ano }} />
         <PagarFaturaModal aberto={pagar} onFechar={() => setPagar(false)} cartao={selecionado} cartoes={ds.cartoes} despesas={ds.despesas} conta={conta} periodo={periodo} jaPagaInicial={jaPaga} />
+        </>
       )}
       <Confirmar
         aberto={excluir !== null}

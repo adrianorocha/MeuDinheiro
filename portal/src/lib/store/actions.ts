@@ -49,6 +49,7 @@ import {
   type NovoLancamento,
 } from "../finance/operations";
 import { auditarSaldos, recalcularSaldos } from "../finance/conferencia";
+import { reprocessarFatura, reprocessarSaldos, type AlvoFatura } from "../finance/reprocessar";
 import { round2 } from "../finance/money";
 import {
   excluirDivida,
@@ -252,6 +253,24 @@ export const acoes = {
       const r = recalcularSaldos(ds);
       return { ok: true as const, ds: r.ds, correcoes: r.correcoes };
     }),
+
+  // R70 - reprocessar saldos (recálculo + itens de fatura já paga que ficaram em aberto)
+  reprocessarSaldos: (corrigirFaturas = true, removerPagamentosNoCartao = false) =>
+    rastreado(() =>
+      exec()((ds, ctx) => {
+        const r = reprocessarSaldos(ds, { corrigirFaturas, removerPagamentosNoCartao, agora: ctx.agora });
+        return { ok: true as const, ds: r.ds, correcoes: r.correcoes, faturas: r.faturas, itensMarcados: r.itensMarcados, pagamentosRemovidos: r.pagamentosRemovidos };
+      }),
+    ),
+
+  // R71 - reprocessar uma fatura (itens de fatura quitada + pagamento duplicado no cartão + recálculo de limite)
+  reprocessarFatura: (alvo: AlvoFatura, corrigirFaturas = true, removerPagamentosNoCartao = true, removerIds: readonly number[] = []) =>
+    rastreado(() =>
+      exec()((ds, ctx) => {
+        const r = reprocessarFatura(ds, alvo, { corrigirFaturas, removerPagamentosNoCartao, removerIds, agora: ctx.agora });
+        return { ok: true as const, ds: r.ds, correcoes: r.correcoes, itensMarcados: r.itensMarcados, pagamentosRemovidos: r.pagamentosRemovidos, resumo: r.resumo };
+      }),
+    ),
 
   // R55 - regras de categorização
   salvarRegra: (dados: Omit<RegraCategoria, "id" | "criadaEm">, id?: number) =>

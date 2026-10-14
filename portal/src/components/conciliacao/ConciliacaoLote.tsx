@@ -105,6 +105,7 @@ export function ConciliacaoLote({ onPasso, onRevisarUmPorUm, onRevisarPendencias
     const resultado = await executarLote({
       arquivos: prontos,
       opcoes,
+      agora: Date.now(),
       getDs: () => useStore.getState().ds,
       aplicar: (plano) => acoes.aplicarConciliacao(plano),
       onProgresso: (ev) => setExec((p) => reduzir(p, ev)),

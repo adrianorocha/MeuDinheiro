@@ -2,7 +2,7 @@
 
 import { FilePlus2, Gauge, ListChecks, Sparkles } from "lucide-react";
 import { BarraEmpilhada, LegendaClasses } from "@/components/conciliacao/BarraEmpilhada";
-import { Checkbox, Input } from "@/components/ui/Field";
+import { Checkbox, Input, Select } from "@/components/ui/Field";
 import { Badge, Card, CardTitulo } from "@/components/ui/Misc";
 import type { OpcoesLote as Opcoes, ResultadoArquivo } from "@/lib/conciliacao/lote-multiplo";
 
@@ -46,6 +46,14 @@ export function OpcoesLote({ opcoes, onChange, previa }: Props) {
                 onChange={(e) => set({ parcelasRestantes: e.target.checked })}
               />
               <p className="ml-6 text-xs text-muted">Em cartão, uma compra 3/10 criada do extrato também lança 4/10 a 10/10 em aberto, para o limite refletir o saldo devedor. Só vale com &quot;Criar lançamentos&quot;.</p>
+            </div>
+            <div>
+              <Select rotulo="Fatura de cartão fechada e paga" value={opcoes.faturaPaga ?? "AUTO"} onChange={(e) => set({ faturaPaga: e.target.value as NonNullable<Opcoes["faturaPaga"]> })}>
+                <option value="AUTO">Automático (fechada e vencida/paga)</option>
+                <option value="SIM">Sempre marcar itens como pagos</option>
+                <option value="NAO">Nunca marcar</option>
+              </Select>
+              <p className="text-xs text-muted">Só para arquivos de cartão. Marca os itens da fatura como pagos, sem lançar pagamento nem mexer no saldo da conta (a fatura já saiu do banco), para não gerar divergência.</p>
             </div>
           </fieldset>
           <div className="grid grid-cols-2 gap-3">
@@ -106,6 +114,7 @@ export function OpcoesLote({ opcoes, onChange, previa }: Props) {
                   {p.contadores.conciliados} conciliar · {p.contadores.criados} criar
                 </Badge>
               </div>
+              {p.resumo.pagosMarcados > 0 && p.destino.tipo === "CARTAO" && <p className="mt-1 text-xs text-muted">{p.resumo.pagosMarcados} item(ns) serão marcados como pagos.</p>}
               {p.status === "ERRO" && <p className="mt-1 text-xs text-neg">Este arquivo não poderá ser aplicado: {p.erro}</p>}
             </li>
           ))}
