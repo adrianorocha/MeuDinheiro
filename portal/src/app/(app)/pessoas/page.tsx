@@ -1,10 +1,11 @@
 "use client";
 
-import { Copy, HandCoins, Link2, MessageCircle, Pencil, Plus, Trash2, Unlink, Users } from "lucide-react";
+import { Copy, FileDown, HandCoins, Link2, MessageCircle, Pencil, Plus, Trash2, Unlink, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Checkbox, Input, InputValor, Segmentado, Select } from "@/components/ui/Field";
+import { RelatorioPessoasModal } from "@/components/pessoas/RelatorioPessoasModal";
 import { VincularModal } from "@/components/pessoas/VincularModal";
 import { Badge, Card, CardTitulo, EmptyState, ErroBox, PageHeader } from "@/components/ui/Misc";
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
@@ -221,6 +222,7 @@ export default function PessoasPage() {
   const [quitando, setQuitando] = useState<Acerto | null>(null);
   const [vinculando, setVinculando] = useState<{ pessoaId?: number } | null>(null);
   const [cobrando, setCobrando] = useState<Pessoa | null>(null);
+  const [relatorio, setRelatorio] = useState<{ pessoaId?: number } | null>(null);
   const [excluirPessoa, setExcluirPessoa] = useState<Pessoa | null>(null);
   const [excluirAcerto, setExcluirAcerto] = useState<Acerto | null>(null);
   const [periodo, setPeriodo] = useState<"MES" | "TUDO">("MES");
@@ -300,6 +302,9 @@ export default function PessoasPage() {
             </Button>
             <Button icone={<Link2 size={16} aria-hidden />} disabled={semPessoas} onClick={() => setVinculando({})}>
               Vincular lançamentos
+            </Button>
+            <Button icone={<FileDown size={16} aria-hidden />} disabled={semPessoas} onClick={() => setRelatorio({})}>
+              Relatório
             </Button>
           </span>
         }
@@ -411,6 +416,9 @@ export default function PessoasPage() {
                 <Button tamanho="sm" onClick={() => setVinculando({ pessoaId: s.pessoa.id })}>
                   Vincular lançamentos
                 </Button>
+                <Button tamanho="sm" icone={<FileDown size={14} aria-hidden />} onClick={() => setRelatorio({ pessoaId: s.pessoa.id })}>
+                  Relatório desta pessoa
+                </Button>
               </div>
 
               {s.pendentes.length > 0 && (
@@ -443,6 +451,7 @@ export default function PessoasPage() {
         {avulso && <AvulsoForm tipo={avulso.tipo} pessoaId={avulso.pessoaId} onFechar={() => setAvulso(null)} />}
       </Modal>
       <VincularModal aberto={vinculando !== null} pessoaId={vinculando?.pessoaId} onFechar={() => setVinculando(null)} />
+      <RelatorioPessoasModal aberto={relatorio !== null} onFechar={() => setRelatorio(null)} pessoas={ds.pessoas} acertos={ds.acertos} despesas={ds.despesas} pessoaIdInicial={relatorio?.pessoaId} />
       <QuitarModal acerto={quitando} onFechar={() => setQuitando(null)} />
       <CobrarModal pessoa={cobrando} acertos={cobrando ? ds.acertos.filter((a) => a.pessoaId === cobrando.id) : []} onFechar={() => setCobrando(null)} />
       <Confirmar
