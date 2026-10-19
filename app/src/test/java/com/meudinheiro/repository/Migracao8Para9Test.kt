@@ -7,6 +7,7 @@ import com.meudinheiro.data.MIGRATION_8_9
 import com.meudinheiro.data.MIGRATION_10_11
 import com.meudinheiro.data.MIGRATION_11_12
 import com.meudinheiro.data.MIGRATION_12_13
+import com.meudinheiro.data.MIGRATION_13_14
 import com.meudinheiro.data.MIGRATION_9_10
 import com.meudinheiro.data.Projeto
 import com.meudinheiro.data.RegraCategoria
@@ -39,7 +40,7 @@ class Migracao8Para9Test {
             )
         }
 
-        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig8_9.db", MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig8_9.db", MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
         try {
             // dados antigos intactos; coluna nova com o padrão (lista vazia)
             val d = db.despesaDao().obterTodasStatic().single()

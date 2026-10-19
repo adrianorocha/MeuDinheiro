@@ -1,6 +1,6 @@
 import { clampDia, diasNoMes, fimDoMes, inicioDoDia, inicioDoMes, mesAnoDe, normalizaMes } from "./dates";
 import { fromCents, round2, somaCents, toCents } from "./money";
-import type { Cartao, Dataset, Despesa, Investimento, Orcamento } from "./types";
+import type { Acerto, Cartao, Dataset, Despesa, Investimento, Orcamento } from "./types";
 
 /** R2 - `0` e tratado como `null`. */
 export function cartaoIdDe(d: Pick<Despesa, "cartaoId">): number | null {
@@ -402,6 +402,44 @@ export function gastoCategoria(despesas: readonly Despesa[], categoria: string, 
   return fromCents(total);
 }
 
+/** R80 - chave de identidade do orçamento: categoria + de quem é o gasto. */
+export function chaveOrcamento(o: Pick<Orcamento, "categoria" | "escopo" | "pessoaId">): string {
+  const esc = o.escopo === "EU" ? "eu" : o.escopo === "PESSOA" && o.pessoaId != null ? `p${o.pessoaId}` : "todos";
+  return `${normalizaNome(o.categoria)}|${esc}`;
+}
+
+/**
+ * R80 - gasto do orçamento no mês conforme o escopo. TODOS = `gastoCategoria`. Para cada débito, o que está A RECEBER de outras
+ * pessoas (acertos A_RECEBER com `despesaId` = o lançamento, quitados ou não, no máximo o valor dele) deixa de ser "meu":
+ * EU = Σ(valor − terceiros) − estornos de cartão; PESSOA = Σ dos acertos dela nos lançamentos da categoria.
+ */
+export function gastoOrcamento(orc: Pick<Orcamento, "categoria" | "escopo" | "pessoaId">, despesas: readonly Despesa[], acertos: readonly Acerto[], mes: number, ano: number): number {
+  if (orc.escopo !== "EU" && !(orc.escopo === "PESSOA" && orc.pessoaId != null)) return gastoCategoria(despesas, orc.categoria, mes, ano);
+  const alvo = normalizaNome(orc.categoria);
+  const ini = inicioDoMes(mes, ano);
+  const fim = fimDoMes(mes, ano);
+  const porDespesa = new Map<number, { total: number; daPessoa: number }>();
+  for (const a of acertos) {
+    if (a.tipo !== "A_RECEBER" || a.despesaId == null) continue;
+    const cur = porDespesa.get(a.despesaId) ?? { total: 0, daPessoa: 0 };
+    cur.total += toCents(a.valor);
+    if (orc.escopo === "PESSOA" && a.pessoaId === orc.pessoaId) cur.daPessoa += toCents(a.valor);
+    porDespesa.set(a.despesaId, cur);
+  }
+  let total = 0;
+  for (const d of despesas) {
+    if (d.natureza !== "NORMAL" || d.data < ini || d.data > fim) continue;
+    if (normalizaNome(d.categoria) !== alvo) continue;
+    const v = toCents(d.valor);
+    if (d.tipo === "DEBITO") {
+      const t = porDespesa.get(d.id);
+      if (orc.escopo === "EU") total += v - Math.min(t?.total ?? 0, v);
+      else total += Math.min(t?.daPessoa ?? 0, v);
+    } else if (orc.escopo === "EU" && cartaoIdDe(d) !== null) total -= v;
+  }
+  return fromCents(total);
+}
+
 export type StatusOrcamento = "OK" | "ATENCAO" | "ESTOURADO";
 
 export interface ProgressoOrcamento {
@@ -424,8 +462,9 @@ export function progressoOrcamento(
   despesas: readonly Despesa[],
   mes: number,
   ano: number,
+  acertos: readonly Acerto[] = [],
 ): ProgressoOrcamento {
-  const gasto = gastoCategoria(despesas, orc.categoria, mes, ano);
+  const gasto = gastoOrcamento(orc, despesas, acertos, mes, ano);
   const limite = round2(orc.valorLimite);
   const pct = limite > 0 ? gasto / limite : gasto > 0 ? 1 : 0;
   return { orcamento: orc, gasto, limite, pct, status: statusOrcamento(pct) };

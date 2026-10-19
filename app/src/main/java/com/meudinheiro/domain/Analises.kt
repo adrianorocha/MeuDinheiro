@@ -4,6 +4,7 @@ import com.meudinheiro.data.Cartao
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaFixa
+import com.meudinheiro.data.EscopoOrcamento
 import com.meudinheiro.data.Investimento
 import com.meudinheiro.data.Meta
 import com.meudinheiro.data.TipoDespesa
@@ -49,7 +50,37 @@ object Analises {
 
     // ------------------------------------------------------------------ R22
 
-    data class AlertaOrcamento(val categoria: String, val limiar: Int, val chave: String)
+    data class AlertaOrcamento(val categoria: String, val limiar: Int, val chave: String, val rotulo: String? = null)
+
+    /** Orçamento avaliado para alerta: [escopo]/[pessoaId] entram na chave de "já avisado" (nulo = todos). */
+    data class ProgressoAlerta(
+        val categoria: String,
+        val percentual: Double,
+        val escopo: String? = null,
+        val pessoaId: Int? = null,
+        val rotulo: String? = null
+    )
+
+    /** Chave de "já avisado": TODOS mantém o formato antigo; EU e cada pessoa têm chave própria. */
+    fun chaveOrcamento(categoria: String, escopo: String?, pessoaId: Int?, mes: String, limiar: Int): String {
+        val (esc, pid) = EscopoOrcamento.normalizar(escopo, pessoaId)
+        val sufixo = when (esc) {
+            null -> ""
+            EscopoOrcamento.EU -> "@EU"
+            else -> "@P$pid"
+        }
+        return "${Texto.normalizar(categoria)}$sufixo|$mes|$limiar"
+    }
+
+    fun alertasOrcamentoEscopo(progressos: List<ProgressoAlerta>, mes: String, jaAvisados: Set<String>): List<AlertaOrcamento> =
+        progressos.mapNotNull { p ->
+            fun chave(l: Int) = chaveOrcamento(p.categoria, p.escopo, p.pessoaId, mes, l)
+            when {
+                p.percentual >= 1.0 && chave(100) !in jaAvisados -> AlertaOrcamento(p.categoria, 100, chave(100), p.rotulo)
+                p.percentual in 0.8..<1.0 && chave(80) !in jaAvisados && chave(100) !in jaAvisados -> AlertaOrcamento(p.categoria, 80, chave(80), p.rotulo)
+                else -> null
+            }
+        }
 
     /**
      * Alertas novos de orçamento. [jaAvisados] guarda chaves `categoria|AAAA-MM|limiar`; ao emitir o de 100%
@@ -59,14 +90,7 @@ object Analises {
         progressos: List<Pair<String, Double>>,
         mes: String,
         jaAvisados: Set<String>
-    ): List<AlertaOrcamento> = progressos.mapNotNull { (categoria, pct) ->
-        fun chave(l: Int) = "${Texto.normalizar(categoria)}|$mes|$l"
-        when {
-            pct >= 1.0 && chave(100) !in jaAvisados -> AlertaOrcamento(categoria, 100, chave(100))
-            pct in 0.8..<1.0 && chave(80) !in jaAvisados && chave(100) !in jaAvisados -> AlertaOrcamento(categoria, 80, chave(80))
-            else -> null
-        }
-    }
+    ): List<AlertaOrcamento> = alertasOrcamentoEscopo(progressos.map { (c, p) -> ProgressoAlerta(c, p) }, mes, jaAvisados)
 
     fun chavesParaMarcar(alerta: AlertaOrcamento): Set<String> =
         if (alerta.limiar == 100) setOf(alerta.chave, alerta.chave.removeSuffix("100") + "80") else setOf(alerta.chave)

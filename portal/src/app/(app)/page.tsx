@@ -98,8 +98,8 @@ export default function DashboardPage() {
   }, [ds, agora]);
 
   const orcamentos = useMemo(
-    () => ds.orcamentos.map((o) => progressoOrcamento(o, ds.despesas, mes, ano)).sort((a, b) => b.pct - a.pct).slice(0, 5),
-    [ds.orcamentos, ds.despesas, mes, ano],
+    () => ds.orcamentos.map((o) => progressoOrcamento(o, ds.despesas, mes, ano, ds.acertos)).sort((a, b) => b.pct - a.pct).slice(0, 5),
+    [ds.orcamentos, ds.despesas, ds.acertos, mes, ano],
   );
 
   const vazio = ds.contas.length === 0 && ds.despesas.length === 0;

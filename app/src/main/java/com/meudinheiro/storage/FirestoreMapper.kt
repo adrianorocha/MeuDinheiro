@@ -171,8 +171,18 @@ object FirestoreMapper {
     fun toDoc(c: Categoria): Doc = mapOf("id" to c.id, "nome" to c.nome, "pic" to c.pic)
     fun categoriaFromDoc(d: Doc) = Categoria(id = d.int("id"), nome = d.str("nome"), pic = d.str("pic", "default_pic"))
 
-    fun toDoc(o: Orcamento): Doc = mapOf("id" to o.id, "categoria" to o.categoria, "valorLimite" to o.valorLimite)
-    fun orcamentoFromDoc(d: Doc) = Orcamento(id = d.int("id"), categoria = d.str("categoria"), valorLimite = d.double("valorLimite"))
+    fun toDoc(o: Orcamento): Doc {
+        val base = mapOf("id" to o.id, "categoria" to o.categoria, "valorLimite" to o.valorLimite)
+        val (escopo, pessoaId) = com.meudinheiro.data.EscopoOrcamento.normalizar(o.escopo, o.pessoaId)
+        // Só grava quando há escopo: documento "TODOS" continua idêntico ao formato anterior.
+        return if (escopo == null) base else base + ("escopo" to escopo) + (if (pessoaId != null) mapOf("pessoaId" to pessoaId) else emptyMap())
+    }
+    fun orcamentoFromDoc(d: Doc): Orcamento {
+        val (escopo, pessoaId) = com.meudinheiro.data.EscopoOrcamento.normalizar(
+            (d["escopo"] as? String), (d["pessoaId"] as? Number)?.toInt()
+        )
+        return Orcamento(id = d.int("id"), categoria = d.str("categoria"), valorLimite = d.double("valorLimite"), escopo = escopo, pessoaId = pessoaId)
+    }
 
     fun toDoc(r: RegraCategoria): Doc = mapOf(
         "id" to r.id, "padrao" to r.padrao, "tipoMatch" to r.tipoMatch, "categoria" to r.categoria,

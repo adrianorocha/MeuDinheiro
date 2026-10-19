@@ -1,6 +1,8 @@
 package com.meudinheiro.domain
 
+import com.meudinheiro.data.Acerto
 import com.meudinheiro.data.Cartao
+import com.meudinheiro.data.EscopoOrcamento
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.TipoDespesa
@@ -402,18 +404,57 @@ object Financas {
 
     private fun mesmaCategoria(a: String, b: String) = a.trim().equals(b.trim(), ignoreCase = true)
 
+    /**
+     * Gasto do mês de um orçamento, em centavos.
+     *  - TODOS ([escopo] nulo): débitos menos estornos de cartão, como sempre.
+     *  - EU: para cada débito, valor menos o que está vinculado a outras pessoas (acertos A_RECEBER, quitados ou não,
+     *    limitados ao valor do lançamento); estornos de cartão abatem.
+     *  - PESSOA: só os acertos A_RECEBER daquela pessoa nos débitos da categoria (limitados ao valor do lançamento).
+     */
+    fun gastoOrcamentoCentavos(
+        categoria: String,
+        lancamentos: Iterable<Movimento>,
+        inicio: Long,
+        fim: Long,
+        escopo: String? = null,
+        pessoaId: Int? = null,
+        acertos: List<Acerto> = emptyList()
+    ): Long {
+        val (esc, pid) = EscopoOrcamento.normalizar(escopo, pessoaId)
+        val doMes = lancamentos
+            .filter { it.natureza == Natureza.NORMAL && it.dataMs in inicio..fim && mesmaCategoria(it.categoria, categoria) }
+            .filter { !it.ehEntrada || !it.semCartao } // despesas e estornos de cartão; receitas comuns ficam de fora
+        if (esc == null) return doMes.sumOf { -it.centavosAssinados }.coerceAtLeast(0)
+
+        val aReceber = acertos.filter { it.tipo == "A_RECEBER" && it.despesaId != null }.groupBy { it.despesaId!! }
+        fun idDe(m: Movimento): Long? = (m as? Despesa)?.id
+        val total = doMes.sumOf { m ->
+            val c = Dinheiro.centavos(m.valor)
+            if (m.ehEntrada) {
+                if (esc == EscopoOrcamento.EU) -c else 0L
+            } else {
+                val dosAcertos = idDe(m)?.let { aReceber[it] }.orEmpty()
+                if (esc == EscopoOrcamento.EU) {
+                    c - dosAcertos.sumOf { Dinheiro.centavos(it.valor) }.coerceIn(0L, c)
+                } else {
+                    dosAcertos.filter { it.pessoaId == pid }.sumOf { Dinheiro.centavos(it.valor) }.coerceIn(0L, c)
+                }
+            }
+        }
+        return total.coerceAtLeast(0)
+    }
+
     fun progressoOrcamento(
         categoria: String,
         limite: Double,
         lancamentos: Iterable<Movimento>,
         inicio: Long,
-        fim: Long
+        fim: Long,
+        escopo: String? = null,
+        pessoaId: Int? = null,
+        acertos: List<Acerto> = emptyList()
     ): ProgressoOrcamento {
-        val gastoC = lancamentos
-            .filter { it.natureza == Natureza.NORMAL && it.dataMs in inicio..fim && mesmaCategoria(it.categoria, categoria) }
-            .filter { !it.ehEntrada || !it.semCartao } // despesas e estornos de cartão; receitas comuns ficam de fora
-            .sumOf { -it.centavosAssinados }
-            .coerceAtLeast(0)
+        val gastoC = gastoOrcamentoCentavos(categoria, lancamentos, inicio, fim, escopo, pessoaId, acertos)
         val limiteC = Dinheiro.centavos(limite)
         val pct = if (limiteC > 0) gastoC.toDouble() / limiteC else 0.0
         val status = when {

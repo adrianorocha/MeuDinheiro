@@ -56,8 +56,8 @@ export interface AlertaOrcamento {
   limite: number;
 }
 
-export function chaveAlerta(categoria: string, mes: number, ano: number, limiar: 80 | 100): string {
-  return `${normalizar(categoria)}|${ano}-${String(mes).padStart(2, "0")}|${limiar}`;
+export function chaveAlerta(categoria: string, mes: number, ano: number, limiar: 80 | 100, escopoChave = ""): string {
+  return `${normalizar(categoria)}${escopoChave}|${ano}-${String(mes).padStart(2, "0")}|${limiar}`;
 }
 
 /**
@@ -65,7 +65,7 @@ export function chaveAlerta(categoria: string, mes: number, ano: number, limiar:
  * repetido. `marcar` lista as chaves que devem ser gravadas como "já avisado".
  */
 export function alertasOrcamento(
-  ds: Pick<Dataset, "orcamentos" | "despesas">,
+  ds: Pick<Dataset, "orcamentos" | "despesas"> & Partial<Pick<Dataset, "acertos" | "pessoas">>,
   agora: number,
   avisados: ReadonlySet<string>,
 ): { alertas: AlertaOrcamento[]; marcar: string[] } {
@@ -73,10 +73,13 @@ export function alertasOrcamento(
   const alertas: AlertaOrcamento[] = [];
   const marcar: string[] = [];
   for (const o of ds.orcamentos) {
-    const p = progressoOrcamento(o, ds.despesas, mes, ano);
-    const k80 = chaveAlerta(o.categoria, mes, ano, 80);
-    const k100 = chaveAlerta(o.categoria, mes, ano, 100);
-    const base = { categoria: o.categoria, pct: p.pct, gasto: p.gasto, limite: p.limite };
+    const p = progressoOrcamento(o, ds.despesas, mes, ano, ds.acertos ?? []);
+    // R80 - orçamento "só eu"/de uma pessoa tem chave própria; os de sempre (todos) mantêm a chave antiga.
+    const escopoChave = o.escopo === "EU" ? "#eu" : o.escopo === "PESSOA" && o.pessoaId != null ? `#p${o.pessoaId}` : "";
+    const quem = o.escopo === "EU" ? " (só eu)" : o.escopo === "PESSOA" && o.pessoaId != null ? ` (só ${ds.pessoas?.find((x) => x.id === o.pessoaId)?.nome ?? "pessoa"})` : "";
+    const k80 = chaveAlerta(o.categoria, mes, ano, 80, escopoChave);
+    const k100 = chaveAlerta(o.categoria, mes, ano, 100, escopoChave);
+    const base = { categoria: o.categoria + quem, pct: p.pct, gasto: p.gasto, limite: p.limite };
     if (p.pct >= 1) {
       if (!avisados.has(k100)) alertas.push({ ...base, chave: k100, limiar: 100 });
       for (const k of [k80, k100]) if (!avisados.has(k)) marcar.push(k);

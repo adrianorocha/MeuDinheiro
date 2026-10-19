@@ -2,7 +2,9 @@ package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meudinheiro.data.EscopoOrcamento
 import com.meudinheiro.data.OrcamentoProgresso
+import com.meudinheiro.data.Pessoa
 import com.meudinheiro.domain.Financas
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
@@ -23,10 +25,15 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
      * R13 — gasto do mês corrente por categoria (despesas NORMAIS, inclusive compras no cartão, menos
      * estornos). O mês é resolvido a cada emissão, então a tela vira sozinha na virada do mês.
      */
+    val pessoas: StateFlow<List<Pessoa>> = repository.obterPessoasFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val orcamentosComProgresso: StateFlow<List<OrcamentoProgresso>> = combine(
         orcamentosFlow,
-        repository.todasDespesasFlow
-    ) { listaOrcamentos, despesas ->
+        repository.todasDespesasFlow,
+        repository.obterAcertosFlow(),
+        repository.obterPessoasFlow()
+    ) { listaOrcamentos, despesas, acertos, listaPessoas ->
         val agora = System.currentTimeMillis()
         val mes = Financas.mesDe(agora)
         val ano = Financas.anoDe(agora)
@@ -34,12 +41,23 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
         val fim = Financas.fimDoMes(mes, ano)
 
         listaOrcamentos.map { orcamento ->
-            val p = Financas.progressoOrcamento(orcamento.categoria, orcamento.valorLimite, despesas, inicio, fim)
+            val (escopo, pessoaId) = EscopoOrcamento.normalizar(orcamento.escopo, orcamento.pessoaId)
+            val p = Financas.progressoOrcamento(
+                orcamento.categoria, orcamento.valorLimite, despesas, inicio, fim, escopo, pessoaId, acertos
+            )
             OrcamentoProgresso(
                 categoria = orcamento.categoria,
                 limite = p.limite,
                 gastoAtual = p.gasto,
-                porcentagem = p.percentual.toFloat()
+                porcentagem = p.percentual.toFloat(),
+                id = orcamento.id,
+                escopo = escopo,
+                pessoaId = pessoaId,
+                rotuloEscopo = when (escopo) {
+                    null -> null
+                    EscopoOrcamento.EU -> "Só eu"
+                    else -> "Só " + (listaPessoas.firstOrNull { it.id == pessoaId }?.nome ?: "pessoa removida")
+                }
             )
         }
     }.stateIn(
@@ -48,17 +66,17 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
         initialValue = emptyList()
     )
 
-    fun salvarOrcamento(categoria: String, valor: Double) {
+    fun salvarOrcamento(categoria: String, valor: Double, escopo: String? = null, pessoaId: Int? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             // Chama a função do repositório para salvar no banco de dados (Room)
-            repository.salvarOrcamento(categoria, valor)
+            repository.salvarOrcamento(categoria, valor, escopo, pessoaId)
         }
     }
 
-    fun excluirOrcamento(categoria: String) {
+    fun excluirOrcamento(categoria: String, escopo: String? = null, pessoaId: Int? = null) {
         viewModelScope.launch {
             try {
-                repository.excluirOrcamento(categoria)
+                repository.excluirOrcamento(categoria, escopo, pessoaId)
             } catch (e: Exception) {
                 e.printStackTrace()
                 // Se quiser, pode adicionar um Log aqui caso falhe
@@ -66,10 +84,10 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
         }
     }
 
-    fun atualizarOrcamento(categoria: String, novoValor: Double) {
+    fun atualizarOrcamento(categoria: String, novoValor: Double, escopo: String? = null, pessoaId: Int? = null) {
         viewModelScope.launch {
             try {
-                repository.atualizarOrcamento(categoria, novoValor)
+                repository.atualizarOrcamento(categoria, novoValor, escopo, pessoaId)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

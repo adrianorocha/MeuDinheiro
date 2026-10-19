@@ -268,21 +268,23 @@ fun MainScreen(
         if (orcamentosComProgresso.isEmpty()) return@LaunchedEffect
         val agora = System.currentTimeMillis()
         val mesChave = "%04d-%02d".format(Financas.anoDe(agora), Financas.mesDe(agora))
-        val novos = Analises.alertasOrcamento(
-            orcamentosComProgresso.map { it.categoria to it.porcentagem.toDouble() }, mesChave, userPrefs.alertasOrcamentoEnviados()
+        val novos = Analises.alertasOrcamentoEscopo(
+            orcamentosComProgresso.map { Analises.ProgressoAlerta(it.categoria, it.porcentagem.toDouble(), it.escopo, it.pessoaId, it.rotuloEscopo) },
+            mesChave, userPrefs.alertasOrcamentoEnviados()
         )
         if (novos.isEmpty()) return@LaunchedEffect
         userPrefs.marcarAlertasOrcamento(novos.flatMap { Analises.chavesParaMarcar(it) }.toSet())
         val notificar = userPrefs.notifEnabledFlow.first()
         novos.forEach { a ->
-            val msg = if (a.limiar == 100) "O orçamento de ${a.categoria} foi ultrapassado." else "Você já usou 80% do orçamento de ${a.categoria}."
+            val nomeOrc = if (a.rotulo == null) a.categoria else "${a.categoria} (${a.rotulo})"
+            val msg = if (a.limiar == 100) "O orçamento de $nomeOrc foi ultrapassado." else "Você já usou 80% do orçamento de $nomeOrc."
             snackbarHostState.showSnackbar("Orçamento | $msg | Erro")
             if (notificar) {
                 com.meudinheiro.notif.Notificacoes.mostrar(
                     context,
                     com.meudinheiro.notif.Aviso(
                         tipo = if (a.limiar == 100) com.meudinheiro.notif.TipoAviso.ORCAMENTO_ESTOURADO else com.meudinheiro.notif.TipoAviso.ORCAMENTO,
-                        titulo = "Orçamento de ${a.categoria}", resumo = msg, id = a.chave.hashCode(),
+                        titulo = "Orçamento de $nomeOrc", resumo = msg, id = a.chave.hashCode(),
                         textoPublico = "Aviso de orçamento"
                     )
                 )
@@ -862,11 +864,11 @@ fun MainScreen(
                 item = orcamento,
                 onDismiss = { orcamentoSelecionado = null },
                 onExcluir = {
-                    orcamentoVM.excluirOrcamento(orcamento.categoria)
+                    orcamentoVM.excluirOrcamento(orcamento.categoria, orcamento.escopo, orcamento.pessoaId)
                     orcamentoSelecionado = null
                 },
                 onEditar = { novoValor ->
-                    orcamentoVM.atualizarOrcamento(orcamento.categoria, novoValor)
+                    orcamentoVM.atualizarOrcamento(orcamento.categoria, novoValor, orcamento.escopo, orcamento.pessoaId)
                 }
             )
         }
@@ -874,7 +876,8 @@ fun MainScreen(
         if (showAddOrcamentoDialog) {
             AddOrcamentoDialog(
                 categoriasDisponiveis = categoriasDisponiveis,
-                onSalvar = { categoria, valor -> orcamentoVM.salvarOrcamento(categoria, valor) },
+                pessoas = orcamentoVM.pessoas.collectAsState().value,
+                onSalvar = { categoria, valor, escopo, pessoaId -> orcamentoVM.salvarOrcamento(categoria, valor, escopo, pessoaId) },
                 onDismiss = { showAddOrcamentoDialog = false }
             )
         }

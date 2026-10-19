@@ -391,7 +391,8 @@ object ResumoInteligente {
         }
 
         // (g) boa notícia (no máximo uma)
-        val lim = orcamentos.filter { Dinheiro.centavos(it.valorLimite) > 0 }
+        // Só orçamentos "todos": os por escopo (eu/pessoa) não se comparam com o gasto bruto da categoria.
+        val lim = orcamentos.filter { it.escopo == null && Dinheiro.centavos(it.valorLimite) > 0 }
         if (tipo == TipoPeriodo.MES && lim.isNotEmpty() &&
             lim.all { maxOf(0L, atual.cats[Texto.normalizar(it.categoria)]?.cents ?: 0L) <= Dinheiro.centavos(it.valorLimite) }
         ) {

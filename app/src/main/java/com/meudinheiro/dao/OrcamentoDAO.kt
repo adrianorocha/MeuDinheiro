@@ -22,6 +22,12 @@ interface OrcamentoDao {
     @Query("UPDATE orcamentos SET valorLimite = :novoValor WHERE categoria = :categoria")
     suspend fun atualizarPorCategoria(categoria: String, novoValor: Double)
 
+    @Query("DELETE FROM orcamentos WHERE id = :id")
+    suspend fun excluirPorId(id: Int)
+
+    @Query("UPDATE orcamentos SET valorLimite = :novoValor WHERE id = :id")
+    suspend fun atualizarValorPorId(id: Int, novoValor: Double)
+
     @Query("SELECT * FROM orcamentos")
     suspend fun obterTodasStatic(): List<Orcamento>
 

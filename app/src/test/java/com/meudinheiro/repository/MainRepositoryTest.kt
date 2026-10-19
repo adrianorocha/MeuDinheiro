@@ -477,6 +477,33 @@ class MainRepositoryTest {
         assertEquals(0.0, saldo("111"), 0.0) // pendentes não mexem no saldo
     }
 
+    @Test fun `orcamentos da mesma categoria coexistem por escopo e pessoa`() = runBlocking {
+        val joao = repo.salvarPessoa(com.meudinheiro.data.Pessoa(nome = "João")).toInt()
+        repo.salvarOrcamento("Combustível", 500.0)
+        repo.salvarOrcamento("Combustível", 400.0, "EU")
+        repo.salvarOrcamento("Combustível", 100.0, "PESSOA", joao)
+        assertEquals(3, db.orcamentoDao().obterTodasStatic().size)
+        // regravar a mesma chave atualiza, não duplica
+        repo.salvarOrcamento(" combustível ", 450.0, "EU")
+        repo.salvarOrcamento("Combustível", 120.0, "PESSOA", joao)
+        val todos = db.orcamentoDao().obterTodasStatic()
+        assertEquals(3, todos.size)
+        assertEquals(450.0, todos.single { it.escopo == "EU" }.valorLimite, 0.0)
+        assertEquals(120.0, todos.single { it.escopo == "PESSOA" }.valorLimite, 0.0)
+        assertEquals(500.0, todos.single { it.escopo == null }.valorLimite, 0.0)
+
+        repo.atualizarOrcamento("Combustível", 130.0, "PESSOA", joao)
+        assertEquals(130.0, db.orcamentoDao().obterTodasStatic().single { it.escopo == "PESSOA" }.valorLimite, 0.0)
+        assertEquals(500.0, db.orcamentoDao().obterTodasStatic().single { it.escopo == null }.valorLimite, 0.0)
+
+        repo.excluirOrcamento("Combustível", "PESSOA", joao)
+        assertEquals(2, db.orcamentoDao().obterTodasStatic().size)
+        assertTrue(db.orcamentoDao().obterTodasStatic().none { it.escopo == "PESSOA" })
+
+        try { repo.salvarOrcamento("Combustível", 10.0, "PESSOA", 9999); fail() } catch (e: RegraFinanceiraException) { }
+        try { repo.salvarOrcamento("Combustível", 10.0, "PESSOA", null); fail() } catch (e: RegraFinanceiraException) { }
+    }
+
     @Test fun `orcamento unico por categoria e atualizado em vez de duplicado`() = runBlocking {
         repo.salvarOrcamento("Alimentação", 500.0)
         repo.salvarOrcamento(" alimentação ", 700.0)

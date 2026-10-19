@@ -80,6 +80,8 @@ class FirestoreMapperTest {
         repo.salvarDivida(com.meudinheiro.data.Divida(nome = "Cartão rotativo", tipo = "CARTAO_ROTATIVO", credor = "Banco", saldoDevedor = 1500.5, taxaJurosMensal = 12.5, parcelaMinima = 150.0, parcelasRestantes = 12, diaVencimento = 10, conta = "111"))
         val pessoaId = repo.salvarPessoa(com.meudinheiro.data.Pessoa(nome = "Ana", contato = "11 99999-0000")).toInt()
         repo.criarAcertoAvulso(pessoaId, "A_RECEBER", 50.0, "Pizza", data = 1_760_000_000_000)
+        repo.salvarOrcamento("Combustível", 300.0, "PESSOA", pessoaId)
+        repo.salvarOrcamento("Combustível", 900.0, "EU")
         repo.registrarLancamento(
             Despesa(descricao = "Com tags", valor = 3.0, data = Date(1_760_000_000_000), categoria = "Casa", conta = "111", pic = "p",
                 tipo = TipoDespesa.DEBITO, mes = 0, ano = 0, pago = true, tags = listOf("reforma", "Casa Nova"))

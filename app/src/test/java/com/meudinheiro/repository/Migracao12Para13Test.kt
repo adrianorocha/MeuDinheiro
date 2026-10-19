@@ -3,6 +3,7 @@ package com.meudinheiro.repository
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.meudinheiro.data.MIGRATION_12_13
+import com.meudinheiro.data.MIGRATION_13_14
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,7 +26,7 @@ class Migracao12Para13Test {
                     "cartaoPrincipalId, limiteProprio) VALUES (1, 'Visa', '1234', 'CRÉDITO', 900.0, 1000.0, 25, 5, 1, NULL, NULL)"
             )
         }
-        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig12_13.db", MIGRATION_12_13)
+        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig12_13.db", MIGRATION_12_13, MIGRATION_13_14)
         try {
             val c = db.cartaoDao().obterTodasStatic().single()
             assertEquals("Visa", c.nome)

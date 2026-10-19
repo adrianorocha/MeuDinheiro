@@ -1,4 +1,4 @@
-import { normalizaNome } from "../finance/calc";
+import { chaveOrcamento, normalizaNome } from "../finance/calc";
 import {
   adiantarOcorrenciaFixa,
   anteciparPagamento,
@@ -242,16 +242,18 @@ export const acoes = {
   marcarItensFaturaComoPagos: (input: PagamentoItensFatura) => exec()((ds) => marcarItensFaturaComoPagos(ds, input)),
 
   // orçamentos (um por categoria)
-  salvarOrcamento: (categoria: string, valorLimite: number) =>
+  salvarOrcamento: (categoria: string, valorLimite: number, escopo?: "EU" | "PESSOA", pessoaId?: number | null) =>
     exec()((ds, ctx) => {
       if (!categoria.trim()) return falha("Selecione a categoria.");
       if (!(round2(valorLimite) > 0)) return falha("O limite do orçamento deve ser maior que zero.");
-      const alvo = normalizaNome(categoria);
-      const existente = ds.orcamentos.find((o) => normalizaNome(o.categoria) === alvo);
+      if (escopo === "PESSOA" && !ds.pessoas.some((p) => p.id === pessoaId)) return falha("Selecione a pessoa.");
+      const novo = { categoria: categoria.trim(), ...(escopo ? { escopo, ...(escopo === "PESSOA" ? { pessoaId } : {}) } : {}) };
+      const alvo = chaveOrcamento(novo);
+      const existente = ds.orcamentos.find((o) => chaveOrcamento(o) === alvo);
       if (existente) {
         return { ok: true as const, ds: { ...ds, orcamentos: atualizarItem(ds.orcamentos, existente.id, { valorLimite: round2(valorLimite) }) } };
       }
-      const { lista } = inserirItem(ds.orcamentos, { categoria: categoria.trim(), valorLimite: round2(valorLimite) }, ctx);
+      const { lista } = inserirItem(ds.orcamentos, { ...novo, valorLimite: round2(valorLimite) }, ctx);
       return { ok: true as const, ds: { ...ds, orcamentos: lista } };
     }),
   excluirOrcamento: (id: number) =>

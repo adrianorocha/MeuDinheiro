@@ -750,3 +750,14 @@ Sem mudança de formato de dados nem de regras. Para reduzir leituras do Firesto
 
 - Lançamento novo: "Já paga/recebida" acompanha a data (data futura = pendente, não altera o saldo até a baixa) até o usuário mexer na caixa; antes vinha sempre marcado e o agendado nascia como pago, sumindo de Pendências.
 - Lançamentos mostra o aviso "N lançamento(s) agendado(s) com data futura" (conta, NORMAL, não pagos, data depois de hoje), que abre a lista de pendentes de todos os meses.
+
+## R80 - Orçamento por pessoa (portal e app)
+
+- `Orcamento.escopo?: "EU" | "PESSOA"` e `Orcamento.pessoaId?: number | null` (opcionais; ausente = TODOS, comportamento de sempre; documento Firestore `orcamentos/{id}` e backup). Identidade do orçamento = categoria normalizada + escopo + pessoaId (podem coexistir "Combustível" para todos, só eu e uma pessoa).
+- A ligação lançamento↔pessoa é o `Acerto` (R59/R68): `A_RECEBER` com `despesaId` = o lançamento. Para cada lançamento DEBITO: `terceiros = min(Σ A_RECEBER vinculados (quitados ou não), valor)`.
+  - **EU** = Σ(valor − terceiros) − estornos/cashback de cartão da categoria.
+  - **PESSOA X** = Σ dos A_RECEBER da pessoa X nos lançamentos da categoria (no máximo o valor de cada um); estornos não entram.
+  - **TODOS** = como antes (`gastoCategoria`).
+  - Mesmo mês, mesma base (NORMAL, centavos). `A_PAGAR` e acertos avulsos (sem lançamento) não contam.
+- Alertas 80%/100%: chave própria por escopo (`#eu`, `#p<id>`); TODOS mantém a chave antiga. Excluir uma pessoa com orçamento é bloqueado. O insight "orçamento respeitado" do Resumo só considera orçamentos sem escopo.
+- Uso: vincule o lançamento à pessoa em Pessoas (A receber) para ele sair do orçamento "só eu".

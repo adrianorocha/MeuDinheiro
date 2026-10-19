@@ -89,6 +89,12 @@ export interface Orcamento {
   id: number;
   categoria: string;
   valorLimite: number;
+  /**
+   * R80 - de quem é o gasto contado: ausente = TODOS (tudo da categoria, como sempre); "EU" = o que sobra depois de descontar o que
+   * está a receber de outras pessoas (acertos A_RECEBER vinculados ao lançamento); "PESSOA" = só o vinculado à `pessoaId`.
+   */
+  escopo?: "EU" | "PESSOA";
+  pessoaId?: number | null;
 }
 
 export type TipoMatchRegra = "CONTEM" | "COMECA_COM" | "IGUAL";

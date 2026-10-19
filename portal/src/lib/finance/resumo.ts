@@ -468,7 +468,7 @@ export function resumoInteligente(
   }
 
   // (g) boa notícia (no máximo uma)
-  const lim = ds.orcamentos.filter((o) => toCents(o.valorLimite) > 0);
+  const lim = ds.orcamentos.filter((o) => toCents(o.valorLimite) > 0 && !o.escopo); // R80: orçamentos por pessoa não se comparam ao total da categoria
   if (tipo === "MES" && lim.length > 0 && lim.every((o) => Math.max(0, atual.cats.get(normalizar(o.categoria))?.cents ?? 0) <= toCents(o.valorLimite))) {
     add({
       tipo: "BOA_NOTICIA",

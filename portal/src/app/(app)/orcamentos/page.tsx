@@ -5,7 +5,7 @@ import { SeletorCategoria } from "@/components/ui/SeletorCategoria";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Button, IconButton } from "@/components/ui/Button";
-import { InputValor } from "@/components/ui/Field";
+import { InputValor, Select } from "@/components/ui/Field";
 import { Badge, Card, EmptyState, ErroBox, PageHeader, ProgressBar } from "@/components/ui/Misc";
 import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
 import { Money } from "@/components/ui/Money";
@@ -22,11 +22,14 @@ function OrcamentoForm({ editar, onFechar }: { editar: Orcamento | null; onFecha
   const avisar = useStore((s) => s.avisar);
   const [categoria, setCategoria] = useState(editar?.categoria ?? "");
   const [limiteTxt, setLimiteTxt] = useState(editar ? valorParaCampo(editar.valorLimite) : "");
+  // R80 - de quem é o gasto: "todos" (como sempre), "eu" (desconta o que é de outras pessoas) ou "p:<id>" (só de uma pessoa)
+  const [quem, setQuem] = useState(editar?.escopo === "EU" ? "eu" : editar?.escopo === "PESSOA" && editar.pessoaId != null ? `p:${editar.pessoaId}` : "todos");
   const [erro, setErro] = useState<string | null>(null);
 
   function enviar(e: FormEvent) {
     e.preventDefault();
-    const r = acoes.salvarOrcamento(categoria, parseValorBR(limiteTxt));
+    const escopo = quem === "eu" ? "EU" : quem.startsWith("p:") ? "PESSOA" : undefined;
+    const r = acoes.salvarOrcamento(categoria, parseValorBR(limiteTxt), escopo, escopo === "PESSOA" ? Number(quem.slice(2)) : null);
     if (!r.ok) return setErro(r.erro);
     avisar("sucesso", "Orçamento salvo.");
     onFechar();
@@ -34,7 +37,16 @@ function OrcamentoForm({ editar, onFechar }: { editar: Orcamento | null; onFecha
 
   return (
     <form onSubmit={enviar} className="flex flex-col gap-4" noValidate>
-      <SeletorCategoria valor={categoria} onChange={setCategoria} personalizadas={ds.categorias} disabled={editar !== null} dica="Um orçamento por categoria." />
+      <SeletorCategoria valor={categoria} onChange={setCategoria} personalizadas={ds.categorias} disabled={editar !== null} dica="Um orçamento por categoria e por pessoa." />
+      <Select rotulo="Quem gasta?" value={quem} onChange={(e) => setQuem(e.target.value)} disabled={editar !== null} dica="Para tirar um gasto do seu orçamento, vincule o lançamento à pessoa (A receber) em Pessoas.">
+        <option value="todos">Todos (tudo da categoria)</option>
+        <option value="eu">Só eu (desconta o que é de outras pessoas)</option>
+        {ds.pessoas.map((p) => (
+          <option key={p.id} value={`p:${p.id}`}>
+            Só {p.nome}
+          </option>
+        ))}
+      </Select>
       <InputValor rotulo="Limite mensal (R$)" value={limiteTxt} onChange={(e) => setLimiteTxt(e.target.value)} />
       {erro && <ErroBox>{erro}</ErroBox>}
       <RodapeForm onCancelar={onFechar} />
@@ -51,8 +63,8 @@ export default function OrcamentosPage() {
   const [excluir, setExcluir] = useState<Orcamento | null>(null);
 
   const lista = useMemo(
-    () => ds.orcamentos.map((o) => progressoOrcamento(o, ds.despesas, mes, ano)).sort((a, b) => b.pct - a.pct),
-    [ds.orcamentos, ds.despesas, mes, ano],
+    () => ds.orcamentos.map((o) => progressoOrcamento(o, ds.despesas, mes, ano, ds.acertos)).sort((a, b) => b.pct - a.pct),
+    [ds.orcamentos, ds.despesas, ds.acertos, mes, ano],
   );
 
   return (
@@ -77,7 +89,11 @@ export default function OrcamentosPage() {
                 <Card>
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{p.orcamento.categoria}</p>
+                      <p className="truncate font-medium">
+                        {p.orcamento.categoria}
+                        {p.orcamento.escopo === "EU" && <span className="ml-2 text-xs font-normal text-muted">só eu</span>}
+                        {p.orcamento.escopo === "PESSOA" && <span className="ml-2 text-xs font-normal text-muted">só {ds.pessoas.find((x) => x.id === p.orcamento.pessoaId)?.nome ?? "pessoa"}</span>}
+                      </p>
                       <p className="text-xs text-muted">
                         <Money valor={p.gasto} /> de <Money valor={p.limite} />
                       </p>

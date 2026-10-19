@@ -201,6 +201,7 @@ export function salvarPessoa(ds: Dataset, dados: { nome: string; contato?: strin
 export function excluirPessoa(ds: Dataset, id: number): Op {
   if (!ds.pessoas.some((p) => p.id === id)) return erro("Pessoa não encontrada.");
   if (ds.acertos.some((a) => a.pessoaId === id)) return erro("Esta pessoa tem acertos. Exclua os acertos antes de removê-la.");
+  if (ds.orcamentos.some((o) => o.escopo === "PESSOA" && o.pessoaId === id)) return erro("Esta pessoa tem orçamento. Exclua o orçamento antes de removê-la.");
   return { ok: true, ds: { ...ds, pessoas: removerItem(ds.pessoas, id) } };
 }
 

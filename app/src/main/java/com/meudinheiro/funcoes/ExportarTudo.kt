@@ -54,7 +54,7 @@ object ExportarTudo {
         t("cartoes", listOf("id", "nome", "final", "tipo", "limite_total", "limite_disponivel", "dia_fechamento", "dia_vencimento", "conta_id", "cartao_principal_id", "limite_proprio", "fechamento_melhor_dia"),
             b.cartoes.orEmpty().map { listOf(it.id, it.nome, it.finalCartao, it.tipo, it.limiteTotal, it.limiteDisponivel, it.diaFechamento, it.diaVencimento, it.contaId, it.cartaoPrincipalId, it.limiteProprio, it.fechamentoMelhorDia) })
         t("categorias", listOf("id", "nome", "icone"), b.categorias.orEmpty().map { listOf(it.id, it.nome, it.pic) })
-        t("orcamentos", listOf("id", "categoria", "limite"), b.orcamentos.orEmpty().map { listOf(it.id, it.categoria, it.valorLimite) })
+        t("orcamentos", listOf("id", "categoria", "limite", "escopo", "pessoaId"), b.orcamentos.orEmpty().map { listOf(it.id, it.categoria, it.valorLimite, it.escopo, it.pessoaId) })
         t("metas", listOf("id", "nome", "objetivo", "guardado", "data_alvo"),
             b.metas.orEmpty().map { listOf(it.id, it.nome, it.valorObjetivo, it.valorGuardado, data(it.dataAlvo, fuso)) })
         t("investimentos", listOf("id", "nome", "tipo", "investido", "atual"),

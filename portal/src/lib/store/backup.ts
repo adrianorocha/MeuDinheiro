@@ -66,7 +66,7 @@ const despesaFixaSchema = z.object({
 });
 
 const categoriaSchema = z.object({ id: id.optional(), nome: str, pic: str });
-const orcamentoSchema = z.object({ id: id.optional(), categoria: str, valorLimite: num });
+const orcamentoSchema = z.object({ id: id.optional(), categoria: str, valorLimite: num, escopo: z.enum(["EU", "PESSOA"]).nullish(), pessoaId: num.nullish() });
 const metaSchema = z.object({
   id: id.optional(),
   nome: str,
@@ -296,7 +296,10 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
           : paraMillis(f.ultimaDataLancamento, agora),
     })),
     categorias: comIds(b.categorias, gerarInt),
-    orcamentos: comIds(b.orcamentos, gerarInt),
+    orcamentos: comIds(b.orcamentos, gerarInt).map(({ escopo, pessoaId, ...o }) => ({
+      ...o,
+      ...(escopo === "EU" || (escopo === "PESSOA" && pessoaId != null) ? { escopo, ...(escopo === "PESSOA" ? { pessoaId } : {}) } : {}),
+    })),
     metas: comIds(b.metas, gerarInt).map((m) => ({
       ...m,
       dataAlvo: m.dataAlvo === null || m.dataAlvo === undefined ? null : paraMillis(m.dataAlvo, agora),

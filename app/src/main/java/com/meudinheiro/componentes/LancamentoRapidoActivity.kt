@@ -136,6 +136,7 @@ private class Dados(
     val categoriasDespesa: List<Pair<String, String>>, // nome → pic
     val historico: List<Despesa>,
     val orcamentos: List<Orcamento>,
+    val acertos: List<com.meudinheiro.data.Acerto> = emptyList(),
     val origemInicial: String?,
     val exigirBiometria: Boolean,
     /** R55 — regras de categorização e número da conta de cada origem (para a restrição por conta). */
@@ -157,6 +158,7 @@ private suspend fun carregar(context: Context): Dados = withContext(Dispatchers.
         categoriasDespesa = ordem.map { n -> todas.first { it.first.equals(n, true) } },
         historico = historico,
         orcamentos = repo.obterOrcamentosFlow().first(),
+        acertos = runCatching { repo.obterAcertosFlow().first() }.getOrDefault(emptyList()),
         origemInicial = context.getSharedPreferences(LancamentoRapidoActivity.PREFS, Context.MODE_PRIVATE)
             .getString(LancamentoRapidoActivity.KEY_ORIGEM, null),
         exigirBiometria = runCatching { UserPreferences(context).biometriaLancarFlow.first() }.getOrDefault(true),
@@ -343,11 +345,16 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
 private fun mensagemDeSucesso(l: Despesa, d: Dados, tipo: TipoDespesa): String {
     val base = (if (tipo == TipoDespesa.CREDITO) "Receita de " else "Despesa de ") + formatarMoedaBR(l.valor, false) + " lançada"
     if (tipo == TipoDespesa.CREDITO) return base
-    val orc = d.orcamentos.firstOrNull { it.categoria.trim().equals(l.categoria.trim(), true) } ?: return base
+    // Prefere o orçamento "todos" da categoria; sem ele, o "só eu"; orçamentos de outra pessoa não entram na mensagem.
+    val daCategoria = d.orcamentos.filter { it.categoria.trim().equals(l.categoria.trim(), true) }
+    val orc = daCategoria.firstOrNull { it.escopo == null }
+        ?: daCategoria.firstOrNull { it.escopo == com.meudinheiro.data.EscopoOrcamento.EU }
+        ?: return base
     val agora = l.data.time
     val p = Financas.progressoOrcamento(
         orc.categoria, orc.valorLimite, d.historico + l,
-        Financas.inicioDoMes(Financas.mesDe(agora), Financas.anoDe(agora)), Financas.fimDoMes(Financas.mesDe(agora), Financas.anoDe(agora))
+        Financas.inicioDoMes(Financas.mesDe(agora), Financas.anoDe(agora)), Financas.fimDoMes(Financas.mesDe(agora), Financas.anoDe(agora)),
+        orc.escopo, orc.pessoaId, d.acertos
     )
     return "$base · ${l.categoria}: ${(p.percentual * 100).toInt()}% do orçamento"
 }

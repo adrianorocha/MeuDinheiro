@@ -21,6 +21,7 @@ import com.meudinheiro.data.Pessoa
 import com.meudinheiro.data.DespesaFixa
 import com.meudinheiro.data.DespesasDomain
 import com.meudinheiro.data.Meta
+import com.meudinheiro.data.EscopoOrcamento
 import com.meudinheiro.data.Orcamento
 import com.meudinheiro.data.Projeto
 import com.meudinheiro.data.RegraCategoria
@@ -1154,18 +1155,34 @@ class MainRepository(
 
     fun obterOrcamentosFlow(): Flow<List<Orcamento>> = orcamentoDao.obterTodosFlow()
 
-    suspend fun salvarOrcamento(categoria: String, valor: Double) {
+    private fun mesmoOrcamento(o: Orcamento, categoria: String, escopo: String?, pessoaId: Int?): Boolean {
+        val (e, p) = EscopoOrcamento.normalizar(escopo, pessoaId)
+        val (oe, op) = EscopoOrcamento.normalizar(o.escopo, o.pessoaId)
+        return o.categoria.trim().equals(categoria.trim(), true) && oe == e && op == p
+    }
+
+    /** Um orçamento por (categoria, escopo, pessoa): atualiza se já existir. [escopo] nulo = todos (comportamento original). */
+    suspend fun salvarOrcamento(categoria: String, valor: Double, escopo: String? = null, pessoaId: Int? = null) {
         if (valor <= 0) throw RegraFinanceiraException("O limite do orçamento deve ser maior que zero.")
-        // Um orçamento por categoria: atualiza se já existir (antes duplicava linhas).
-        val existente = orcamentoDao.obterTodasStatic().firstOrNull { it.categoria.trim().equals(categoria.trim(), true) }
+        val (esc, pid) = EscopoOrcamento.normalizar(escopo, pessoaId)
+        if (escopo.equals(EscopoOrcamento.PESSOA, true) && pid == null) throw RegraFinanceiraException("Escolha a pessoa do orçamento.")
+        if (pid != null && pessoaDao.obterTodasStatic().none { it.id == pid }) throw RegraFinanceiraException("Pessoa não encontrada.")
+        val existente = orcamentoDao.obterTodasStatic().firstOrNull { mesmoOrcamento(it, categoria, esc, pid) }
         orcamentoDao.salvarOrcamento(
-            Orcamento(id = existente?.id ?: 0, categoria = categoria.trim(), valorLimite = Dinheiro.arredondar(valor))
+            Orcamento(id = existente?.id ?: 0, categoria = categoria.trim(), valorLimite = Dinheiro.arredondar(valor), escopo = esc, pessoaId = pid)
         )
     }
 
-    suspend fun excluirOrcamento(categoria: String) = orcamentoDao.excluirPorCategoria(categoria)
-    suspend fun atualizarOrcamento(categoria: String, novoValor: Double) =
-        orcamentoDao.atualizarPorCategoria(categoria, Dinheiro.arredondar(novoValor))
+    suspend fun excluirOrcamento(categoria: String, escopo: String? = null, pessoaId: Int? = null) {
+        val ids = orcamentoDao.obterTodasStatic().filter { mesmoOrcamento(it, categoria, escopo, pessoaId) }.map { it.id }
+        if (ids.isNotEmpty()) orcamentoDao.excluirPorIds(ids)
+    }
+
+    suspend fun atualizarOrcamento(categoria: String, novoValor: Double, escopo: String? = null, pessoaId: Int? = null) {
+        val valor = Dinheiro.arredondar(novoValor)
+        orcamentoDao.obterTodasStatic().filter { mesmoOrcamento(it, categoria, escopo, pessoaId) }
+            .forEach { orcamentoDao.atualizarValorPorId(it.id, valor) }
+    }
 
     val categorias: List<CategoriaDomain> = listOf(
         CategoriaDomain(pic = "fuel", title = "Combustível"),
@@ -1306,7 +1323,8 @@ class MainRepository(
         pendencias = listarPendencias(dias, onlyCredit = false),
         agora = agora(),
         historico = despesaDao.obterTodasStatic(),
-        orcamentos = orcamentoDao.obterTodasStatic()
+        orcamentos = orcamentoDao.obterTodasStatic(),
+        acertos = acertoDao.obterTodasStatic()
     )
 
     suspend fun contarPendencias(daysAhead: Int, onlyCredit: Boolean): Int = listarPendencias(daysAhead, onlyCredit).size

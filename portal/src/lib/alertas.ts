@@ -37,6 +37,6 @@ export const useAlertas = create<Estado>((set, get) => ({
   },
 }));
 
-export function alertasPendentes(ds: Pick<Dataset, "orcamentos" | "despesas">, agora: number, avisados: ReadonlySet<string>): { alertas: AlertaOrcamento[]; marcar: string[] } {
+export function alertasPendentes(ds: Pick<Dataset, "orcamentos" | "despesas"> & Partial<Pick<Dataset, "acertos" | "pessoas">>, agora: number, avisados: ReadonlySet<string>): { alertas: AlertaOrcamento[]; marcar: string[] } {
   return alertasOrcamento(ds, agora, avisados);
 }

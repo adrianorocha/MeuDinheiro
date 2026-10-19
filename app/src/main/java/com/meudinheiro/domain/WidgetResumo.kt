@@ -70,6 +70,7 @@ data class WidgetResumo(
             agora: Long,
             historico: List<Despesa> = emptyList(),
             orcamentos: List<Orcamento> = emptyList(),
+            acertos: List<com.meudinheiro.data.Acerto> = emptyList(),
         ): WidgetResumo {
             val hoje = Financas.inicioDoDia(agora)
             val emAberto = pendencias.filter { !it.pago }.sortedBy { it.data.time }
@@ -96,15 +97,15 @@ data class WidgetResumo(
                 despesasMes = kpisMes.despesasTotal,
                 gastoHoje = kpisHoje.despesasTotal,
                 proximaConta = emAberto.firstOrNull()?.let { ContaWidget(it.descricao, it.data, it.valor, it.data.time < hoje) },
-                orcamento = orcamentoMaisCritico(orcamentos, historico, inicioMes, fimMes),
+                orcamento = orcamentoMaisCritico(orcamentos, historico, inicioMes, fimMes, acertos),
                 atalhos = atalhos(historico, agora),
             )
         }
 
-        private fun orcamentoMaisCritico(orcamentos: List<Orcamento>, historico: List<Despesa>, inicio: Long, fim: Long): OrcamentoWidget? =
+        private fun orcamentoMaisCritico(orcamentos: List<Orcamento>, historico: List<Despesa>, inicio: Long, fim: Long, acertos: List<com.meudinheiro.data.Acerto>): OrcamentoWidget? =
             orcamentos
                 .filter { it.valorLimite > 0 }
-                .map { it to Financas.progressoOrcamento(it.categoria, it.valorLimite, historico, inicio, fim) }
+                .map { it to Financas.progressoOrcamento(it.categoria, it.valorLimite, historico, inicio, fim, it.escopo, it.pessoaId, acertos) }
                 .maxByOrNull { it.second.percentual }
                 ?.let { (o, p) -> OrcamentoWidget(o.categoria, (p.percentual * 100).toInt(), p.gasto, p.limite) }
 
