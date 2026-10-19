@@ -57,6 +57,13 @@ export function LancamentoModal(props: Props) {
   );
 }
 
+/** Último instante de hoje (ms): lançamento com data até aqui já pode ser tratado como ocorrido. */
+function fimDoDiaHoje(): number {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
 function Formulario({ onFechar, editar, predefinicao }: Props) {
   const ds = useDataset();
   const avisar = useStore((s) => s.avisar);
@@ -85,7 +92,9 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   const [oferta, setOferta] = useState<SugestaoRegra | null>(null);
   const [conta, setConta] = useState(contaPadrao);
   const [cartaoId, setCartaoId] = useState(String(predefinicao?.cartaoId ?? (editar ? cartaoIdDe(editar) : null) ?? ds.cartoes[0]?.id ?? ""));
-  const [pago, setPago] = useState(editar?.pago ?? true);
+  // Lançamento novo: "já paga" acompanha a data (data futura = agendado/pendente) até o usuário mexer na caixa.
+  const [pago, setPago] = useState(editar?.pago ?? (!predefinicao?.data || predefinicao.data <= fimDoDiaHoje()));
+  const [pagoManual, setPagoManual] = useState(false);
   const [parcelasTxt, setParcelasTxt] = useState(String(predefinicao?.parcelas ?? 2));
   const [parcelaAtualTxt, setParcelaAtualTxt] = useState("1");
   const [modalidade, setModalidade] = useState<Modalidade>("CREDITO");
@@ -339,7 +348,11 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
         />
       )}
       <div className="grid grid-cols-2 gap-3">
-        <Input rotulo={modo === "fixa" ? "Primeiro vencimento" : "Data"} type="date" value={data} onChange={(e) => setData(e.target.value)} required />
+        <Input rotulo={modo === "fixa" ? "Primeiro vencimento" : "Data"} type="date" value={data} onChange={(e) => {
+          setData(e.target.value);
+          const ts = deInputData(e.target.value);
+          if (!editar && !pagoManual && !Number.isNaN(ts)) setPago(ts <= fimDoDiaHoje());
+        }} required />
         {modo === "parcelada" && !editar && !noDebito ? (
           <Input rotulo="Parcelas" type="number" min={2} max={MAX_PARCELAS} value={parcelasTxt} onChange={(e) => setParcelasTxt(e.target.value)} />
         ) : (
@@ -424,7 +437,12 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
         </div>
       )}
       {avisoLimiteProprio && <p className="text-xs text-warn" role="status">{avisoLimiteProprio}</p>}
-      {!noCartao && modo === "unica" && <Checkbox rotulo={entrada === "receita" ? "Já recebida" : "Já paga"} checked={pago} onChange={(e) => setPago(e.target.checked)} />}
+      {!noCartao && modo === "unica" && (
+        <div>
+          <Checkbox rotulo={entrada === "receita" ? "Já recebida" : "Já paga"} checked={pago} onChange={(e) => { setPagoManual(true); setPago(e.target.checked); }} />
+          {!pago && deInputData(data) > fimDoDiaHoje() && <p className="ml-6 text-xs text-muted">Data futura: fica agendado em Pendências e não altera o saldo até a baixa.</p>}
+        </div>
+      )}
       {modo === "parcelada" && !editar && !noDebito && <p className="text-xs text-muted">O valor informado é o total da compra; a última parcela recebe o resto dos centavos.{noCartao && Number(parcelaAtualTxt) > 1 ? " Com parcela atual maior que 1, só as parcelas restantes são lançadas (todas reservam o limite)." : ""}</p>}
       {modo === "fixa" && <p className="text-xs text-muted">Cria uma recorrência: lançada automaticamente todo mês no dia do vencimento (dias 29–31 caem no último dia dos meses curtos).</p>}
       <TagsInput valor={tags} onChange={setTags} despesas={ds.despesas} />

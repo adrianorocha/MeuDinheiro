@@ -745,3 +745,8 @@ Sem mudança de formato de dados nem de regras. Para reduzir leituras do Firesto
   - **Cartão de débito** (cartão DÉBITO, ou MÚLTIPLO com modalidade débito): `cartaoId = null`, `conta` = conta do cartão, `grupoId = debito:<cartaoId>` (R42b), `pago = data <= agora`.
   - **Conta:** `cartaoId = null`, conta escolhida, `pago` informado. O vínculo `debito:` só é solto com a escolha explícita "não manter o vínculo" (`desvincularDebito`) ou ao mudar de conta.
 - Compra parcelada (`parc:`): a mudança de local vale para todas as parcelas do grupo (crédito = em aberto; conta/débito = pago conforme a data).
+
+## R79 - Lançamentos agendados (data futura) no portal
+
+- Lançamento novo: "Já paga/recebida" acompanha a data (data futura = pendente, não altera o saldo até a baixa) até o usuário mexer na caixa; antes vinha sempre marcado e o agendado nascia como pago, sumindo de Pendências.
+- Lançamentos mostra o aviso "N lançamento(s) agendado(s) com data futura" (conta, NORMAL, não pagos, data depois de hoje), que abre a lista de pendentes de todos os meses.

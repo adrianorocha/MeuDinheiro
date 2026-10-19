@@ -1,7 +1,7 @@
 "use client";
 
 import { categoriasDisponiveis } from "@/lib/catalogo";
-import { Download, Plus, Receipt, Search, Sparkles } from "lucide-react";
+import { CalendarClock, Download, Plus, Receipt, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { LancamentoModal, type PredefinicaoLancamento } from "@/components/lancamentos/LancamentoModal";
 import { LancarPorTexto } from "@/components/lancamentos/LancarPorTexto";
@@ -91,6 +91,13 @@ export default function LancamentosPage() {
     return temMembros ? filtrarQuemLancou(lista, selecaoQuem, meuUid) : lista;
   }, [ds.despesas, mes, ano, conta, categoria, tipo, status, autor, conciliacao, busca, tag, temMembros, quem, meuUid]);
 
+  // Agendados: lançamentos de conta com data futura e ainda pendentes (ficam fora do mês exibido).
+  const agendados = useMemo(() => {
+    const fim = new Date(agora);
+    fim.setHours(23, 59, 59, 999);
+    return ds.despesas.filter((d) => d.natureza === "NORMAL" && !d.pago && cartaoIdDe(d) === null && d.data > fim.getTime());
+  }, [ds.despesas, agora]);
+
   const tagsDisponiveis = useMemo(() => tagsUsadas(ds.despesas), [ds.despesas]);
 
   const autores = useMemo(() => [...new Set(ds.despesas.map((d) => d.autor).filter((a): a is string => !!a))].sort(), [ds.despesas]);
@@ -135,6 +142,24 @@ export default function LancamentosPage() {
           </>
         }
       />
+
+      {agendados.length > 0 && (
+        <button
+          type="button"
+          className="mb-3 flex w-full items-center gap-2 rounded-xl border border-line bg-primary-soft px-4 py-2.5 text-left text-sm"
+          onClick={() => {
+            setMes("");
+            setAno("");
+            setStatus("pendente");
+            setLimite(PAGINA);
+          }}
+        >
+          <CalendarClock size={16} aria-hidden className="shrink-0 text-primary" />
+          <span>
+            <strong>{agendados.length}</strong> lançamento(s) agendado(s) com data futura. <span className="font-medium text-primary">Ver todos</span>
+          </span>
+        </button>
+      )}
 
       <Card className="mb-4" aria-label="Filtros">
         <form className="grid grid-cols-2 gap-3 lg:grid-cols-4" role="search" onSubmit={(e) => e.preventDefault()}>
