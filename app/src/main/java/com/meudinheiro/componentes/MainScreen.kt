@@ -195,6 +195,7 @@ fun MainScreen(
     var showFerramentas by remember { mutableStateOf(false) }
     var showConferencia by remember { mutableStateOf(false) }
     var showCalendario by remember { mutableStateOf(false) } // R52
+    var showAgendadosLanc by remember { mutableStateOf(false) }
     var showImportarExtratos by remember { mutableStateOf(false) } // R63
 
     // R63: extrato compartilhado ou aviso da pasta monitorada abre a revisão (depois do login/biometria).
@@ -233,6 +234,8 @@ fun MainScreen(
     val historicoPatrimonio by contaVM.historicoPatrimonial.collectAsState(initial = emptyList())
     val previsao by contaVM.previsao.collectAsState()
     val todasDespesas by repository.todasDespesasFlow.collectAsState(initial = emptyList())
+    // Lançamentos de data futura em aberto (a pagar/receber), de todas as contas; reavalia quando a lista muda.
+    val resumoAgendados = remember(todasDespesas) { com.meudinheiro.domain.Agendados.resumir(todasDespesas, System.currentTimeMillis()) }
 
 
     // Categorias padrão + as criadas pelo usuário (antes só as padrão apareciam nos formulários).
@@ -652,6 +655,10 @@ fun MainScreen(
                                         }
 
                                         item {
+                                            CardLancamentosAgendados(resumo = resumoAgendados, isPrivate = isPrivate, onClick = { showAgendadosLanc = true })
+                                        }
+
+                                        item {
                                             val meses = listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
                                             Row(
                                                 modifier = Modifier
@@ -897,6 +904,13 @@ fun MainScreen(
             ConferenciaSaldosScreen(repository = repository, isPrivate = isPrivate, onBack = { showConferencia = false })
         }
 
+        if (showAgendadosLanc) {
+            DialogLancamentosAgendados(
+                resumo = resumoAgendados, isPrivate = isPrivate,
+                onAbrir = { showAgendadosLanc = false; alvoLancamento = AlvoLancamento(it.id) },
+                onFechar = { showAgendadosLanc = false }
+            )
+        }
         if (showCalendario) {
             CalendarioFinanceiroScreen(repository = repository, isPrivate = isPrivate, onBack = { showCalendario = false })
         }
