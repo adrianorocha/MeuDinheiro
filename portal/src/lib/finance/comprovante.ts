@@ -56,6 +56,22 @@ const diaFmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digi
 const emissaoFmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const dia = (ms: number) => diaFmt.format(new Date(ms));
 
+/**
+ * Número de controle do comprovante: "MD-" + id COMPLETO do lançamento (mín. 6 dígitos). O id é único e nunca reaproveitado,
+ * então o número identifica um único lançamento e permite consultá-lo (busca em Lançamentos). Id 0/ausente = ainda não salvo.
+ */
+export function numeroComprovante(id: number): string {
+  return id > 0 ? `MD-${String(id).padStart(6, "0")}` : "MD-PENDENTE";
+}
+
+/** Inverso de {@link numeroComprovante}: aceita "MD-000123", "md123" ou só o número; null se não for um número de comprovante. */
+export function idDoNumeroComprovante(texto: string): number | null {
+  const m = /^\s*(?:md\s*-?\s*)?(\d{1,15})\s*$/i.exec(texto);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
 /** Só os 4 últimos dígitos ficam visíveis. */
 export function mascararNumero(s: string): string {
   const digitos = s.replace(/\D/g, "");
@@ -142,7 +158,7 @@ export function montarComprovante(d: Despesa, ds: Pick<Dataset, "contas" | "cart
     entrada,
     status,
     linhas,
-    id: `MD-${String(d.id).slice(-6).padStart(6, "0")}`,
+    id: numeroComprovante(d.id),
     emitidoEm: emissaoFmt.format(new Date(agora)).replace(",", " às"),
   };
 }

@@ -143,6 +143,7 @@ fun LancamentoAcoesHost(
                             (if (despesa.cartaoId != null && despesa.cartaoId != 0) "Cartão" else if (despesa.pago) "Pago" else "Pendente"),
                         color = Color.White.copy(0.6f), fontSize = 13.sp
                     )
+                    Text("Nº ${com.meudinheiro.funcoes.numeroComprovante(despesa.id)}", color = Color.White.copy(0.4f), fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     HorizontalDivider(color = Color.White.copy(0.08f))
 

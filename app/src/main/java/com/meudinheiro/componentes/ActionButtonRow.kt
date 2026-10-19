@@ -1004,9 +1004,10 @@ fun AddDespesaDialog(
 
                                         autenticarParaLancar(currentContext, exigirBio, "Confirmar lançamento", "Autentique para lançar esta despesa") {
                                         parentScope.launch {
-                                            when (frequencia) {
-                                                Frequencia.UNICA -> viewModel.adicionarDespesa(desp, modalidadeEnviada, anexosForm.novos.toList())
-                                                Frequencia.PARCELADA -> viewModel.adicionarDespesaParcelada(
+                                            // Comprovante sai do lançamento JÁ SALVO (id real e modalidade real); FIXA só cria o modelo.
+                                            val salva: Despesa? = when (frequencia) {
+                                                Frequencia.UNICA -> viewModel.adicionarDespesaSalvando(desp, modalidadeEnviada, anexosForm.novos.toList())
+                                                Frequencia.PARCELADA -> viewModel.adicionarDespesaParceladaSalvando(
                                                     desp,
                                                     numeroParcelas.toInt(),
                                                     dataMillis.value!!,
@@ -1014,22 +1015,40 @@ fun AddDespesaDialog(
                                                     if (formaPagamento == "CARTAO") parcelaAtualTexto.toIntOrNull() ?: 1 else 1
                                                 )
 
-                                                Frequencia.FIXA -> viewModel.salvarDespesaRecorrente(
-                                                    desp,
-                                                    Calendar.getInstance()
-                                                        .apply { timeInMillis = dataMillis.value!! }
-                                                        .get(Calendar.DAY_OF_MONTH)
-                                                )
+                                                Frequencia.FIXA -> {
+                                                    viewModel.salvarDespesaRecorrente(
+                                                        desp,
+                                                        Calendar.getInstance()
+                                                            .apply { timeInMillis = dataMillis.value!! }
+                                                            .get(Calendar.DAY_OF_MONTH)
+                                                    )
+                                                    null
+                                                }
                                             }
 
-                                            mostrarSucesso = true
-                                            delay(100)
-                                            compartilharComprovante(
-                                                currentContext,
-                                                desp,
-                                                nomeCartaoParaRecibo,
-                                                contaAtual
-                                            )
+                                            mostrarSucesso = salva != null || frequencia == Frequencia.FIXA
+                                            if (salva != null) {
+                                                val contasConhecidas = viewModel.contaSaldo.value.orEmpty()
+                                                    .map { com.meudinheiro.data.ContaSaldo(it.id, it.saldo, it.banco, it.pic, it.agencia, it.conta, it.titular) }
+                                                val cartaoDoLanc = cartoesDisponiveis
+                                                    .firstOrNull { it.id == (salva.cartaoId ?: Financas.cartaoDeDebito(salva)) }
+                                                    ?.paraCartao()
+                                                delay(100)
+                                                compartilharComprovante(
+                                                    currentContext,
+                                                    salva,
+                                                    nomeCartaoParaRecibo.takeIf { salva.cartaoId != null && salva.cartaoId != 0 }
+                                                        ?: cartaoDoLanc?.nome,
+                                                    contaAtual,
+                                                    com.meudinheiro.funcoes.ComprovanteExtras(
+                                                        conta = contasConhecidas.firstOrNull { it.conta.trim() == salva.conta.trim() },
+                                                        cartao = cartaoDoLanc,
+                                                        contas = contasConhecidas
+                                                    )
+                                                )
+                                            } else if (frequencia == Frequencia.FIXA) {
+                                                delay(100)
+                                            }
                                             onDismiss()
                                         }
                                         }

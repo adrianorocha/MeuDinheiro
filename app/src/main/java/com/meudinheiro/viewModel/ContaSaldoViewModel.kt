@@ -190,14 +190,23 @@ class ContaSaldoViewModel(
     // 5. LANÇAMENTOS (CRUD)
     // ==========================================
     fun adicionarDespesa(despesa: Despesa, modalidade: Financas.Modalidade? = null, anexos: List<com.meudinheiro.storage.AnexosGerenciador.Preparado> = emptyList()) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val id = repository.registrarLancamento(despesa, modalidade)
-                // R60: o lançamento já está salvo; falha nos anexos nunca o desfaz.
-                if (anexos.isNotEmpty()) aplicarAnexos(id, AnexosEdicao(novos = anexos))
-            } catch (e: Exception) {
-                avisarErro("Lançamento", e)
-            }
+        viewModelScope.launch(Dispatchers.IO) { adicionarDespesaSalvando(despesa, modalidade, anexos) }
+    }
+
+    /** Como [adicionarDespesa], mas suspende e devolve o lançamento JÁ SALVO (id real, modalidade aplicada); null se falhar. */
+    suspend fun adicionarDespesaSalvando(
+        despesa: Despesa,
+        modalidade: Financas.Modalidade? = null,
+        anexos: List<com.meudinheiro.storage.AnexosGerenciador.Preparado> = emptyList()
+    ): Despesa? = withContext(Dispatchers.IO) {
+        try {
+            val id = repository.registrarLancamento(despesa, modalidade)
+            // R60: o lançamento já está salvo; falha nos anexos nunca o desfaz.
+            if (anexos.isNotEmpty()) aplicarAnexos(id, AnexosEdicao(novos = anexos))
+            repository.obterDespesaPorId(id)
+        } catch (e: Exception) {
+            avisarErro("Lançamento", e)
+            null
         }
     }
 
@@ -229,11 +238,20 @@ class ContaSaldoViewModel(
 
     fun adicionarDespesaParcelada(despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long, modalidade: Financas.Modalidade? = null, parcelaAtual: Int = 1) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                repository.registrarParcelado(despesa.copy(data = Date(dataSelecionada)), numeroParcelas, modalidade, parcelaAtual)
-            } catch (e: Exception) {
-                avisarErro("Compra parcelada", e)
-            }
+            adicionarDespesaParceladaSalvando(despesa, numeroParcelas, dataSelecionada, modalidade, parcelaAtual)
+        }
+    }
+
+    /** Como [adicionarDespesaParcelada], mas suspende e devolve a primeira parcela JÁ SALVA; null se falhar. */
+    suspend fun adicionarDespesaParceladaSalvando(
+        despesa: Despesa, numeroParcelas: Int, dataSelecionada: Long, modalidade: Financas.Modalidade? = null, parcelaAtual: Int = 1
+    ): Despesa? = withContext(Dispatchers.IO) {
+        try {
+            val ids = repository.registrarParcelado(despesa.copy(data = Date(dataSelecionada)), numeroParcelas, modalidade, parcelaAtual)
+            ids.firstOrNull()?.let { repository.obterDespesaPorId(it) }
+        } catch (e: Exception) {
+            avisarErro("Compra parcelada", e)
+            null
         }
     }
 

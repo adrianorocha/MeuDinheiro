@@ -761,3 +761,8 @@ Sem mudança de formato de dados nem de regras. Para reduzir leituras do Firesto
   - Mesmo mês, mesma base (NORMAL, centavos). `A_PAGAR` e acertos avulsos (sem lançamento) não contam.
 - Alertas 80%/100%: chave própria por escopo (`#eu`, `#p<id>`); TODOS mantém a chave antiga. Excluir uma pessoa com orçamento é bloqueado. O insight "orçamento respeitado" do Resumo só considera orçamentos sem escopo.
 - Uso: vincule o lançamento à pessoa em Pessoas (A receber) para ele sair do orçamento "só eu".
+
+## R81 - Número de controle do comprovante (portal + app)
+- O número do comprovante é **`MD-` + id completo do lançamento** (mínimo 6 dígitos, ex.: `MD-000123`, `MD-1234567890`). O id é único e nunca reaproveitado, então o número identifica um único lançamento e nunca se repete (antes o portal truncava nos 6 últimos dígitos, o que podia colidir).
+- Lançamento ainda não salvo (id 0) não recebe número: aparece `MD-PENDENTE`. O app gera o comprovante **depois** de salvar, a partir do lançamento persistido (assim também reflete a modalidade real: compra no débito sai como "Débito", não "Crédito").
+- Consulta: digitar o número (`MD-000123`, `md123` ou só `123` após `MD`) na busca de Lançamentos acha o lançamento em qualquer mês/ano; no app o número aparece no menu do lançamento e a busca também o aceita. Nenhum campo novo no documento.

@@ -11,6 +11,7 @@ import { Input, Select } from "@/components/ui/Field";
 import { Card, EmptyState, PageHeader } from "@/components/ui/Misc";
 import { Money } from "@/components/ui/Money";
 import { cartaoIdDe, normalizaNome } from "@/lib/finance/calc";
+import { idDoNumeroComprovante } from "@/lib/finance/comprovante";
 import { MESES_NOME, mesAnoDe } from "@/lib/finance/dates";
 import { toCents, fromCents } from "@/lib/finance/money";
 import { lancamentosParaCsv } from "@/lib/csv";
@@ -65,6 +66,9 @@ export default function LancamentosPage() {
 
   const filtrados = useMemo(() => {
     const termo = normalizaNome(busca);
+    // Busca por número de comprovante ("MD-000123"): acha o lançamento em qualquer mês/ano.
+    const idBuscado = /^\s*md\s*-?\s*\d/i.test(busca) ? idDoNumeroComprovante(busca) : null;
+    if (idBuscado !== null) return ds.despesas.filter((d) => d.id === idBuscado);
     const lista = ds.despesas
       .filter((d) => {
         const m = mesAnoDe(d.data);
@@ -257,7 +261,7 @@ export default function LancamentosPage() {
               rotulo="Buscar"
               type="search"
               value={busca}
-              placeholder="Descrição ou categoria"
+              placeholder="Descrição, categoria ou nº do comprovante (MD-000123)"
               onChange={(e) => { setBusca(e.target.value); setLimite(PAGINA); }}
               autoComplete="off"
             />

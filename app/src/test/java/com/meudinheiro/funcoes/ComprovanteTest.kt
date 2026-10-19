@@ -49,6 +49,33 @@ class ComprovanteTest {
         assertFalse(m.linhas.any { it.valor.isBlank() })
     }
 
+    @Test fun `numero de controle nao trunca e id zero fica pendente`() {
+        assertEquals("MD-000042", numeroComprovante(42))
+        assertEquals("MD-1234567", numeroComprovante(1234567))
+        assertEquals("MD-1234567", montarComprovante(desp(id = 1234567), null, "x", agora = agora).id)
+        assertEquals("MD-PENDENTE", montarComprovante(desp(id = 0), null, "x", agora = agora).id)
+    }
+
+    @Test fun `ida e volta do numero de controle`() {
+        assertEquals(123L, idDoNumeroComprovante(numeroComprovante(123)))
+        assertEquals(123L, idDoNumeroComprovante("MD-000123"))
+        assertEquals(123L, idDoNumeroComprovante("md-123"))
+        assertEquals(123L, idDoNumeroComprovante(" 123 "))
+        assertEquals(null, idDoNumeroComprovante("MD-"))
+        assertEquals(null, idDoNumeroComprovante("abc"))
+        assertEquals(null, idDoNumeroComprovante("MD-12x"))
+        assertEquals(null, idDoNumeroComprovante(""))
+    }
+
+    @Test fun `compra no debito vinculado mostra Debito e nao Credito`() {
+        val cartao = Cartao(id = 7, nome = "Nubank", finalCartao = "9876", tipo = "DÉBITO", limiteDisponivel = 0.0, limiteTotal = 0.0, diaFechamento = 25, diaVencimento = 5, contaId = 1)
+        val d = desp(cartaoId = null, grupoId = "debito:7")
+        val m = montarComprovante(d, null, "123456-7", ComprovanteExtras(cartao = cartao), agora)
+        assertEquals("Débito", valor(m, "Modalidade"))
+        assertFalse(m.linhas.any { it.valor == "Crédito" })
+        assertEquals("Nubank •••• 9876", valor(m, "Cartão"))
+    }
+
     @Test fun `pendente vencida x a vencer`() {
         assertEquals(StatusComprovante.VENCIDO, montarComprovante(desp(pago = false, dia = 5), null, "x", agora = agora).status)
         assertEquals(StatusComprovante.PENDENTE, montarComprovante(desp(pago = false, dia = 25), null, "x", agora = agora).status)

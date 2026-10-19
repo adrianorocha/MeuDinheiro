@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { montarComprovante } from "./comprovante";
+import { idDoNumeroComprovante, montarComprovante, numeroComprovante } from "./comprovante";
 import { cartao, conta, dataset, desp, dt } from "./fixtures";
 
 const agora = dt(2025, 9, 20);
@@ -64,5 +64,32 @@ describe("R48 montarComprovante", () => {
     expect(v(m, "Modalidade")).toBe("Débito");
     expect(v(m, "Cartão")).toBe("Virtual •••• 1111");
     expect(v(m, "Tipo do cartão")).toBe("Virtual");
+  });
+});
+
+describe("R81 número de controle do comprovante", () => {
+  it("usa o id completo (sem truncar) e é único por lançamento", () => {
+    expect(numeroComprovante(7)).toBe("MD-000007");
+    expect(numeroComprovante(1_234_567_890)).toBe("MD-1234567890");
+    expect(numeroComprovante(1_234_567_890)).not.toBe(numeroComprovante(1_334_567_890)); // antes truncava nos 6 últimos dígitos
+    expect(montarComprovante(por(2), ds, agora).id).toBe("MD-000002");
+    const todos = ds.despesas.map((d) => numeroComprovante(d.id));
+    expect(new Set(todos).size).toBe(todos.length);
+  });
+  it("id 0 (não salvo) não ganha número", () => {
+    expect(numeroComprovante(0)).toBe("MD-PENDENTE");
+  });
+  it("ida e volta: aceita MD-000123, md123 e 123", () => {
+    expect(idDoNumeroComprovante("MD-000123")).toBe(123);
+    expect(idDoNumeroComprovante(" md123 ")).toBe(123);
+    expect(idDoNumeroComprovante("123")).toBe(123);
+    expect(idDoNumeroComprovante("MD-PENDENTE")).toBeNull();
+    expect(idDoNumeroComprovante("almoço")).toBeNull();
+    expect(idDoNumeroComprovante("0")).toBeNull();
+    expect(idDoNumeroComprovante(numeroComprovante(1_234_567_890))).toBe(1_234_567_890);
+  });
+  it("débito vinculado ao cartão sai como Débito, nunca Crédito", () => {
+    const m = montarComprovante(por(7), ds, agora);
+    expect(v(m, "Modalidade")).toBe("Débito");
   });
 });

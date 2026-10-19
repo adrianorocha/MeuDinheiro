@@ -159,8 +159,12 @@ object Analises {
         val data = REGEX_DATA.matchEntire(t)?.destructured?.let { (d, m, a) -> Triple(d.toInt(), m.toInt(), a.toIntOrNull()) }
         val bancoPorConta = contas.associate { it.conta to Texto.normalizar(it.banco) }
 
+        // Número de controle do comprovante ("MD-000123", "md-123"): só casa com prefixo MD- para não colidir com valores.
+        val idComprovante = if (t.startsWith("md-")) com.meudinheiro.funcoes.idDoNumeroComprovante(t) else null
+
         val lanc = despesas.filter { l ->
-            Texto.normalizar(l.descricao).contains(t) ||
+            (idComprovante != null && l.id == idComprovante) ||
+                Texto.normalizar(l.descricao).contains(t) ||
                 Texto.normalizar(l.categoria).contains(t) ||
                 l.conta.contains(t) ||
                 (bancoPorConta[l.conta]?.contains(t) == true) ||

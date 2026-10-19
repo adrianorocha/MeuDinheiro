@@ -76,6 +76,19 @@ fun mascararNumero(s: String): String {
 
 private fun pareceNumero(s: String) = s.isNotBlank() && s.all { it.isDigit() || it in ".-xX " }
 
+const val NUMERO_PENDENTE = "MD-PENDENTE"
+
+/** Número de controle único e estável: "MD-" + id completo, com no mínimo 6 dígitos (nunca trunca). */
+fun numeroComprovante(id: Long): String = "MD-" + id.toString().padStart(6, '0')
+
+/** Inverso de [numeroComprovante]: aceita "MD-000123", "md-123" ou "123"; null se inválido. */
+fun idDoNumeroComprovante(texto: String): Long? {
+    val t = texto.trim()
+    val digitos = (if (t.startsWith("md-", ignoreCase = true)) t.substring(3) else t).trim()
+    if (digitos.isEmpty() || !digitos.all { it in '0'..'9' }) return null
+    return digitos.toLongOrNull()
+}
+
 fun montarComprovante(
     despesa: Despesa,
     nomeCartao: String?,
@@ -182,7 +195,7 @@ fun montarComprovante(
         entrada = entrada,
         status = status,
         linhas = linhas,
-        id = "MD-${despesa.id.toString().padStart(6, '0')}",
+        id = if (despesa.id == 0L) NUMERO_PENDENTE else numeroComprovante(despesa.id),
         emitidoEm = emissao.format(Date(agora))
     )
 }
