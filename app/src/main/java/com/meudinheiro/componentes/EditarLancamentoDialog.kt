@@ -68,7 +68,7 @@ fun EditarLancamentoDialog(
     categorias: List<String>,
     getPicCategoria: (String) -> String,
     onDismiss: () -> Unit,
-    onSalvar: (editada: Despesa, modalidade: Financas.Modalidade?, anexos: AnexosEdicao) -> Unit,
+    onSalvar: (editada: Despesa, modalidade: Financas.Modalidade?, anexos: AnexosEdicao, desvincularDebito: Boolean) -> Unit,
     /** R56 — tags já usadas (sugestões do campo de tags). */
     tagsSugeridas: List<com.meudinheiro.domain.Tags.Usada> = emptyList(),
     /** R60 — reenviar à nuvem um anexo que ficou só no aparelho ("Tentar de novo"). */
@@ -84,22 +84,23 @@ fun EditarLancamentoDialog(
     var categoria by remember {
         mutableStateOf<String?>(listaCategorias.firstOrNull { it.equals(despesa.categoria, ignoreCase = true) } ?: despesa.categoria)
     }
+    // R78 — onde o lançamento está: conta, crédito de um cartão ou compra no débito de um cartão (vínculo `debito:<id>`).
     val cartaoOriginal = despesa.cartaoId?.takeIf { it != 0 }
-    var origem by remember { mutableStateOf(if (cartaoOriginal != null) "CARTAO" else "CONTA") }
+    val debitoOriginal = if (cartaoOriginal == null) Financas.cartaoDeDebito(despesa) else null
+    val localOriginal = if (cartaoOriginal != null) LOCAL_CREDITO else if (debitoOriginal != null) LOCAL_DEBITO else LOCAL_CONTA
+    var local by remember { mutableStateOf(localOriginal) }
     var contaNumero by remember { mutableStateOf(despesa.conta) }
-    var cartaoId by remember { mutableStateOf(cartaoOriginal ?: cartoes.firstOrNull()?.id) }
-    var modalidade by remember { mutableStateOf(Financas.Modalidade.CREDITO) }
+    var cartaoId by remember { mutableStateOf(cartaoOriginal ?: debitoOriginal) }
     var pago by remember { mutableStateOf(despesa.pago) }
     var tags by remember { mutableStateOf(despesa.tags) } // R56
     val anexosForm = remember { AnexosFormState() } // R60
     var mostrarCalendario by remember { mutableStateOf(false) }
     var erros by remember { mutableStateOf(mapOf<String, String>()) }
 
-    val cartaoEscolhido = cartoes.firstOrNull { it.id == cartaoId }
-    val noCartao = origem == "CARTAO" && cartaoEscolhido != null
-    val trocouCartao = noCartao && cartaoId != cartaoOriginal
-    val multiplo = trocouCartao && Financas.tipoDeCartao(cartaoEscolhido!!.tipo) == "MULTIPLO"
-    val vaiParaDebito = trocouCartao && Financas.modalidadeDaCompra(cartaoEscolhido!!, modalidade) == Financas.Modalidade.DEBITO
+    val idOriginalDoLocal = if (local == LOCAL_CREDITO) cartaoOriginal else if (local == LOCAL_DEBITO) debitoOriginal else null
+    val cartoesDoLocal = remember(cartoes, local) { cartoes.filter { cartaoServeAoLocal(it, local) || it.id == idOriginalDoLocal } }
+    val cartaoEscolhido = cartoesDoLocal.firstOrNull { it.id == cartaoId }
+    val noCartao = local != LOCAL_CONTA
     val estrangeira = despesa.moedaOriginal != "BRL" && despesa.moedaOriginal.isNotBlank()
 
     fun validar(): Boolean {
@@ -107,8 +108,8 @@ fun EditarLancamentoDialog(
         if (descricao.isBlank()) e["desc"] = "Descrição vazia"
         if ((valorTexto.toLongOrNull() ?: 0L) <= 0L) e["valor"] = "Valor inválido"
         if (categoria.isNullOrBlank()) e["cat"] = "Selecione a categoria"
-        if (origem == "CARTAO" && cartaoEscolhido == null) e["origem"] = "Selecione um cartão"
-        if (origem == "CONTA" && contas.none { it.conta == contaNumero }) e["origem"] = "Selecione uma conta"
+        if (noCartao && cartaoEscolhido == null) e["origem"] = "Selecione um cartão"
+        if (!noCartao && contas.none { it.conta == contaNumero }) e["origem"] = "Selecione uma conta"
         erros = e
         return e.isEmpty()
     }
@@ -128,14 +129,23 @@ fun EditarLancamentoDialog(
             pic = if (cat.equals(despesa.categoria, ignoreCase = true)) despesa.pic else getPicCategoria(cat).ifBlank { despesa.pic },
             tipo = tipo,
             conta = if (noCartao) despesa.conta else contaNumero,
-            cartaoId = if (noCartao) cartaoId else null,
-            pago = if (noCartao) (if (trocouCartao) false else despesa.pago) else pago,
+            cartaoId = if (noCartao) cartaoEscolhido?.id else null,
+            // Em cartão o repositório decide o `pago` (crédito: em aberto; débito: pela data) ao mudar de local.
+            pago = if (noCartao) despesa.pago else pago,
             valorOriginal = if (mudouValor) valorNovo else despesa.valorOriginal,
             moedaOriginal = if (mudouValor) "BRL" else despesa.moedaOriginal,
             cotacaoNaData = if (mudouValor) 1.0 else despesa.cotacaoNaData,
             tags = com.meudinheiro.domain.Tags.normalizar(tags)
         )
-        onSalvar(editada, if (multiplo) modalidade else null, AnexosEdicao(anexosForm.novos.toList(), anexosForm.removidos.toSet()))
+        val modalidade = when (local) {
+            LOCAL_CREDITO -> Financas.Modalidade.CREDITO
+            LOCAL_DEBITO -> Financas.Modalidade.DEBITO
+            else -> null
+        }
+        onSalvar(
+            editada, modalidade, AnexosEdicao(anexosForm.novos.toList(), anexosForm.removidos.toSet()),
+            local == LOCAL_CONTA && debitoOriginal != null // virou lançamento comum de conta: solta o vínculo de débito
+        )
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -150,7 +160,7 @@ fun EditarLancamentoDialog(
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Editar lançamento", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Color.White)
                         if (Financas.cartaoDeDebito(despesa) == null && com.meudinheiro.domain.LancamentoAcoes.ehGrupoParcelas(despesa.natureza, despesa.grupoId)) {
-                            Text("Altera só esta parcela.", color = NeonCyan.copy(alpha = 0.8f), fontSize = 12.sp)
+                            Text("Altera só esta parcela; mudar o local (conta/cartão) vale para todas as parcelas.", color = NeonCyan.copy(alpha = 0.8f), fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }
 
@@ -172,23 +182,34 @@ fun EditarLancamentoDialog(
                     PremiumTextField(value = descricao, onValueChange = { descricao = it }, label = "Descrição", onClick = { })
                     erros["desc"]?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 10.sp) }
 
-                    if (cartoes.isNotEmpty()) {
-                        SeletorSegmentado(
-                            opcoes = listOf("CONTA" to "Conta", "CARTAO" to "Cartão"),
-                            atual = origem, onSelect = { origem = it }
-                        )
-                    }
-                    if (origem == "CARTAO") {
+                    // R78 — onde foi lançado: Conta | Cartão de crédito | Cartão de débito (múltiplo escolhe pelo local).
+                    SeletorSegmentado(
+                        opcoes = buildList {
+                            add(LOCAL_CONTA to "Conta")
+                            if (cartoes.isNotEmpty() || localOriginal == LOCAL_CREDITO) add(LOCAL_CREDITO to "Cartão crédito")
+                            if (cartoes.isNotEmpty() || localOriginal == LOCAL_DEBITO) add(LOCAL_DEBITO to "Cartão débito")
+                        },
+                        atual = local,
+                        onSelect = { novo ->
+                            if (novo != local) {
+                                if (novo == LOCAL_CONTA) pago = dataMillis <= System.currentTimeMillis() // veio de cartão: pago pela data
+                                local = novo
+                                val original = if (novo == LOCAL_CREDITO) cartaoOriginal else debitoOriginal
+                                val aceitos = cartoes.filter { cartaoServeAoLocal(it, novo) || it.id == original }
+                                if (novo != LOCAL_CONTA && aceitos.none { it.id == cartaoId }) cartaoId = aceitos.firstOrNull()?.id
+                            }
+                        }
+                    )
+                    if (noCartao) {
                         Dropdown(
-                            label = "Cartão",
+                            label = if (local == LOCAL_DEBITO) "Cartão de débito" else "Cartão de crédito",
                             atual = cartaoEscolhido?.let { rotuloCartao(it, cartoes) } ?: "Selecione um cartão...",
-                            opcoes = cartoes.map { rotuloCartao(it, cartoes) to { cartaoId = it.id } }
+                            opcoes = cartoesDoLocal.map { rotuloCartao(it, cartoes) to { cartaoId = it.id } }
                         )
-                        if (multiplo) SeletorSegmentado(
-                            opcoes = listOf(Financas.Modalidade.CREDITO to "Crédito", Financas.Modalidade.DEBITO to "Débito"),
-                            atual = modalidade, onSelect = { modalidade = it }
+                        if (local == LOCAL_DEBITO) Text(
+                            "Compra no débito: sai direto da conta (não usa limite nem entra na fatura).",
+                            color = NeonCyan.copy(alpha = 0.9f), fontSize = 12.sp
                         )
-                        if (vaiParaDebito) Text("Compra no débito: sai direto da conta", color = NeonCyan.copy(alpha = 0.9f), fontSize = 12.sp)
                     } else {
                         Dropdown(
                             label = "Conta",
@@ -217,7 +238,7 @@ fun EditarLancamentoDialog(
                         }
                     )
 
-                    if (origem == "CONTA") {
+                    if (local == LOCAL_CONTA) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             Text(if (tipo == TipoDespesa.CREDITO) "Recebido" else "Pago", color = Color.White, modifier = Modifier.weight(1f))
                             Switch(
@@ -247,6 +268,20 @@ fun EditarLancamentoDialog(
                 )
             }
         }
+    }
+}
+
+private const val LOCAL_CONTA = "CONTA"
+private const val LOCAL_CREDITO = "CREDITO"
+private const val LOCAL_DEBITO = "DEBITO"
+
+/** Crédito: cartões de crédito/múltiplos; débito: cartões de débito/múltiplos (múltiplo escolhe a modalidade pelo local). */
+private fun cartaoServeAoLocal(c: Cartao, local: String): Boolean {
+    val t = Financas.tipoDeCartao(c.tipo)
+    return when (local) {
+        LOCAL_CREDITO -> t != "DEBITO"
+        LOCAL_DEBITO -> t == "DEBITO" || t == "MULTIPLO"
+        else -> false
     }
 }
 

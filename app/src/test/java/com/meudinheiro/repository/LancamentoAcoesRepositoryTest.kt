@@ -194,6 +194,159 @@ class LancamentoAcoesRepositoryTest {
         assertEquals(-50.0, saldo("222"), 0.0)
     }
 
+    // ------------------------------------------------------------------ criação: o cartão escolhido chega ao banco
+
+    @Test fun `lancamento criado para cartao de credito grava cartaoId e nao mexe no saldo da conta`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val cartao = novoCartao("111", limite = 1000.0)
+        val id = repo.registrarLancamento(lanc(150.0, "111", cartaoId = cartao, data = ms(2026, 1, 5)))
+        val d = repo.obterDespesaPorId(id)!!
+        assertEquals(cartao, d.cartaoId)
+        assertFalse(d.pago)
+        assertNull(d.grupoId)
+        assertEquals(1000.0, saldo("111"), 0.0)
+        assertEquals(850.0, limite(cartao), 0.0)
+    }
+
+    @Test fun `cartao multiplo sem modalidade e credito e com DEBITO sai direto da conta (intencional R42)`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val multiplo = novoCartao("111", tipo = "MÚLTIPLO", limite = 1000.0)
+        val credito = repo.registrarLancamento(lanc(100.0, "111", cartaoId = multiplo, data = ms(2026, 1, 5)))
+        assertEquals(multiplo, repo.obterDespesaPorId(credito)!!.cartaoId)
+        assertEquals(1000.0, saldo("111"), 0.0)
+        val debito = repo.registrarLancamento(lanc(40.0, "111", cartaoId = multiplo, data = ms(2026, 1, 5)), Financas.Modalidade.DEBITO)
+        repo.obterDespesaPorId(debito)!!.let { assertNull(it.cartaoId); assertTrue(it.pago); assertEquals("debito:$multiplo", it.grupoId) }
+        assertEquals(960.0, saldo("111"), 0.0)
+        assertEquals(900.0, limite(multiplo), 0.0)
+    }
+
+    // ------------------------------------------------------------------ R78: mudar o local ao editar
+
+    @Test fun `conta para credito vai para a conta do cartao em aberto e consome limite`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0)); repo.salvarConta(conta("222", 500.0))
+        val cartao = novoCartao("222", limite = 1000.0)
+        val id = repo.registrarLancamento(lanc(200.0, "111", pago = true, data = ms(2026, 1, 5)))
+        assertEquals(800.0, saldo("111"), 0.0)
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = cartao), Financas.Modalidade.CREDITO)
+        val d = repo.obterDespesaPorId(id)!!
+        assertEquals(cartao, d.cartaoId); assertEquals("222", d.conta); assertFalse(d.pago); assertNull(d.grupoId)
+        assertEquals(1000.0, saldo("111"), 0.0)   // saiu da conta 111
+        assertEquals(500.0, saldo("222"), 0.0)    // crédito não mexe no saldo
+        assertEquals(800.0, limite(cartao), 0.0)
+    }
+
+    @Test fun `conta para debito vira lancamento da conta do cartao com vinculo e pago pela data`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0)); repo.salvarConta(conta("222", 500.0))
+        val debito = novoCartao("222", tipo = "DÉBITO")
+        val passado = repo.registrarLancamento(lanc(100.0, "111", pago = true, data = ms(2026, 1, 5)))
+        val futuro = repo.registrarLancamento(lanc(30.0, "111", pago = false, data = ms(2027, 1, 5)))
+        repo.atualizarLancamento(repo.obterDespesaPorId(passado)!!.copy(cartaoId = debito), Financas.Modalidade.DEBITO)
+        repo.atualizarLancamento(repo.obterDespesaPorId(futuro)!!.copy(cartaoId = debito), Financas.Modalidade.DEBITO)
+        repo.obterDespesaPorId(passado)!!.let { assertNull(it.cartaoId); assertEquals("222", it.conta); assertEquals("debito:$debito", it.grupoId); assertTrue(it.pago) }
+        assertFalse(repo.obterDespesaPorId(futuro)!!.pago)
+        assertEquals(1000.0, saldo("111"), 0.0) // os 100 voltaram; o de 30 estava em aberto
+        assertEquals(400.0, saldo("222"), 0.0)
+    }
+
+    @Test fun `credito para conta devolve o limite e entra no saldo da conta escolhida`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0)); repo.salvarConta(conta("222", 0.0))
+        val cartao = novoCartao("111", limite = 1000.0)
+        val id = repo.registrarLancamento(lanc(250.0, "111", cartaoId = cartao, data = ms(2026, 1, 5)))
+        assertEquals(750.0, limite(cartao), 0.0)
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = null, conta = "222", pago = true))
+        val d = repo.obterDespesaPorId(id)!!
+        assertNull(d.cartaoId); assertEquals("222", d.conta); assertTrue(d.pago)
+        assertEquals(1000.0, limite(cartao), 0.0)
+        assertEquals(-250.0, saldo("222"), 0.0)
+        assertEquals(1000.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `debito para conta remove o vinculo mesmo na mesma conta`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val debito = novoCartao("111", tipo = "DÉBITO")
+        val id = repo.registrarLancamento(lanc(60.0, "111", cartaoId = debito, data = ms(2026, 1, 5)))
+        assertEquals("debito:$debito", repo.obterDespesaPorId(id)!!.grupoId)
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = null), desvincularDebito = true)
+        val d = repo.obterDespesaPorId(id)!!
+        assertNull(d.grupoId); assertNull(d.cartaoId); assertEquals("111", d.conta); assertTrue(d.pago)
+        assertEquals(940.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `credito e debito do mesmo cartao multiplo alternam com saldo e limite coerentes`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val m = novoCartao("111", tipo = "MÚLTIPLO", limite = 1000.0)
+        val id = repo.registrarLancamento(lanc(100.0, "111", cartaoId = m, data = ms(2026, 1, 5)))
+        assertEquals(900.0, limite(m), 0.0); assertEquals(1000.0, saldo("111"), 0.0)
+
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = m), Financas.Modalidade.DEBITO)
+        repo.obterDespesaPorId(id)!!.let { assertNull(it.cartaoId); assertEquals("debito:$m", it.grupoId); assertTrue(it.pago) }
+        assertEquals(1000.0, limite(m), 0.0); assertEquals(900.0, saldo("111"), 0.0)
+
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = m), Financas.Modalidade.CREDITO)
+        repo.obterDespesaPorId(id)!!.let { assertEquals(m, it.cartaoId); assertNull(it.grupoId); assertFalse(it.pago) }
+        assertEquals(900.0, limite(m), 0.0); assertEquals(1000.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `editar sem mudar o local de um debito de cartao preserva vinculo e pago`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val m = novoCartao("111", tipo = "MÚLTIPLO", limite = 1000.0)
+        val id = repo.registrarLancamento(lanc(50.0, "111", cartaoId = m, data = ms(2027, 1, 5)), Financas.Modalidade.DEBITO)
+        assertFalse(repo.obterDespesaPorId(id)!!.pago) // futuro
+        repo.atualizarLancamento(repo.obterDespesaPorId(id)!!.copy(cartaoId = m, valor = 70.0), Financas.Modalidade.DEBITO)
+        repo.obterDespesaPorId(id)!!.let { assertEquals("debito:$m", it.grupoId); assertEquals(70.0, it.valor, 0.0); assertNull(it.cartaoId) }
+    }
+
+    @Test fun `parcelas conta para credito e credito para conta valem para o grupo inteiro`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0)); repo.salvarConta(conta("222", 0.0))
+        val cartao = novoCartao("222", limite = 1000.0)
+        // 3 parcelas de 100: a 1ª no passado (paga), as demais futuras (+1 e +2 meses).
+        repo.registrarParcelado(lanc(300.0, "111", data = System.currentTimeMillis() - 5 * 86_400_000L), 3)
+        val parcelas = todas().filter { it.natureza == Natureza.NORMAL }.sortedBy { it.dataMs }
+        val grupo = parcelas.first().grupoId!!
+        assertTrue(parcelas.all { it.grupoId == grupo })
+        assertTrue(parcelas.first().pago)
+
+        // conta -> crédito (editando a 2ª): todas vão ao cartão, em aberto
+        repo.atualizarLancamento(parcelas[1].copy(cartaoId = cartao), Financas.Modalidade.CREDITO)
+        val noCartao = todas().filter { it.grupoId == grupo }
+        assertTrue(noCartao.all { it.cartaoId == cartao && it.conta == "222" && !it.pago })
+        assertEquals(1000.0, saldo("111"), 0.0)
+        assertEquals(700.0, limite(cartao), 0.0)
+
+        // crédito -> conta 111 (editando a 3ª): todas voltam; pago coerente com a data de cada uma
+        val ultima = todas().single { it.grupoId == grupo && it.descricao.endsWith("(3/3)") }
+        repo.atualizarLancamento(ultima.copy(cartaoId = null, conta = "111", pago = false))
+        val naConta = todas().filter { it.grupoId == grupo }.sortedBy { it.dataMs }
+        assertTrue(naConta.all { it.cartaoId == null && it.conta == "111" })
+        assertTrue(naConta.first().pago)                 // data passada
+        assertTrue(naConta.drop(1).none { it.pago })      // as demais seguem a própria data (futuras)
+        assertEquals(1000.0, limite(cartao), 0.0)
+        assertEquals(900.0, saldo("111"), 0.0)
+    }
+
+    @Test fun `parcelas para debito ficam na conta do cartao sem perder o grupo de parcelas`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0))
+        val m = novoCartao("111", tipo = "MÚLTIPLO", limite = 1000.0)
+        repo.registrarParcelado(lanc(200.0, "111", cartaoId = m, data = ms(2027, 1, 5)), 2)
+        val p = todas().filter { it.natureza == Natureza.NORMAL }
+        assertEquals(800.0, limite(m), 0.0)
+        repo.atualizarLancamento(p.first().copy(cartaoId = m), Financas.Modalidade.DEBITO)
+        val depois = todas().filter { it.natureza == Natureza.NORMAL }
+        assertTrue(depois.all { it.cartaoId == null && it.conta == "111" && it.grupoId!!.startsWith("parc:") })
+        assertEquals(1000.0, limite(m), 0.0)
+    }
+
+    @Test fun `mudar o local de natureza bloqueada e recusado sem alterar nada`() = runBlocking {
+        repo.salvarConta(conta("111", 1000.0)); repo.salvarConta(conta("222", 0.0))
+        val cartao = novoCartao("111", limite = 500.0)
+        repo.transferirEntreContas("111", "222", 10.0)
+        val t = todas().first { it.natureza == Natureza.TRANSFERENCIA }
+        val ex = runCatching { repo.atualizarLancamento(t.copy(cartaoId = cartao), Financas.Modalidade.CREDITO) }.exceptionOrNull()
+        assertTrue(ex is RegraFinanceiraException)
+        assertNull(repo.obterDespesaPorId(t.id)!!.cartaoId)
+        assertEquals(500.0, limite(cartao), 0.0)
+    }
+
     @Test fun `natureza gerada nao pode ser editada nem alternada`() = runBlocking {
         repo.salvarConta(conta("111", 1000.0)); repo.salvarConta(conta("222", 0.0))
         repo.transferirEntreContas("111", "222", 10.0)

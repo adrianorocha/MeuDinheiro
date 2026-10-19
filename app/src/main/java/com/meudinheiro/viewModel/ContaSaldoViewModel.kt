@@ -393,11 +393,14 @@ class ContaSaldoViewModel(
     }
 
     /** R11/R42 — grava a edição completa de um lançamento (conta ou cartão). */
-    fun editarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null, anexos: AnexosEdicao = AnexosEdicao()) {
+    fun editarLancamento(
+        despesa: Despesa, modalidade: Financas.Modalidade? = null, anexos: AnexosEdicao = AnexosEdicao(),
+        desvincularDebito: Boolean = false
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val categoriaAntes = repository.obterDespesaPorId(despesa.id)?.categoria
-                repository.atualizarLancamento(despesa, modalidade)
+                repository.atualizarLancamento(despesa, modalidade, desvincularDebito)
                 if (!anexos.vazio) aplicarAnexos(despesa.id, anexos) // R60: lê os anexos atuais do banco (não os do formulário)
                 if (categoriaAntes != null && com.meudinheiro.domain.Texto.normalizar(categoriaAntes) != com.meudinheiro.domain.Texto.normalizar(despesa.categoria)) {
                     _sugestaoRegra.value = repository.sugerirRegraAprendida(despesa)

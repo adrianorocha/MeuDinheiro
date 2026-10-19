@@ -815,7 +815,8 @@ fun AddDespesaDialog(
                                 }
                                 if (compraNoDebito) {
                                     Text(
-                                        "Compra no débito: sai direto da conta",
+                                        "Compra no débito: sai direto da conta e fica no extrato da conta (não entra na fatura nem usa o limite)." +
+                                            if (cartaoMultiplo) " Para lançar na fatura, escolha Crédito." else "",
                                         color = NeonCyan.copy(alpha = 0.9f),
                                         fontSize = 12.sp
                                     )
