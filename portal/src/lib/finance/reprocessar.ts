@@ -1,5 +1,5 @@
 import { ehPagamentoDeFatura } from "../conciliacao/plano";
-import { cartaoIdDe, cartoesDoGrupo, faturaDaCompra, resumoFatura } from "./calc";
+import { cartaoIdDe, cartoesDoGrupo, faturaDaCompra, fechamentoDia, resumoFatura } from "./calc";
 import { recalcularSaldos, rotuloCartao, rotuloConta, type CorrecaoSaldo } from "./conferencia";
 import { fromCents, toCents } from "./money";
 import { excluirLancamento } from "./operations";
@@ -32,8 +32,13 @@ export interface AlvoFatura {
   ano: number;
 }
 
-/** Predicado: o lançamento é item da fatura `alvo` (qualquer cartão do grupo). Sem alvo, vale para todos. */
-function naFatura(ds: Dataset, alvo?: AlvoFatura): (d: Despesa) => boolean {
+/** R77 - todas as faturas do cartão (e do seu grupo). */
+export interface AlvoCartao {
+  cartaoId: number;
+}
+
+/** Predicado: o lançamento é item da fatura `alvo` (qualquer cartão do grupo) ou, com `AlvoCartao`, de qualquer fatura do grupo. Sem alvo, vale para todos. */
+function naFatura(ds: Dataset, alvo?: AlvoFatura | AlvoCartao): (d: Despesa) => boolean {
   if (!alvo) return () => true;
   const escolhido = ds.cartoes.find((c) => c.id === alvo.cartaoId);
   if (!escolhido) return () => false;
@@ -43,12 +48,72 @@ function naFatura(ds: Dataset, alvo?: AlvoFatura): (d: Despesa) => boolean {
   return (d) => {
     const cid = cartaoIdDe(d);
     if (cid === null || !ids.has(cid)) return false;
+    if (!("mes" in alvo)) return true;
     const f = faturaDaCompra(principal, d.data);
     return f.mes === alvo.mes && f.ano === alvo.ano;
   };
 }
 
-export function faturasPagasComPendencias(ds: Dataset, alvo?: AlvoFatura): FaturaPagaComPendencia[] {
+/** R77 - situação de cada fatura do cartão (grupo) com o ciclo atual, para conferir depois de mudar o dia de fechamento / melhor dia. */
+export interface LinhaFaturaCartao {
+  mes: number;
+  ano: number;
+  itens: number;
+  total: number;
+  emAberto: number;
+  /** existe pagamento completo da fatura (R7/R44) */
+  paga: boolean;
+  /** itens em aberto numa fatura já paga (o reprocessamento marca como pagos) */
+  pendentesEmFaturaPaga: number;
+  /** compras feitas no dia do fechamento: as que mudam de fatura com a opção "fechamento = melhor dia" */
+  noDiaDoFechamento: number;
+  /** itens já pagos numa fatura que não tem pagamento completo (ficaram pagos por outra fatura; só informativo) */
+  pagosSemPagamento: number;
+}
+
+export function analiseFaturasDoCartao(ds: Dataset, cartaoId: number): LinhaFaturaCartao[] {
+  const escolhido = ds.cartoes.find((c) => c.id === cartaoId);
+  if (!escolhido) return [];
+  const grupo = cartoesDoGrupo(escolhido, ds.cartoes);
+  const principal = grupo[0];
+  const ids = new Set(grupo.map((c) => c.id));
+  const chaves = new Map<string, { mes: number; ano: number }>();
+  for (const d of ds.despesas) {
+    const cid = cartaoIdDe(d);
+    if (cid === null || !ids.has(cid)) continue;
+    const f = faturaDaCompra(principal, d.data);
+    chaves.set(`${f.ano}-${f.mes}`, f);
+  }
+  const pagas = new Set<string>();
+  for (const pg of ds.despesas) {
+    const m = pg.natureza === "PAGAMENTO_FATURA" && pg.grupoId ? GRUPO_FATURA.exec(pg.grupoId) : null;
+    if (m && Number(m[1]) === principal.id) pagas.add(`${Number(m[2])}-${Number(m[3])}`);
+  }
+  const pendentes = new Map(faturasPagasComPendencias(ds, { cartaoId }).map((f) => [`${f.ano}-${f.mes}`, f.itens.length]));
+  return [...chaves.values()]
+    .sort((a, b) => a.ano - b.ano || a.mes - b.mes)
+    .map(({ mes, ano }) => {
+      const r = resumoFatura(principal, ds.despesas, mes, ano, ds.cartoes);
+      const k = `${ano}-${mes}`;
+      const paga = pagas.has(k);
+      return {
+        mes,
+        ano,
+        itens: r.itens.length,
+        total: r.total,
+        emAberto: r.emAberto,
+        paga,
+        pendentesEmFaturaPaga: pendentes.get(k) ?? 0,
+        noDiaDoFechamento: r.itens.filter((d) => {
+          const x = new Date(d.data);
+          return x.getDate() === fechamentoDia(principal, x.getMonth() + 1, x.getFullYear());
+        }).length,
+        pagosSemPagamento: paga ? 0 : r.itens.filter((d) => d.pago).length,
+      };
+    });
+}
+
+export function faturasPagasComPendencias(ds: Dataset, alvo?: AlvoFatura | AlvoCartao): FaturaPagaComPendencia[] {
   const naAlvo = naFatura(ds, alvo);
   const out = new Map<string, FaturaPagaComPendencia>();
   for (const pg of ds.despesas) {
@@ -81,7 +146,7 @@ export function faturasPagasComPendencias(ds: Dataset, alvo?: AlvoFatura): Fatur
  * da fatura anterior). Esse valor já está na conta como PAGAMENTO_FATURA; dentro do cartão ele abate a fatura em
  * dobro e deixa o total da fatura negativo/divergente do "em aberto".
  */
-export function pagamentosNoCartao(ds: Dataset, alvo?: AlvoFatura): Despesa[] {
+export function pagamentosNoCartao(ds: Dataset, alvo?: AlvoFatura | AlvoCartao): Despesa[] {
   const naAlvo = naFatura(ds, alvo);
   return ds.despesas.filter((d) => cartaoIdDe(d) !== null && naAlvo(d) && d.natureza === "NORMAL" && d.tipo === "CREDITO" && d.autor === "Importação" && ehPagamentoDeFatura(d.descricao));
 }
@@ -132,7 +197,7 @@ export function reprocessarFatura(
  * Marca como pagos os itens de faturas já quitadas (só quando `corrigirFaturas`) e recalcula saldos/limites.
  * Nunca cria lançamentos nem altera valores/datas. Idempotente.
  */
-export function reprocessarSaldos(ds: Dataset, opcoes: { corrigirFaturas?: boolean; removerPagamentosNoCartao?: boolean; agora?: number; /** R71 - restringe aos itens desta fatura */ fatura?: AlvoFatura; /** créditos escolhidos pelo usuário para remover (lixeira); só valem se estiverem na fatura */ removerIds?: readonly number[] } = {}): ResultadoReprocessamento {
+export function reprocessarSaldos(ds: Dataset, opcoes: { corrigirFaturas?: boolean; removerPagamentosNoCartao?: boolean; agora?: number; /** R71 - restringe aos itens desta fatura (R77: ou a todas as faturas de um cartão) */ fatura?: AlvoFatura | AlvoCartao; /** créditos escolhidos pelo usuário para remover (lixeira); só valem se estiverem na fatura */ removerIds?: readonly number[] } = {}): ResultadoReprocessamento {
   const dsInicial = ds;
   let pagamentosRemovidos = 0;
   if (opcoes.removerPagamentosNoCartao) {

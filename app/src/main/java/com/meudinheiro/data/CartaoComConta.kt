@@ -13,7 +13,8 @@ data class CartaoComConta(
     val nomeConta: String, // 📍 O nome do banco que virá pelo JOIN
     val numeroConta: String,
     val cartaoPrincipalId: Int? = null,
-    val limiteProprio: Double? = null
+    val limiteProprio: Double? = null,
+    val fechamentoMelhorDia: Boolean = false
 ) {
     val ehVirtual: Boolean get() = cartaoPrincipalId != null
 
@@ -21,7 +22,8 @@ data class CartaoComConta(
     fun paraCartao() = Cartao(
         id = id, nome = nomeCartao, finalCartao = finalCartao, tipo = tipo, limiteDisponivel = limiteDisponivel,
         limiteTotal = limiteTotal, diaFechamento = diaFechamento, diaVencimento = diaVencimento, contaId = contaId,
-        cartaoPrincipalId = cartaoPrincipalId, limiteProprio = limiteProprio
+        cartaoPrincipalId = cartaoPrincipalId, limiteProprio = limiteProprio,
+        fechamentoMelhorDia = fechamentoMelhorDia
     )
     val idDoGrupo: Int get() = cartaoPrincipalId ?: id
 }

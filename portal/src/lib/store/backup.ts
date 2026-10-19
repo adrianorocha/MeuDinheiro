@@ -90,6 +90,7 @@ const cartaoSchema = z.object({
   limiteDisponivel: num.optional(),
   limiteTotal: num,
   diaFechamento: num,
+  fechamentoMelhorDia: z.boolean().optional(),
   diaVencimento: num,
   contaId: num,
   cartaoPrincipalId: num.nullish(),
@@ -157,6 +158,7 @@ const dividaSchema = z.object({
   parcelasRestantes: num.nullish(),
   diaVencimento: num.nullish(),
   conta: z.string().nullish(),
+  lancamentoIds: z.array(id).optional(),
   ativa: z.boolean().default(true),
 });
 
@@ -305,6 +307,7 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
       limiteDisponivel: c.limiteDisponivel ?? c.limiteTotal,
       cartaoPrincipalId: c.cartaoPrincipalId ? c.cartaoPrincipalId : null,
       limiteProprio: c.limiteProprio ? c.limiteProprio : null,
+      fechamentoMelhorDia: c.fechamentoMelhorDia === true ? true : undefined,
     })),
     transferenciasAgendadas: comIds(b.transferenciasAgendadas, gerarInt).map((t) => ({
       ...t,
@@ -349,6 +352,7 @@ export function normalizarBackup(b: Backup, agora: number): Dataset {
       parcelasRestantes: d.parcelasRestantes != null && d.parcelasRestantes >= 0 ? Math.trunc(d.parcelasRestantes) : null,
       diaVencimento: d.diaVencimento != null && d.diaVencimento >= 1 && d.diaVencimento <= 31 ? Math.trunc(d.diaVencimento) : null,
       conta: d.conta ? d.conta : null,
+      ...(d.lancamentoIds && d.lancamentoIds.length > 0 ? { lancamentoIds: d.lancamentoIds.map((n) => Math.trunc(n)) } : {}),
       ativa: d.ativa,
     })),
     pessoas: comIds(b.pessoas, gerarInt).map((p) => ({ id: p.id, nome: p.nome, contato: p.contato ? p.contato : null })),

@@ -1,24 +1,26 @@
 "use client";
 
-import { CircleCheck, CreditCard, Landmark, Pencil, Plus, RefreshCw, ShoppingBag, Trash2 } from "lucide-react";
+import { CircleCheck, CreditCard, Eraser, Landmark, Pencil, Plus, RefreshCw, ShoppingBag, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { LimiteComprometido } from "@/components/cartoes/LimiteComprometido";
 import { PagarFaturaModal } from "@/components/cartoes/PagarFaturaModal";
+import { ReprocessarCartaoModal } from "@/components/cartoes/ReprocessarCartaoModal";
 import { ReprocessarFaturaModal } from "@/components/cartoes/ReprocessarFaturaModal";
 import { LancamentoModal } from "@/components/lancamentos/LancamentoModal";
 import { ListaLancamentos } from "@/components/lancamentos/ListaLancamentos";
 import { Button, IconButton } from "@/components/ui/Button";
-import { Input, InputValor, Segmentado, Select } from "@/components/ui/Field";
+import { Checkbox, Input, InputValor, Segmentado, Select } from "@/components/ui/Field";
 import { Badge, Card, CardTitulo, EmptyState, ErroBox, PageHeader, ProgressBar } from "@/components/ui/Misc";
-import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
+import { ApagarLancamentosCartaoModal } from "@/components/cartoes/ApagarLancamentosCartaoModal";
+import { ExcluirCartaoModal } from "@/components/cartoes/ExcluirCartaoModal";
+import { Modal, RodapeForm } from "@/components/ui/Modal";
 import { MonthPicker } from "@/components/ui/MonthPicker";
 import { Money } from "@/components/ui/Money";
 import { TIPOS_CARTAO } from "@/lib/catalogo";
 import { melhorDiaCompra } from "@/lib/finance/analises";
 import { mesAnoDe } from "@/lib/finance/dates";
 import { cartaoIdDe, cartoesDoGrupo, comprometimentoCartao, debitosDoCartao, faturaDaCompra, principalDe, resumoFatura, saldoDoCartao, totalDebitos } from "@/lib/finance/calc";
-import { cartaoTemCompras } from "@/lib/finance/operations";
 import type { Cartao } from "@/lib/finance/types";
 import { formatData, formatPercentual, parseValorBR, valorParaCampo } from "@/lib/format";
 import { useAgora, useDataset } from "@/lib/hooks";
@@ -48,6 +50,7 @@ function CartaoForm({ editar, onFechar }: FormProps) {
   const [limiteTxt, setLimiteTxt] = useState(editar ? valorParaCampo(editar.limiteTotal) : "");
   const [fechamento, setFechamento] = useState(String(editar?.diaFechamento ?? 25));
   const [vencimento, setVencimento] = useState(String(editar?.diaVencimento ?? 5));
+  const [melhorDia, setMelhorDia] = useState(editar?.fechamentoMelhorDia === true);
   const [limiteProprioTxt, setLimiteProprioTxt] = useState(editar?.limiteProprio ? valorParaCampo(editar.limiteProprio) : "");
   const [contaId, setContaId] = useState(String(editar?.contaId ?? ds.contas[0]?.id ?? ""));
   const [erro, setErro] = useState<string | null>(null);
@@ -59,6 +62,7 @@ function CartaoForm({ editar, onFechar }: FormProps) {
   const vLimite = virtual && principal ? valorParaCampo(principal.limiteTotal) : limiteTxt;
   const vFecha = virtual && principal ? String(principal.diaFechamento) : fechamento;
   const vVence = virtual && principal ? String(principal.diaVencimento) : vencimento;
+  const vMelhorDia = virtual && principal ? principal.fechamentoMelhorDia === true : melhorDia;
   const vConta = virtual && principal ? String(principal.contaId) : contaId;
 
   function enviar(e: FormEvent) {
@@ -74,7 +78,7 @@ function CartaoForm({ editar, onFechar }: FormProps) {
     } else {
       const limite = parseValorBR(limiteTxt);
       if (!(limite >= 0)) return setErro("Informe o limite total.");
-      const dados = { nome, finalCartao: final.trim(), tipo, limiteTotal: limite, diaFechamento: Number(fechamento), diaVencimento: Number(vencimento), contaId: Number(contaId), limiteProprio };
+      const dados = { nome, finalCartao: final.trim(), tipo, limiteTotal: limite, diaFechamento: Number(fechamento), fechamentoMelhorDia: melhorDia, diaVencimento: Number(vencimento), contaId: Number(contaId), limiteProprio };
       r = editar ? acoes.editarCartao(editar.id, { ...dados, cartaoPrincipalId: null }) : acoes.criarCartao(dados);
     }
     if (!r.ok) return setErro(r.erro);
@@ -141,6 +145,17 @@ function CartaoForm({ editar, onFechar }: FormProps) {
         <Input rotulo="Dia de fechamento" type="number" min={1} max={31} value={vFecha} onChange={(e) => setFechamento(e.target.value)} readOnly={virtual} disabled={virtual} />
         <Input rotulo="Dia de vencimento" type="number" min={1} max={31} value={vVence} onChange={(e) => setVencimento(e.target.value)} readOnly={virtual} disabled={virtual} />
       </div>
+      <div>
+        <Checkbox
+          rotulo="O dia do fechamento já é o melhor dia de compra"
+          checked={vMelhorDia}
+          onChange={(e) => setMelhorDia(e.target.checked)}
+          disabled={virtual}
+        />
+        <p className="ml-6 text-xs text-muted">
+          Marcado: compras feitas no dia do fechamento já entram na PRÓXIMA fatura. Desmarcado (ex.: Caixa): o dia seguinte ao fechamento é o melhor dia. Depois de mudar, use &quot;Reprocessar todas as faturas&quot;.
+        </p>
+      </div>
       <Select rotulo="Conta vinculada" value={vConta} onChange={(e) => setContaId(e.target.value)} disabled={virtual}>
         {ds.contas.map((c) => (
           <option key={c.id} value={c.id}>
@@ -159,15 +174,16 @@ function CartaoForm({ editar, onFechar }: FormProps) {
 export default function CartoesPage() {
   const ds = useDataset();
   const agora = useAgora();
-  const avisar = useStore((s) => s.avisar);
   const mesHoje = mesAnoDe(agora);
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
   const [fatura, setFatura] = useState<{ mes: number; ano: number } | null>(null);
   const [formCartao, setFormCartao] = useState<{ editar: Cartao | null } | null>(null);
   const [excluir, setExcluir] = useState<Cartao | null>(null);
+  const [limpar, setLimpar] = useState<Cartao | null>(null);
   const [pagar, setPagar] = useState(false);
   const [jaPaga, setJaPaga] = useState(false);
   const [reprocessar, setReprocessar] = useState(false);
+  const [reprocessarTodas, setReprocessarTodas] = useState(false);
   const [compra, setCompra] = useState(false);
   /** Filtro da lista de lançamentos: null = todos os cartões do grupo. */
   const [filtroId, setFiltroId] = useState<number | null>(null);
@@ -203,18 +219,6 @@ export default function CartoesPage() {
     () => (periodo ? debitosDoCartao(grupo, ds.despesas, periodo.mes, periodo.ano, filtro) : []),
     [grupo, ds.despesas, periodo, filtro],
   );
-
-  function confirmarExclusao() {
-    if (!excluir) return;
-    const r = acoes.excluirCartao(excluir.id, true);
-    if (r.ok) {
-      avisar("sucesso", "Cartão excluído.");
-      setSelecionadoId(null);
-    } else avisar("erro", r.erro);
-    setExcluir(null);
-  }
-
-  const nomePrincipal = (c: Cartao) => ds.cartoes.find((x) => x.id === c.cartaoPrincipalId)?.nome ?? "cartão físico";
 
   return (
     <>
@@ -265,6 +269,9 @@ export default function CartoesPage() {
                       <IconButton rotulo={`Editar cartão ${c.nome}`} onClick={() => setFormCartao({ editar: c })}>
                         <Pencil size={16} aria-hidden />
                       </IconButton>
+                      <IconButton rotulo={`Apagar lançamentos do cartão ${c.nome}`} onClick={() => setLimpar(c)}>
+                        <Eraser size={16} aria-hidden />
+                      </IconButton>
                       <IconButton rotulo={`Excluir cartão ${c.nome}`} onClick={() => setExcluir(c)}>
                         <Trash2 size={16} aria-hidden />
                       </IconButton>
@@ -285,7 +292,7 @@ export default function CartoesPage() {
                       </span>
                     </p>
                     <p className="mt-2 text-xs text-muted">
-                      Fecha dia {c.diaFechamento} · vence dia {c.diaVencimento}
+                      Fecha dia {c.diaFechamento}{c.fechamentoMelhorDia ? " (melhor dia)" : ""} · vence dia {c.diaVencimento}
                     </p>
                     {(() => {
                       const mh = melhorDiaCompra(c, mesHoje.mes, mesHoje.ano);
@@ -421,6 +428,9 @@ export default function CartoesPage() {
                 <Button icone={<RefreshCw size={14} aria-hidden />} onClick={() => setReprocessar(true)}>
                   Reprocessar fatura
                 </Button>
+                <Button icone={<RefreshCw size={14} aria-hidden />} onClick={() => setReprocessarTodas(true)}>
+                  Reprocessar todas as faturas
+                </Button>
                 {conta && <span className="text-xs text-muted">Débito na conta {conta.banco} · {conta.conta}</span>}
               </div>
               {grupo.length > 1 && (
@@ -473,24 +483,19 @@ export default function CartoesPage() {
       </Modal>
       {selecionado && periodo && (
         <>
+        <ReprocessarCartaoModal aberto={reprocessarTodas} onFechar={() => setReprocessarTodas(false)} cartaoId={selecionado.id} />
         <ReprocessarFaturaModal aberto={reprocessar} onFechar={() => setReprocessar(false)} alvo={{ cartaoId: selecionado.id, mes: periodo.mes, ano: periodo.ano }} />
         <PagarFaturaModal aberto={pagar} onFechar={() => setPagar(false)} cartao={selecionado} cartoes={ds.cartoes} despesas={ds.despesas} conta={conta} periodo={periodo} jaPagaInicial={jaPaga} />
         </>
       )}
-      <Confirmar
-        aberto={excluir !== null}
-        perigo
-        titulo="Excluir cartão"
-        rotuloConfirmar="Excluir"
-        mensagem={
-          excluir && excluir.cartaoPrincipalId != null
-            ? `Excluir o cartão virtual ${excluir.nome}? Só é possível sem compras em aberto; o histórico pago passa para ${nomePrincipal(excluir)}.`
-            : excluir && cartaoTemCompras(ds, excluir.id)
-              ? `Excluir ${excluir.nome} remove também seus cartões virtuais e todo o histórico de compras (só é possível sem compras em aberto). Esta ação não pode ser desfeita.`
-              : `Excluir o cartão ${excluir?.nome ?? ""}?`
-        }
-        onConfirmar={confirmarExclusao}
-        onCancelar={() => setExcluir(null)}
+      <ApagarLancamentosCartaoModal cartao={limpar} onFechar={() => setLimpar(null)} />
+      <ExcluirCartaoModal
+        cartao={excluir}
+        onFechar={() => setExcluir(null)}
+        onExcluido={() => {
+          setSelecionadoId(null);
+          setExcluir(null);
+        }}
       />
       <LancamentoModal aberto={compra} onFechar={() => setCompra(false)} predefinicao={{ entrada: "cartao", cartaoId: filtro ?? selecionado?.id }} />
     </>

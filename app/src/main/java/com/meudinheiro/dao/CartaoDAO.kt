@@ -23,7 +23,8 @@ interface CartaoDao {
         """
         SELECT c.id, c.nome as nomeCartao, c.finalCartao, c.tipo, c.limiteDisponivel, c.limiteTotal,
                c.diaFechamento, c.diaVencimento, c.contaId,
-               b.banco as nomeConta, b.conta as numeroConta, c.cartaoPrincipalId, c.limiteProprio
+               b.banco as nomeConta, b.conta as numeroConta, c.cartaoPrincipalId, c.limiteProprio,
+               c.fechamentoMelhorDia
         FROM cartoes c
         INNER JOIN contasaldo b ON c.contaId = b.id
         """
@@ -52,8 +53,8 @@ interface CartaoDao {
     @Query("UPDATE cartoes SET limiteDisponivel = :limite WHERE id = :id")
     suspend fun atualizarLimite(id: Int, limite: Double)
 
-    @Query("UPDATE cartoes SET contaId = :contaId, limiteTotal = :limiteTotal, diaFechamento = :fecha, diaVencimento = :vence, tipo = :tipo WHERE cartaoPrincipalId = :principalId")
-    suspend fun propagarParaVirtuais(principalId: Int, contaId: Int, limiteTotal: Double, fecha: Int, vence: Int, tipo: String)
+    @Query("UPDATE cartoes SET contaId = :contaId, limiteTotal = :limiteTotal, diaFechamento = :fecha, diaVencimento = :vence, tipo = :tipo, fechamentoMelhorDia = :melhorDia WHERE cartaoPrincipalId = :principalId")
+    suspend fun propagarParaVirtuais(principalId: Int, contaId: Int, limiteTotal: Double, fecha: Int, vence: Int, tipo: String, melhorDia: Boolean = false)
 
     @Query("DELETE FROM cartoes")
     suspend fun limparTudo()

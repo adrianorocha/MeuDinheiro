@@ -162,7 +162,7 @@ object ProjecaoFinanceira {
         class Fatura(val cartao: Cartao, val ref: Financas.FaturaRef, var cents: Long)
         val faturas = linkedMapOf<String, Fatura>()
         fun somaFatura(cartao: Cartao, dataMs: Long, cents: Long) {
-            val ref = Financas.faturaDaCompra(dataMs, cartao.diaFechamento)
+            val ref = Financas.faturaDaCompra(dataMs, cartao.diaFechamento, cartao.fechamentoMelhorDia)
             val chave = "${cartao.id}:${ref.ano}-${ref.mes}"
             faturas.getOrPut(chave) { Fatura(cartao, ref, 0L) }.cents += cents
         }
@@ -257,7 +257,7 @@ object ProjecaoFinanceira {
             val principal = principalDe(cartao, cartoes)
             val numero = contas.firstOrNull { it.id == principal.contaId }?.conta
             if (filtroContas != null && (numero == null || numero !in filtroContas)) continue
-            val ref = Financas.faturaDaCompra(d.dataMs, principal.diaFechamento)
+            val ref = Financas.faturaDaCompra(d.dataMs, principal.diaFechamento, principal.fechamentoMelhorDia)
             out += GastoHoje(-d.centavosAssinados, maxOf(vencimentoSerial(principal, ref), hoje))
         }
         return out

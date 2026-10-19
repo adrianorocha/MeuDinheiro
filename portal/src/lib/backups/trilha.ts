@@ -5,7 +5,7 @@ import type { Dataset, Despesa } from "../finance/types";
 export const LIMITE_TRILHA = 2000;
 const MAX_POR_OPERACAO = 50;
 
-export type AcaoTrilha = "CRIAR" | "EDITAR" | "EXCLUIR" | "RESTAURAR_LIXEIRA" | "PAGAR" | "DESPAGAR" | "RESTAURAR_BACKUP";
+export type AcaoTrilha = "CRIAR" | "EDITAR" | "EXCLUIR" | "RESTAURAR_LIXEIRA" | "PAGAR" | "DESPAGAR" | "RESTAURAR_BACKUP" | "EXCLUIR_CARTAO";
 
 export const ROTULO_ACAO: Record<AcaoTrilha, string> = {
   CRIAR: "Criado",
@@ -15,6 +15,7 @@ export const ROTULO_ACAO: Record<AcaoTrilha, string> = {
   PAGAR: "Marcado como pago",
   DESPAGAR: "Marcado como pendente",
   RESTAURAR_BACKUP: "Backup restaurado",
+  EXCLUIR_CARTAO: "Cartão excluído",
 };
 
 export interface MudancaCampo {

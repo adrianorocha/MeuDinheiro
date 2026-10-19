@@ -400,10 +400,12 @@ export interface MelhorDia {
 }
 
 /** R30 - melhor dia para comprar no ciclo do mês de referência. */
-export function melhorDiaCompra(cartao: Pick<Cartao, "diaFechamento" | "diaVencimento">, mes: number, ano: number): MelhorDia {
+export function melhorDiaCompra(cartao: Pick<Cartao, "diaFechamento" | "diaVencimento" | "fechamentoMelhorDia">, mes: number, ano: number): MelhorDia {
   const ultimo = diasNoMes(mes, ano);
-  const alvo = cartao.diaFechamento >= ultimo ? normalizaMes(mes + 1, ano) : { mes, ano };
-  const dia = cartao.diaFechamento >= ultimo ? 1 : cartao.diaFechamento + 1;
+  // R77 - com `fechamentoMelhorDia` o próprio dia do fechamento é o melhor dia (a compra já vai para a próxima fatura).
+  const melhor = Math.min(cartao.diaFechamento, ultimo) + (cartao.fechamentoMelhorDia ? 0 : 1);
+  const alvo = melhor > ultimo ? normalizaMes(mes + 1, ano) : { mes, ano };
+  const dia = melhor > ultimo ? 1 : melhor;
   const data = new Date(alvo.ano, alvo.mes - 1, dia).getTime();
   const fatura = faturaDaCompra(cartao, data);
   const vencimento = vencimentoFatura(cartao, fatura.mes, fatura.ano);

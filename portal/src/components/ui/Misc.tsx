@@ -1,9 +1,13 @@
+"use client";
+
 import { Loader2 } from "lucide-react";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { estiloMatiz, rotaDe } from "./rotas";
 
 export function Card({ children, className = "", as: Tag = "section", ...rest }: { children: ReactNode; className?: string; as?: "section" | "div" | "article"; "aria-label"?: string; "aria-labelledby"?: string }) {
   return (
-    <Tag className={`rounded-2xl border border-line bg-surface p-4 sm:p-5 ${className}`} {...rest}>
+    <Tag className={`rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5 ${className}`} {...rest}>
       {children}
     </Tag>
   );
@@ -12,7 +16,7 @@ export function Card({ children, className = "", as: Tag = "section", ...rest }:
 export function CardTitulo({ children, acao, id }: { children: ReactNode; acao?: ReactNode; id?: string }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-2">
-      <h2 id={id} className="text-sm font-semibold text-muted">
+      <h2 id={id} className="text-sm font-semibold tracking-wide text-muted">
         {children}
       </h2>
       {acao}
@@ -20,12 +24,22 @@ export function CardTitulo({ children, acao, id }: { children: ReactNode; acao?:
   );
 }
 
+/** Cabeçalho da tela: o ícone e a cor vêm da rota atual (components/ui/rotas.ts). */
 export function PageHeader({ titulo, descricao, acoes }: { titulo: string; descricao?: string; acoes?: ReactNode }) {
+  const rota = rotaDe(usePathname());
+  const Icone = rota?.icone;
   return (
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{titulo}</h1>
-        {descricao && <p className="mt-1 text-sm text-muted">{descricao}</p>}
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3.5">
+        {rota && Icone && (
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-inset ring-line/60" style={estiloMatiz(rota.matiz)} aria-hidden>
+            <Icone size={24} strokeWidth={1.9} />
+          </span>
+        )}
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight">{titulo}</h1>
+          {descricao && <p className="mt-0.5 text-sm text-muted">{descricao}</p>}
+        </div>
       </div>
       {acoes && <div className="flex flex-wrap items-center gap-2">{acoes}</div>}
     </div>
@@ -48,8 +62,12 @@ export function Badge({ tom = "neutro", children }: { tom?: Tom; children: React
 
 export function EmptyState({ titulo, descricao, acao, icone }: { titulo: string; descricao?: string; acao?: ReactNode; icone?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line px-6 py-10 text-center">
-      {icone && <div className="text-muted" aria-hidden>{icone}</div>}
+    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-12 text-center">
+      {icone && (
+        <div className="mb-2 flex size-20 items-center justify-center rounded-full bg-primary-soft text-primary ring-8 ring-primary-soft/40" aria-hidden>
+          {icone}
+        </div>
+      )}
       <p className="font-medium">{titulo}</p>
       {descricao && <p className="max-w-md text-sm text-muted">{descricao}</p>}
       {acao && <div className="mt-2">{acao}</div>}

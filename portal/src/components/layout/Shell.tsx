@@ -1,48 +1,13 @@
 "use client";
 
-import {
-  BarChart3,
-  CalendarDays,
-  Clock,
-  CreditCard,
-  DatabaseBackup,
-  Eye,
-  FileText,
-  EyeOff,
-  FolderKanban,
-  Landmark,
-  LayoutDashboard,
-  LogOut,
-  Lock,
-  Menu,
-  Moon,
-  PieChart,
-  PiggyBank,
-  Receipt,
-  Search,
-  Repeat,
-  Settings,
-  Sparkles,
-  Sun,
-  Target,
-  GitCompareArrows,
-  Trash2,
-  Tags,
-  TrendingDown,
-  TrendingUp,
-  UserCog,
-  Users,
-  ListChecks,
-  Wallet,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { Eye, EyeOff, LogOut, Lock, Menu, Moon, Search, Sun, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { LancamentoRapido } from "@/components/lancamentos/LancamentoRapido";
 import { IconButton } from "@/components/ui/Button";
+import { estiloMatiz, ROTAS, type Rota } from "@/components/ui/rotas";
 import { useAlertas } from "@/lib/alertas";
 import { alertasOrcamento } from "@/lib/finance/analises";
 import { useAgora, useDataset } from "@/lib/hooks";
@@ -50,41 +15,7 @@ import { sair } from "@/lib/firebase/auth";
 import { useSession } from "@/lib/session";
 import { useStore } from "@/lib/store/store";
 
-interface ItemNav {
-  href: string;
-  rotulo: string;
-  icone: LucideIcon;
-  /** Aparece na barra inferior do mobile. */
-  principal?: boolean;
-  badge?: number;
-}
-
-const ITENS: ItemNav[] = [
-  { href: "/", rotulo: "Início", icone: LayoutDashboard, principal: true },
-  { href: "/lancamentos/", rotulo: "Lançamentos", icone: Receipt, principal: true },
-  { href: "/contas/", rotulo: "Contas", icone: Landmark, principal: true },
-  { href: "/cartoes/", rotulo: "Cartões", icone: CreditCard, principal: true },
-  { href: "/orcamentos/", rotulo: "Orçamentos", icone: PieChart },
-  { href: "/metas/", rotulo: "Metas", icone: PiggyBank },
-  { href: "/investimentos/", rotulo: "Investimentos", icone: TrendingUp },
-  { href: "/recorrencias/", rotulo: "Recorrências", icone: Repeat },
-  { href: "/pendencias/", rotulo: "Pendências", icone: Clock },
-  { href: "/categorias/", rotulo: "Categorias", icone: Tags },
-  { href: "/regras/", rotulo: "Regras", icone: ListChecks },
-  { href: "/projetos/", rotulo: "Projetos", icone: FolderKanban },
-  { href: "/dividas/", rotulo: "Dívidas", icone: TrendingDown },
-  { href: "/pessoas/", rotulo: "Pessoas", icone: Users },
-  { href: "/membros/", rotulo: "Membros", icone: UserCog },
-  { href: "/relatorios/", rotulo: "Relatórios", icone: BarChart3 },
-  { href: "/imposto-de-renda/", rotulo: "Imposto de Renda", icone: FileText },
-  { href: "/resumo/", rotulo: "Resumo", icone: Sparkles },
-  { href: "/planejamento/", rotulo: "Planejamento", icone: Target },
-  { href: "/calendario/", rotulo: "Calendário", icone: CalendarDays },
-  { href: "/conciliacao/", rotulo: "Conciliação", icone: GitCompareArrows },
-  { href: "/lixeira/", rotulo: "Lixeira", icone: Trash2 },
-  { href: "/backups/", rotulo: "Backups", icone: DatabaseBackup },
-  { href: "/configuracoes/", rotulo: "Configurações", icone: Settings },
-];
+type ItemNav = Rota & { badge?: number };
 
 function ativo(pathname: string, href: string): boolean {
   const p = pathname.endsWith("/") ? pathname : `${pathname}/`;
@@ -102,10 +33,18 @@ function LinkNav({ item, pathname, compacto, onClick }: { item: ItemNav; pathnam
       className={
         compacto
           ? `flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${on ? "text-primary" : "text-muted"}`
-          : `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${on ? "bg-primary-soft text-primary" : "text-muted hover:bg-surface-2 hover:text-fg"}`
+          : `group flex items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium transition-colors ${on ? "bg-primary-soft text-fg shadow-sm" : "text-muted hover:bg-surface-2 hover:text-fg"}`
       }
     >
-      <Icone size={compacto ? 20 : 18} aria-hidden />
+      {compacto ? (
+        <span className="flex size-8 items-center justify-center rounded-xl" style={on ? estiloMatiz(item.matiz) : undefined}>
+          <Icone size={20} aria-hidden />
+        </span>
+      ) : (
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105" style={estiloMatiz(item.matiz)}>
+          <Icone size={17} strokeWidth={2} aria-hidden />
+        </span>
+      )}
       <span className="truncate">{item.rotulo}</span>
       {item.badge ? (
         <span className="ml-auto min-w-5 rounded-full bg-neg px-1.5 text-center text-[11px] font-semibold text-white" aria-label={`${item.badge} alerta(s)`}>
@@ -119,10 +58,10 @@ function LinkNav({ item, pathname, compacto, onClick }: { item: ItemNav; pathnam
 function Marca() {
   return (
     <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-      <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-fg">
-        <Wallet size={18} aria-hidden />
+      <span className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--c1)] to-[var(--c2)] text-white shadow-md">
+        <Wallet size={19} aria-hidden />
       </span>
-      Meu Dinheiro
+      <span className="text-[15px]">Meu Dinheiro</span>
     </Link>
   );
 }
@@ -204,17 +143,22 @@ export function Shell({ children }: { children: ReactNode }) {
   const avisados = useAlertas((s) => s.avisados);
   useEffect(() => useAlertas.getState().carregar(), []);
   const nAlertas = alertasOrcamento(ds, agora, avisados).alertas.length;
-  const itens = ITENS.map((i) => (i.href === "/orcamentos/" ? { ...i, badge: nAlertas } : i));
+  const itens: ItemNav[] = ROTAS.map((i) => (i.href === "/orcamentos/" ? { ...i, badge: nAlertas } : i));
   const principais = itens.filter((i) => i.principal);
   const secundarios = itens.filter((i) => !i.principal);
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
-      <aside className="sticky top-0 hidden h-dvh flex-col gap-4 border-r border-line bg-surface p-4 md:flex" aria-label="Navegação principal">
+      <aside className="sticky top-0 hidden h-dvh flex-col gap-4 border-r border-line bg-surface p-3.5 md:flex" aria-label="Navegação principal">
         <Marca />
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto" aria-label="Seções">
-          {itens.map((i) => (
-            <LinkNav key={i.href} item={i} pathname={pathname} />
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto pr-1" aria-label="Seções">
+          {itens.map((i, n) => (
+            <div key={i.href} className="flex flex-col gap-0.5">
+              {(n === 0 || itens[n - 1].grupo !== i.grupo) && (
+                <p className={`px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted/80 ${n === 0 ? "" : "pt-3"}`}>{i.grupo}</p>
+              )}
+              <LinkNav item={i} pathname={pathname} />
+            </div>
           ))}
         </nav>
         <p className="px-2 text-xs text-muted">{modo === "firebase" ? "Modo nuvem (Firebase)" : "Modo local (neste navegador)"}</p>

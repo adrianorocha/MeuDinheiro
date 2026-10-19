@@ -7,6 +7,7 @@ import {
   registrarPatrimonio,
   type Ctx,
 } from "../finance/operations";
+import { sincronizarDividasVinculadas } from "../finance/dividas";
 import { emptyDataset } from "../finance/types";
 import type { Dataset, Result } from "../finance/types";
 import type { PersistenceAdapter, StorageMode } from "./adapter";
@@ -33,6 +34,8 @@ interface Estado {
   executar: <T extends object>(fn: (ds: Dataset, ctx: Ctx) => Result<{ ds: Dataset } & T>) => Result<{ ds: Dataset } & T>;
   /** Importação: substitui todo o conteúdo. */
   substituirTudo: (novo: Dataset) => Promise<void>;
+  /** R72 - dataset com as coleções sob demanda carregadas (para exportar/copiar tudo). Em modo local é o próprio `ds`. */
+  dsCompleto: () => Promise<Dataset>;
   limparTudo: () => Promise<void>;
   avisar: (tipo: Aviso["tipo"], texto: string) => void;
   dispensarAviso: (id: number) => void;
@@ -44,15 +47,25 @@ let fila: Promise<void> = Promise.resolve();
 let seqAviso = 1;
 
 function mensagem(e: unknown): string {
+  const codigo = (e as { code?: string } | null)?.code;
+  if (codigo === "resource-exhausted") return "Cota diária do Firestore esgotada (plano gratuito). Volta a sincronizar sozinho quando a cota renovar.";
   return e instanceof Error ? e.message : String(e);
 }
+
+/** Sem confirmação do servidor neste prazo, avisa (o Firestore só reconecta com atraso quando a cota acaba ou a rede cai). */
+export const PRAZO_SYNC_PENDENTE_MS = 15000;
+const AVISO_SYNC_PENDENTE = "Sincronização pendente: o servidor não confirmou a gravação (rede ou cota diária do Firestore). Suas alterações estão salvas neste navegador e serão enviadas depois.";
 
 export const useStore = create<Estado>((set, get) => {
   const persistir = (prev: Dataset, next: Dataset, tipo: "save" | "replace" = "save") => {
     const adapter = adapterAtivo;
     if (!adapter) return;
     fila = fila
-      .then(() => (tipo === "save" ? adapter.save(prev, next) : adapter.replaceAll(prev, next)))
+      .then(() => {
+        const aviso = setTimeout(() => set({ erroSync: AVISO_SYNC_PENDENTE }), PRAZO_SYNC_PENDENTE_MS);
+        const ate = tipo === "save" ? adapter.save(prev, next) : adapter.replaceAll(prev, next);
+        return ate.finally(() => clearTimeout(aviso));
+      })
       .then(() => {
         if (get().erroSync) set({ erroSync: null });
       })
@@ -67,7 +80,7 @@ export const useStore = create<Estado>((set, get) => {
     const ctx: Ctx = { agora: Date.now() };
     const r = fn(prev, ctx);
     if (!r.ok) return r;
-    const next = registrarPatrimonio(r.ds, ctx);
+    const next = sincronizarDividasVinculadas(registrarPatrimonio(r.ds, ctx));
     set({ ds: next });
     persistir(prev, next);
     return { ...r, ds: next };
@@ -106,7 +119,7 @@ export const useStore = create<Estado>((set, get) => {
       cancelar = adapter.start(
         (dados) => {
           if (adapterAtivo !== adapter) return;
-          const calculado = recalcularTudo(dados);
+          const calculado = sincronizarDividasVinculadas(recalcularTudo(dados));
           set({ ds: calculado, status: "pronto", erro: null });
           // O portal mantém os caches contas.saldo / cartoes.limiteDisponivel atualizados.
           if (calculado !== dados) persistir(dados, calculado);
@@ -130,6 +143,12 @@ export const useStore = create<Estado>((set, get) => {
     },
 
     executar,
+
+    dsCompleto: async () => {
+      const ds = get().ds;
+      const oculto = await adapterAtivo?.carregarDadosOcultos?.();
+      return oculto && ds.transacoes.length === 0 ? { ...ds, transacoes: oculto.transacoes } : ds;
+    },
 
     substituirTudo: async (novo) => {
       const prev = get().ds;

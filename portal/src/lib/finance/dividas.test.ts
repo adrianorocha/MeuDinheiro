@@ -4,7 +4,12 @@ import { recalcularTudo } from "./calc";
 import {
   aplicarPagamento,
   compararEstrategias,
+  criarDividaDePendencias,
   dataQuitacao,
+  desvincularDivida,
+  sincronizarDividasVinculadas,
+  vincularPendencias,
+  estimarDividaEmAndamento,
   excluirDivida,
   jurosDoMes,
   pagarDivida,
@@ -221,5 +226,79 @@ describe("R58 - backup", () => {
     const parcial = importarBackup(JSON.stringify({ dividas: [{ id: 7, nome: "Y", tipo: "XYZ", saldoDevedor: 50 }] }), dt(2025, 6, 15));
     if (!parcial.ok) throw new Error(parcial.erro);
     expect(parcial.dataset.dividas[0]).toMatchObject({ id: 7, tipo: "OUTRA", saldoDevedor: 50, taxaJurosMensal: 0, ativa: true, valorOriginal: null });
+  });
+});
+
+describe("R73 - dívida já em andamento", () => {
+  it("sem juros: parcela = valor ÷ parcelas e saldo = parcela × restantes", () => {
+    expect(estimarDividaEmAndamento({ valorOriginal: 1200, parcelasTotal: 12, parcelasPagas: 5 })).toEqual({ parcela: 100, parcelasRestantes: 7, saldoDevedor: 700 });
+  });
+  it("com juros sem parcela usa a tabela Price; saldo no início = valor; tudo pago = zero", () => {
+    const r = estimarDividaEmAndamento({ valorOriginal: 1000, parcelasTotal: 12, parcelasPagas: 0, taxaMensal: 2 });
+    if (typeof r === "string") throw new Error(r);
+    expect(r.parcela).toBeCloseTo(94.56, 2);
+    expect(r.saldoDevedor).toBeCloseTo(1000, 1);
+    expect(estimarDividaEmAndamento({ valorOriginal: 1000, parcelasTotal: 12, parcelasPagas: 12 })).toMatchObject({ saldoDevedor: 0 });
+  });
+  it("com parcela informada e metade paga: valor presente das que faltam", () => {
+    const r = estimarDividaEmAndamento({ valorOriginal: 1000, parcelasTotal: 12, parcelasPagas: 6, taxaMensal: 2, parcela: 94.56 });
+    if (typeof r === "string") throw new Error(r);
+    expect(r.parcelasRestantes).toBe(6);
+    expect(r.saldoDevedor).toBeCloseTo(529.7, 0);
+  });
+  it("valida entradas", () => {
+    expect(typeof estimarDividaEmAndamento({ valorOriginal: 0, parcelasTotal: 12, parcelasPagas: 0 })).toBe("string");
+    expect(typeof estimarDividaEmAndamento({ valorOriginal: 100, parcelasTotal: 10, parcelasPagas: 11 })).toBe("string");
+  });
+});
+
+describe("R73 - dívida vinculada a pendências", () => {
+  const dsPend = () =>
+    dataset({
+      contas: [conta({ id: 1, conta: "111" })],
+      despesas: [
+        desp({ id: 201, descricao: "Empréstimo (1/3)", valor: 100, conta: "111", pago: false, grupoId: "g", data: dt(2025, 7, 10) }),
+        desp({ id: 202, descricao: "Empréstimo (2/3)", valor: 100, conta: "111", pago: false, grupoId: "g", data: dt(2025, 8, 10) }),
+        desp({ id: 203, descricao: "Empréstimo (3/3)", valor: 100.5, conta: "111", pago: false, grupoId: "g", data: dt(2025, 9, 10) }),
+        desp({ id: 204, descricao: "Outra", valor: 50, conta: "111", pago: false }),
+      ],
+    });
+  const criar = () => {
+    const r = criarDividaDePendencias(dsPend(), { nome: "Empréstimo", tipo: "EMPRESTIMO" }, [201, 202, 203], ctx);
+    if (!r.ok) throw new Error(r.erro);
+    return r;
+  };
+
+  it("cria com saldo = soma das pendências e abate a cada baixa até quitar", () => {
+    const r = criar();
+    expect(r.divida).toMatchObject({ saldoDevedor: 300.5, valorOriginal: 300.5, parcelasRestantes: 3, parcelaMinima: 100, ativa: true, lancamentoIds: [201, 202, 203] });
+    const baixa = (ds: Dataset, id: number) => sincronizarDividasVinculadas({ ...ds, despesas: ds.despesas.map((x) => (x.id === id ? { ...x, pago: true } : x)) });
+    const d1 = baixa(r.ds, 201);
+    expect(d1.dividas[0]).toMatchObject({ saldoDevedor: 200.5, parcelasRestantes: 2, ativa: true });
+    const d3 = baixa(baixa(d1, 202), 203);
+    expect(d3.dividas[0]).toMatchObject({ saldoDevedor: 0, parcelasRestantes: 0, ativa: false });
+    expect(sincronizarDividasVinculadas(d3)).toBe(d3);
+  });
+
+  it("recusa pendência paga/inexistente e bloqueia pagamento e juros manuais", () => {
+    expect(criarDividaDePendencias(dsPend(), { nome: "X", tipo: "OUTRA" }, [999], ctx).ok).toBe(false);
+    expect(criarDividaDePendencias(dsPend(), { nome: "X", tipo: "OUTRA" }, [], ctx).ok).toBe(false);
+    const r = criar();
+    expect(pagarDivida(r.ds, { dividaId: r.divida.id, valor: 10, conta: "111" }, ctx).ok).toBe(false);
+    expect(registrarJurosDivida(r.ds, r.divida.id, 5).ok).toBe(false);
+  });
+
+  it("vincular mais, desvincular e ida e volta no backup", () => {
+    const r = criar();
+    const mais = vincularPendencias(r.ds, r.divida.id, [204]);
+    if (!mais.ok) throw new Error(mais.erro);
+    expect(mais.ds.dividas[0]).toMatchObject({ saldoDevedor: 350.5, valorOriginal: 350.5 });
+    const volta = importarBackup(JSON.stringify(exportarBackup(mais.ds)), dt(2025, 6, 15));
+    if (!volta.ok) throw new Error(volta.erro);
+    expect(volta.dataset.dividas[0].lancamentoIds).toEqual([201, 202, 203, 204]);
+    const solta = desvincularDivida(mais.ds, r.divida.id);
+    if (!solta.ok) throw new Error(solta.erro);
+    expect(solta.ds.dividas[0].lancamentoIds).toBeUndefined();
+    expect(solta.ds.dividas[0].saldoDevedor).toBe(350.5);
   });
 });

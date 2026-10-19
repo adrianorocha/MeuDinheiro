@@ -289,4 +289,14 @@ class AnalisesTest {
         assertEquals(1, m.dia)
         assertNotNull(m.prazoMaximoDias)
     }
+
+    @Test fun `melhor dia de compra com fechamentoMelhorDia e o proprio dia do fechamento`() {
+        val m = Analises.melhorDiaDeCompra(25, 5, hoje, fechamentoMelhorDia = true)
+        assertEquals(25, m.dia)
+        assertTrue(m.prazoMaximoDias in 38..43)
+        assertEquals(26, Analises.melhorDiaDeCompra(25, 5, hoje, fechamentoMelhorDia = false).dia)
+        // fechamento 31 em setembro (30 dias): o melhor dia e o dia 30 (corte vira o ultimo dia do mes)
+        assertEquals(30, Analises.melhorDiaDeCompra(31, 10, ms(2026, 9, 15), fechamentoMelhorDia = true).dia)
+        assertEquals(1, Analises.melhorDiaDeCompra(1, 10, ms(2026, 9, 15), fechamentoMelhorDia = true).dia)
+    }
 }

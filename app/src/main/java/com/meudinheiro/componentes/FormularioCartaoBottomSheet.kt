@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,6 +31,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -106,6 +108,7 @@ fun FormularioCartaoBottomSheet(
     var limite by remember { mutableStateOf(dinheiroParaTexto(cartaoEdicao?.limiteTotal)) }
     var diaFechamento by remember { mutableStateOf(cartaoEdicao?.diaFechamento?.toString().orEmpty()) }
     var diaVencimento by remember { mutableStateOf(cartaoEdicao?.diaVencimento?.toString().orEmpty()) }
+    var fechamentoMelhorDia by remember { mutableStateOf(cartaoEdicao?.fechamentoMelhorDia ?: false) }
     var limiteProprio by remember { mutableStateOf(dinheiroParaTexto(cartaoEdicao?.limiteProprio)) }
     var erro by remember { mutableStateOf<String?>(null) }
 
@@ -324,6 +327,12 @@ fun FormularioCartaoBottomSheet(
                         Box(modifier = Modifier.weight(1f)) { CampoTravado("Dia Fechamento", principal.diaFechamento.toString()) }
                         Box(modifier = Modifier.weight(1f)) { CampoTravado("Dia Vencimento", principal.diaVencimento.toString()) }
                     }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        if (principal.fechamentoMelhorDia) "Dia do fechamento já é o melhor dia de compra (herdado)."
+                        else "Melhor dia de compra: o dia seguinte ao fechamento (herdado).",
+                        color = Color.White.copy(0.55f), fontSize = 12.sp, modifier = Modifier.fillMaxWidth()
+                    )
                 } else {
                     NeonTextField(
                         value = limite,
@@ -353,6 +362,20 @@ fun FormularioCartaoBottomSheet(
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Dia do fechamento já é o melhor dia de compra",
+                            color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Switch(checked = fechamentoMelhorDia, onCheckedChange = { fechamentoMelhorDia = it })
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Marque se compras feitas no dia do fechamento entram na PRÓXIMA fatura. Desmarcado (ex.: Caixa): o dia seguinte ao fechamento é o melhor dia.",
+                        color = Color.White.copy(0.55f), fontSize = 12.sp, modifier = Modifier.fillMaxWidth()
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -406,7 +429,8 @@ fun FormularioCartaoBottomSheet(
                             id = cartaoEdicao?.id ?: 0, nome = nome.trim(), finalCartao = finalCartao, tipo = principal.tipo,
                             limiteDisponivel = principal.limiteTotal, limiteTotal = principal.limiteTotal,
                             diaFechamento = principal.diaFechamento, diaVencimento = principal.diaVencimento,
-                            contaId = principal.contaId, cartaoPrincipalId = principal.id, limiteProprio = proprio
+                            contaId = principal.contaId, cartaoPrincipalId = principal.id, limiteProprio = proprio,
+                            fechamentoMelhorDia = principal.fechamentoMelhorDia
                         )
                     } else {
                         val conta = contaVinculadaId ?: return@Button falha("Vincule uma conta ao cartão.")
@@ -429,7 +453,8 @@ fun FormularioCartaoBottomSheet(
                             id = cartaoEdicao?.id ?: 0, nome = nome.trim(), finalCartao = finalCartao, tipo = tipoSelecionado,
                             limiteDisponivel = limiteTotal, limiteTotal = limiteTotal,
                             diaFechamento = fecha, diaVencimento = vence, contaId = conta,
-                            limiteProprio = if (usaLimite) proprio else null
+                            limiteProprio = if (usaLimite) proprio else null,
+                            fechamentoMelhorDia = usaLimite && fechamentoMelhorDia
                         )
                     }
                     erro = null

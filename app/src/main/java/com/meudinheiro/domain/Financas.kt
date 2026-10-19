@@ -177,10 +177,12 @@ object Financas {
     }
 
     /** R6 — a que fatura pertence uma compra feita em [dataMs]. */
-    fun faturaDaCompra(dataMs: Long, diaFechamento: Int): FaturaRef {
+    fun faturaDaCompra(dataMs: Long, diaFechamento: Int, fechamentoMelhorDia: Boolean = false): FaturaRef {
         val mesCompra = FaturaRef(mesDe(dataMs), anoDe(dataMs))
         val dia = Calendar.getInstance().apply { timeInMillis = dataMs }.get(Calendar.DAY_OF_MONTH)
-        return if (dia <= diaDeFechamento(diaFechamento, mesCompra)) mesCompra else mesCompra.proxima()
+        // fechamentoMelhorDia: o próprio dia do fechamento já é o melhor dia de compra (vai para a próxima fatura).
+        val corte = diaDeFechamento(diaFechamento, mesCompra) - if (fechamentoMelhorDia) 1 else 0
+        return if (dia <= corte) mesCompra else mesCompra.proxima()
     }
 
     data class ResumoFatura(
@@ -200,25 +202,27 @@ object Financas {
         despesasDoCartao: Iterable<Despesa>,
         ref: FaturaRef,
         idsDoGrupo: Set<Int> = setOf(cartao.id)
-    ): ResumoFatura = resumoFatura(idsDoGrupo, cartao.diaFechamento, cartao.diaVencimento, despesasDoCartao, ref)
+    ): ResumoFatura = resumoFatura(idsDoGrupo, cartao.diaFechamento, cartao.diaVencimento, despesasDoCartao, ref, cartao.fechamentoMelhorDia)
 
     fun resumoFatura(
         cartaoId: Int,
         diaFechamento: Int,
         diaVencimento: Int,
         despesasDoCartao: Iterable<Despesa>,
-        ref: FaturaRef
-    ): ResumoFatura = resumoFatura(setOf(cartaoId), diaFechamento, diaVencimento, despesasDoCartao, ref)
+        ref: FaturaRef,
+        fechamentoMelhorDia: Boolean = false
+    ): ResumoFatura = resumoFatura(setOf(cartaoId), diaFechamento, diaVencimento, despesasDoCartao, ref, fechamentoMelhorDia)
 
     fun resumoFatura(
         idsDoGrupo: Set<Int>,
         diaFechamento: Int,
         diaVencimento: Int,
         despesasDoCartao: Iterable<Despesa>,
-        ref: FaturaRef
+        ref: FaturaRef,
+        fechamentoMelhorDia: Boolean = false
     ): ResumoFatura {
         val itens = despesasDoCartao
-            .filter { it.cartaoId in idsDoGrupo && faturaDaCompra(it.dataMs, diaFechamento) == ref }
+            .filter { it.cartaoId in idsDoGrupo && faturaDaCompra(it.dataMs, diaFechamento, fechamentoMelhorDia) == ref }
             .sortedByDescending { it.dataMs }
         val pendentes = itens.filter { !it.pago }
         val total = itens.sumOf { -it.centavosAssinados }
@@ -243,7 +247,7 @@ object Financas {
     ): List<ResumoFatura> =
         despesasDoCartao
             .filter { it.cartaoId in idsDoGrupo && !it.pago }
-            .map { faturaDaCompra(it.dataMs, cartao.diaFechamento) }
+            .map { faturaDaCompra(it.dataMs, cartao.diaFechamento, cartao.fechamentoMelhorDia) }
             .distinct()
             .sortedWith(compareBy({ it.ano }, { it.mes }))
             .map { resumoFatura(cartao, despesasDoCartao, it, idsDoGrupo) }
@@ -327,7 +331,7 @@ object Financas {
         agora: Long,
         idsDoGrupo: Set<Int> = setOf(cartao.id)
     ): ComprometimentoCartao {
-        val atual = faturaDaCompra(agora, cartao.diaFechamento)
+        val atual = faturaDaCompra(agora, cartao.diaFechamento, cartao.fechamentoMelhorDia)
         val abertas = faturasEmAberto(cartao, despesasDoGrupo, idsDoGrupo)
         var atualC = 0L; var futuraC = 0L
         abertas.forEach {
@@ -592,11 +596,12 @@ object Financas {
      * (a seguinte, senão a anterior mais recente). Só considera itens de cartão do grupo ([ids]).
      */
     fun outrasFaturasEmAberto(
-        ids: Set<Int>, diaFechamento: Int, despesas: Iterable<Despesa>, exibida: FaturaRef
+        ids: Set<Int>, diaFechamento: Int, despesas: Iterable<Despesa>, exibida: FaturaRef,
+        fechamentoMelhorDia: Boolean = false
     ): OutrasFaturas {
         val porFatura = despesas
             .filter { it.cartaoId in ids && !it.pago }
-            .groupBy { faturaDaCompra(it.dataMs, diaFechamento) }
+            .groupBy { faturaDaCompra(it.dataMs, diaFechamento, fechamentoMelhorDia) }
             .filterKeys { it != exibida }
             .mapValues { (_, v) -> v.sumOf { -it.centavosAssinados } }
             .filterValues { it > 0 }

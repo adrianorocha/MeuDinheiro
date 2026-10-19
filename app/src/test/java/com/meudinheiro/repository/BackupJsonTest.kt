@@ -6,6 +6,7 @@ import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.domain.Natureza
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -85,5 +86,15 @@ class BackupJsonTest {
         // backup antigo (sem o campo) continua legível
         val antigo = BackupJson.fromJson("""{"cartoes":[{"id":1,"nome":"Visa","finalCartao":"1","tipo":"CRÉDITO","limiteDisponivel":1.0,"limiteTotal":1.0,"diaFechamento":1,"diaVencimento":1,"contaId":1}]}""")
         assertNull(antigo.cartoes!!.single().limiteProprio)
+    }
+
+    @Test fun `ida e volta do backup preserva fechamentoMelhorDia e backup antigo assume false`() {
+        val c = com.meudinheiro.data.Cartao(id = 1, nome = "V", finalCartao = "1", tipo = "CRÉDITO", limiteDisponivel = 0.0,
+            limiteTotal = 100.0, diaFechamento = 10, diaVencimento = 20, contaId = 1, fechamentoMelhorDia = true)
+        val volta = BackupJson.fromJson(BackupJson.toJson(BackupDto(cartoes = listOf(c, c.copy(id = 2, fechamentoMelhorDia = false)))))
+        assertTrue(volta.cartoes!![0].fechamentoMelhorDia)
+        assertFalse(volta.cartoes!![1].fechamentoMelhorDia)
+        val antigo = BackupJson.fromJson("""{"cartoes":[{"id":1,"nome":"Visa","finalCartao":"1","tipo":"CRÉDITO","limiteDisponivel":1.0,"limiteTotal":1.0,"diaFechamento":1,"diaVencimento":1,"contaId":1}]}""")
+        assertFalse(antigo.cartoes!!.single().fechamentoMelhorDia)
     }
 }

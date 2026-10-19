@@ -178,7 +178,7 @@ fun PlanejamentoScreen(repository: MainRepository, isPrivate: Boolean, onBack: (
             if (fisicos.isNotEmpty()) item {
                 Secao("MELHOR DIA PARA COMPRAR NO CARTÃO") {
                     fisicos.forEach { c ->
-                        val m = Analises.melhorDiaDeCompra(c.diaFechamento, c.diaVencimento, agora)
+                        val m = Analises.melhorDiaDeCompra(c.diaFechamento, c.diaVencimento, agora, c.fechamentoMelhorDia)
                         Texto("${c.nome} (fecha dia ${c.diaFechamento}): compre a partir do dia ${m.dia} e tenha até ${m.prazoMaximoDias} dias para pagar.", Color.White)
                     }
                 }

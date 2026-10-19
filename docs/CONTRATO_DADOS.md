@@ -698,3 +698,50 @@ Sem campos novos nem mudança de formato (compatível com o app). Estende R38/R4
 **D) Reprocessar fatura (R71, portal).** `reprocessarFatura(ds, { cartaoId, mes, ano }, { corrigirFaturas, removerPagamentosNoCartao, agora })` aplica as regras de B/C **só aos itens daquela fatura** (ciclo do cartão principal do grupo, R6/R18): remove para a lixeira os créditos de pagamento de fatura importados para dentro do cartão e marca como pagos os itens que sobraram em aberto numa fatura quitada por inteiro (`PAGAMENTO_FATURA` completo), depois recalcula limite/saldos (R45). Devolve também `resumo` (`totalAntes/Depois`, `emAbertoAntes/Depois`). Não cria lançamentos, não altera valor/data nem o saldo da conta; idempotente; outras faturas não são tocadas. Ação `acoes.reprocessarFatura(alvo, corrigir = true, remover = true)` (trilha R66). UI: botão "Reprocessar fatura" ao lado de "Pagar fatura"/"Já foi paga" na página Cartões, com modal de prévia (lista dos pagamentos duplicados, antes×depois de total/em aberto/limite).
 
 **E) Total da fatura negativo (R71).** `resumoFatura.total` = Σ DEBITO − Σ CREDITO do ciclo (R6); fica negativo quando os créditos superam as compras — tipicamente o "Pagamento recebido" da fatura anterior, que vem no extrato do cartão e já está na conta. Como a descrição varia por banco, o reprocessamento da fatura não depende só da heurística: `creditosDaFatura(ds, alvo)` lista **todos** os créditos `NORMAL` da fatura e o usuário marca quais saem; vêm pré-marcados os que `pareceCreditoDePagamento` ("pagamento", "pagto", "pgto", "quitação", "débito automático"), de **qualquer autor**. `reprocessarFatura({ removerIds })` envia os escolhidos à lixeira (R31) — só créditos `NORMAL` em cartão e dentro da fatura. Cartões: com `total < 0` aparece um aviso apontando para "Reprocessar fatura". Estornos legítimos ficam desmarcados por padrão.
+
+## R72 — Leitura sob demanda de coleções não usadas (portal, Firestore)
+
+Sem mudança de formato de dados nem de regras. Para reduzir leituras do Firestore (cota gratuita), o `FirebaseAdapter` **não escuta** na abertura as coleções em `COLECOES_SOB_DEMANDA` (hoje só `transacoes`, legado do app que nenhuma tela do portal usa). `ds.transacoes` fica vazio no store e, como a comparação é por referência (diff), nada é gravado nem apagado por causa disso.
+- **Backup/exportação:** `useStore.dsCompleto()` lê uma vez por sessão (`adapter.carregarDadosOcultos()`) e devolve o dataset completo; usado em Exportar (Configurações) e em guardar backup/segurança (Backups). Em modo local devolve o `ds` normal.
+- **Restauração/importação (`replaceAll`):** grava as da cópia e apaga do servidor as coleções sob demanda que não estão no novo conteúdo (substituição completa mantida).
+- **Limpar tudo (`clear`)** já lê o servidor e continua apagando todas.
+- As demais coleções continuam escutadas: patrimônio (R14, consultado a cada gravação), lixeira (purga na abertura), saldos etc. dependem delas.
+
+## R73 - Dívida a partir de pendências (portal)
+
+- `Divida.lancamentoIds?: number[]` (opcional; ausente = dívida comum, compatível com app e backups antigos): ids de despesas pendentes (NORMAL, DEBITO, não pagas, fora de cartão) vinculadas.
+- Dívida vinculada: `saldoDevedor` = soma das vinculadas ainda não pagas; `parcelasRestantes` = quantidade; `parcelaMinima` = valor da próxima; `ativa` = existe alguma em aberto. Recalculado por `sincronizarDividasVinculadas` a cada operação e a cada snapshot (mantém a mesma referência quando nada muda). Lançamento excluído deixa de contar.
+- Pagamento manual e "juros do mês" são recusados em dívida vinculada (o saldo é derivado): dar baixa na pendência.
+- Ações: `criarDividaDePendencias`, `vincularPendencias` (soma ao valor original), `desvincularDivida` (mantém o saldo atual como controle próprio).
+- Também existe o auxiliar `estimarDividaEmAndamento` (formulário "Já estou pagando"): só preenche saldo/parcela/restantes, não grava vínculo.
+
+## R74 - Exclusão forçada de cartão (portal)
+
+- Cartão com compras em aberto e/ou recorrências, antes bloqueado (R18), pode ser excluído por `excluirCartaoForcado`: apaga o cartão (o principal leva os virtuais; virtual apaga só o próprio), TODAS as compras de crédito (pagas e em aberto, sem ir para a lixeira) e as recorrências (`despesasFixas`) que o usavam. Compras no débito (`grupoId debito:<id>`) ficam como lançamentos comuns, salvo a opção `apagarDebito`.
+- Exige confirmação: modo nuvem = senha de login (reautenticação Firebase `confirmarSenha`); modo local (sem senha) = digitar o nome do cartão. Sem itens em aberto nem recorrências vale a confirmação simples de antes.
+- Log de controle (trilha local R66, Backups > Trilha de alterações): uma entrada `EXCLUIR_CARTAO` (usuário, quantidades, recorrências removidas, total apagado) mais uma `EXCLUIR` por lançamento apagado.
+
+## R75 - Apagar só os lançamentos de um cartão (portal)
+
+- Em Cartões, o botão "Apagar lançamentos" do cartão principal lista as compras de crédito do grupo e as do débito (filtros: em aberto/pagas e "anteriores a"; seleção de todos ou alguns). `apagarLancamentosDoCartao` remove só os escolhidos (sem lixeira); cartão e recorrências ficam.
+- Opção "Excluir também o cartão": aplica a regra do R74 (todas as compras de crédito, recorrências e cartões do grupo saem; débito não escolhido vira lançamento comum).
+- Mesma confirmação do R74 (senha de login na nuvem; nome do cartão no modo local) e mesmo log (`EXCLUIR_CARTAO` + `EXCLUIR` por lançamento).
+
+## R76 - Cashback no cartão de crédito (portal)
+
+- Em Lançamentos > Cartão, a "Operação" ganhou **Cashback (abate a fatura)**: grava um lançamento `CREDITO` com `cartaoId` e `categoria = "Cashback"` (sem campo novo; dados e backups continuam compatíveis). É reconhecido por `ehCashbackDoCartao`.
+- Efeito: igual ao estorno de cartão (R6/R18/R19): reduz o "Total da Fatura" e o em aberto, devolve limite e abate o total de despesas; não conta como receita nem rendimento. Só vale em compra no crédito (não no débito).
+
+## R77 - Dia do fechamento como melhor dia de compra + reprocessar faturas (portal e app)
+
+- `Cartao.fechamentoMelhorDia` (booleano opcional; ausente = false; campo do documento Firestore `cartoes/{id}` e do backup, ao lado de `diaFechamento`). Herdado pelos cartões virtuais como `diaFechamento`.
+- `faturaDaCompra`: **false** (padrão, ex.: Caixa) = compra com dia `<= diaFechamento` entra na fatura que fecha naquele mês; o melhor dia de compra é o dia seguinte. **true** = compra com dia `< diaFechamento` entra nela; no dia do fechamento ou depois vai para a PRÓXIMA fatura (corte = `diaFechamento − 1`, pode ser 0); o melhor dia é o próprio dia do fechamento. Vencimento e data de fechamento não mudam.
+- Portal: o formulário do cartão tem a opção; "Reprocessar todas as faturas" (`analiseFaturasDoCartao` + `reprocessarSaldos` com `{cartaoId}`) mostra cada fatura (itens, total, em aberto, paga, itens a corrigir, compras do dia do fechamento) e marca como pagos os itens que ficaram em aberto numa fatura já paga (R70). A fatura de cada compra é sempre derivada da data, então mudar a opção reclassifica sozinho; o reprocessamento ajusta pago/limite. Nenhum valor ou data é alterado.
+
+## R78 - Mudar onde o lançamento foi feito (conta / cartão de crédito / cartão de débito) (portal e app)
+
+- Editar um lançamento (natureza NORMAL) permite trocar o local; saldos de conta, limite do cartão e faturas são recalculados (R45):
+  - **Cartão de crédito:** `cartaoId` = cartão, `conta` = conta do cartão, `pago = false`, sem vínculo de débito.
+  - **Cartão de débito** (cartão DÉBITO, ou MÚLTIPLO com modalidade débito): `cartaoId = null`, `conta` = conta do cartão, `grupoId = debito:<cartaoId>` (R42b), `pago = data <= agora`.
+  - **Conta:** `cartaoId = null`, conta escolhida, `pago` informado. O vínculo `debito:` só é solto com a escolha explícita "não manter o vínculo" (`desvincularDebito`) ou ao mudar de conta.
+- Compra parcelada (`parc:`): a mudança de local vale para todas as parcelas do grupo (crédito = em aberto; conta/débito = pago conforme a data).

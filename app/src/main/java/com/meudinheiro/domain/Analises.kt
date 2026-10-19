@@ -358,16 +358,19 @@ object Analises {
 
     data class MelhorDia(val dia: Int, val prazoMaximoDias: Int)
 
-    fun melhorDiaDeCompra(diaFechamento: Int, diaVencimento: Int, hoje: Long): MelhorDia {
+    fun melhorDiaDeCompra(diaFechamento: Int, diaVencimento: Int, hoje: Long, fechamentoMelhorDia: Boolean = false): MelhorDia {
         val ref = Financas.FaturaRef(Financas.mesDe(hoje), Financas.anoDe(hoje))
         val fecha = Financas.diaDeFechamento(diaFechamento, ref)
-        val dataCompra = if (fecha >= Financas.diasNoMes(ref.mes, ref.ano)) {
+        val dataCompra = if (fechamentoMelhorDia) {
+            // O próprio dia do fechamento já é o melhor dia (a compra vai para a próxima fatura).
+            Calendar.getInstance().apply { clear(); set(ref.ano, ref.mes - 1, fecha, 12, 0, 0) }.timeInMillis
+        } else if (fecha >= Financas.diasNoMes(ref.mes, ref.ano)) {
             val prox = ref.proxima()
             Calendar.getInstance().apply { clear(); set(prox.ano, prox.mes - 1, 1, 12, 0, 0) }.timeInMillis
         } else {
             Calendar.getInstance().apply { clear(); set(ref.ano, ref.mes - 1, fecha + 1, 12, 0, 0) }.timeInMillis
         }
-        val fatura = Financas.faturaDaCompra(dataCompra, diaFechamento)
+        val fatura = Financas.faturaDaCompra(dataCompra, diaFechamento, fechamentoMelhorDia)
         val venc = Financas.dataVencimento(diaFechamento, diaVencimento, fatura)
         val dia = Calendar.getInstance().apply { timeInMillis = dataCompra }.get(Calendar.DAY_OF_MONTH)
         return MelhorDia(dia, ceil((venc - dataCompra).toDouble() / DIA_MS).toInt())

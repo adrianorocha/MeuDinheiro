@@ -6,7 +6,7 @@
  * (a taxa vira "centésimos de ponto percentual": 2,5% a.m. = 250). Dívida e simulação NÃO mexem em saldo de conta:
  * o pagamento é um lançamento comum (despesa) e o saldo devedor é um controle próprio.
  */
-import { recalcularTudo } from "./calc";
+import { cartaoIdDe, recalcularTudo } from "./calc";
 import { brlCentavos } from "./centavos";
 import { inserirItem, atualizarItem, montaDespesa, type Ctx } from "./operations";
 import { novoIdLong } from "./ids";
@@ -275,6 +275,39 @@ export interface DadosDivida {
   ativa: boolean;
 }
 
+export interface EntradaEmAndamento {
+  /** valor contratado (reais) */
+  valorOriginal: number;
+  parcelasTotal: number;
+  parcelasPagas: number;
+  /** % ao mês; 0/ausente = sem juros */
+  taxaMensal?: number | null;
+  /** parcela mensal (reais); ausente = calculada (tabela Price, ou valor ÷ parcelas sem juros) */
+  parcela?: number | null;
+}
+
+export interface EstimativaEmAndamento {
+  parcela: number;
+  parcelasRestantes: number;
+  saldoDevedor: number;
+}
+
+/**
+ * Dívida contratada antes e já em andamento (ex.: empréstimo): estima o saldo devedor atual como o valor presente das
+ * parcelas que faltam, à taxa do contrato. É só uma ajuda de preenchimento (o usuário pode ajustar o saldo ao do extrato do credor).
+ */
+export function estimarDividaEmAndamento(e: EntradaEmAndamento): EstimativaEmAndamento | string {
+  if (!Number.isFinite(e.valorOriginal) || e.valorOriginal <= 0) return "Informe o valor original.";
+  if (!Number.isInteger(e.parcelasTotal) || e.parcelasTotal <= 0) return "Informe o total de parcelas.";
+  if (!Number.isInteger(e.parcelasPagas) || e.parcelasPagas < 0 || e.parcelasPagas > e.parcelasTotal) return "As parcelas pagas devem ficar entre 0 e o total.";
+  const taxa = e.taxaMensal != null && Number.isFinite(e.taxaMensal) && e.taxaMensal > 0 ? Math.min(e.taxaMensal, TAXA_MAXIMA_PERCENTUAL) / 100 : 0;
+  const restantes = e.parcelasTotal - e.parcelasPagas;
+  let parcela = e.parcela != null && e.parcela > 0 ? e.parcela : 0;
+  if (parcela <= 0) parcela = taxa > 0 ? (e.valorOriginal * taxa) / (1 - Math.pow(1 + taxa, -e.parcelasTotal)) : e.valorOriginal / e.parcelasTotal;
+  const saldo = restantes === 0 ? 0 : taxa > 0 ? (parcela * (1 - Math.pow(1 + taxa, -restantes))) / taxa : parcela * restantes;
+  return { parcela: round2(parcela), parcelasRestantes: restantes, saldoDevedor: round2(saldo) };
+}
+
 export function validarDivida(d: DadosDivida): string | null {
   if (!d.nome.trim()) return "Informe o nome da dívida.";
   if (!TIPOS_DIVIDA.includes(d.tipo)) return "Tipo de dívida inválido.";
@@ -329,6 +362,7 @@ export function excluirDivida(ds: Dataset, id: number): Op {
 export function registrarJurosDivida(ds: Dataset, id: number, juros: number): Op {
   const d = ds.dividas.find((x) => x.id === id);
   if (!d) return erro("Dívida não encontrada.");
+  if (d.lancamentoIds?.length) return erro("Esta dívida está vinculada a pendências: dê baixa nos lançamentos (tela Pendências) para abater o saldo.");
   const j = toCents(juros);
   if (!(j > 0)) return erro("Os juros devem ser maiores que zero.");
   const saldo = fromCents(toCents(d.saldoDevedor) + j);
@@ -356,6 +390,7 @@ export interface PagamentoDivida {
 export function pagarDivida(ds: Dataset, input: PagamentoDivida, ctx: Ctx): Op<{ pagamento: Despesa; saldoDevedor: number; quitada: boolean }> {
   const d = ds.dividas.find((x) => x.id === input.dividaId);
   if (!d) return erro("Dívida não encontrada.");
+  if (d.lancamentoIds?.length) return erro("Esta dívida está vinculada a pendências: dê baixa nos lançamentos (tela Pendências) para abater o saldo.");
   if (!ds.contas.some((c) => c.conta === input.conta)) return erro("Conta não encontrada.");
   const categoria = (input.categoria ?? CATEGORIA_DIVIDAS).trim() || CATEGORIA_DIVIDAS;
   const pago = toCents(input.valor);
@@ -388,4 +423,88 @@ export function pagarDivida(ds: Dataset, input: PagamentoDivida, ctx: Ctx): Op<{
     saldoDevedor: fromCents(r.saldo),
     quitada,
   };
+}
+
+// ------------------------------------------------------------ R73 dívida vinculada a pendências
+
+/** Pendência que pode virar dívida: despesa NORMAL, não paga, fora de cartão (as mesmas da tela Pendências). */
+export function pendenciasVinculaveis(ds: Dataset): Despesa[] {
+  return ds.despesas.filter((d) => d.natureza === "NORMAL" && d.tipo === "DEBITO" && !d.pago && cartaoIdDe(d) === null).sort((a, b) => a.data - b.data);
+}
+
+/**
+ * Saldo devedor, parcelas restantes e parcela seguinte de uma dívida vinculada = o que ainda não foi pago nos lançamentos
+ * vinculados (lançamento excluído deixa de contar). Dívida sem vínculo ou sem nada a mudar mantém a MESMA referência.
+ */
+export function sincronizarDividasVinculadas(ds: Dataset): Dataset {
+  if (!ds.dividas.some((d) => d.lancamentoIds && d.lancamentoIds.length > 0)) return ds;
+  let mudou = false;
+  const dividas = ds.dividas.map((d) => {
+    if (!d.lancamentoIds || d.lancamentoIds.length === 0) return d;
+    const ids = new Set(d.lancamentoIds);
+    const abertos = ds.despesas.filter((x) => ids.has(x.id) && !x.pago).sort((a, b) => a.data - b.data);
+    const saldo = fromCents(abertos.reduce((s, x) => s + toCents(x.valor), 0));
+    const proxima = abertos.length > 0 ? round2(abertos[0].valor) : (d.parcelaMinima ?? null);
+    const ativa = abertos.length > 0;
+    if (d.saldoDevedor === saldo && d.parcelasRestantes === abertos.length && (d.parcelaMinima ?? null) === proxima && d.ativa === ativa) return d;
+    mudou = true;
+    return { ...d, saldoDevedor: saldo, parcelasRestantes: abertos.length, parcelaMinima: proxima, ativa };
+  });
+  return mudou ? { ...ds, dividas } : ds;
+}
+
+function selecionarPendencias(ds: Dataset, ids: readonly number[]): Despesa[] | string {
+  const unicos = [...new Set(ids)];
+  if (unicos.length === 0) return "Escolha ao menos uma pendência.";
+  const ok = new Map(pendenciasVinculaveis(ds).map((d) => [d.id, d]));
+  const out: Despesa[] = [];
+  for (const id of unicos) {
+    const d = ok.get(id);
+    if (!d) return "Há pendência escolhida que já foi paga, excluída ou não pode ser vinculada.";
+    out.push(d);
+  }
+  return out;
+}
+
+/** Cria a dívida a partir de pendências já lançadas (ex.: parcelas de um empréstimo): o saldo acompanha as baixas. */
+export function criarDividaDePendencias(
+  ds: Dataset,
+  dados: Pick<DadosDivida, "nome" | "tipo" | "credor" | "taxaJurosMensal" | "diaVencimento">,
+  ids: readonly number[],
+  ctx: Ctx,
+): Op<{ divida: Divida }> {
+  const sel = selecionarPendencias(ds, ids);
+  if (typeof sel === "string") return erro(sel);
+  const total = sel.reduce((s, d) => s + toCents(d.valor), 0);
+  const base: DadosDivida = { ...dados, saldoDevedor: fromCents(total), valorOriginal: fromCents(total), conta: sel[0].conta, ativa: true };
+  const msg = validarDivida(base);
+  if (msg) return erro(msg);
+  const { lista, item } = inserirItem(ds.dividas, { ...limparDivida(base), lancamentoIds: sel.map((d) => d.id) }, ctx);
+  const novo = sincronizarDividasVinculadas({ ...ds, dividas: lista });
+  return { ok: true, ds: novo, divida: novo.dividas.find((x) => x.id === item.id) as Divida };
+}
+
+/** Soma mais pendências a uma dívida já vinculada ou transforma uma dívida comum em vinculada (o valor original sobe junto). */
+export function vincularPendencias(ds: Dataset, dividaId: number, ids: readonly number[]): Op {
+  const d = ds.dividas.find((x) => x.id === dividaId);
+  if (!d) return erro("Dívida não encontrada.");
+  const sel = selecionarPendencias(ds, ids);
+  if (typeof sel === "string") return erro(sel);
+  const atuais = d.lancamentoIds ?? [];
+  const novos = sel.filter((x) => !atuais.includes(x.id));
+  const extra = novos.reduce((s, x) => s + toCents(x.valor), 0);
+  const dividas = atualizarItem(ds.dividas, dividaId, {
+    lancamentoIds: [...atuais, ...novos.map((x) => x.id)],
+    valorOriginal: fromCents(toCents(d.valorOriginal ?? d.saldoDevedor) + extra),
+  });
+  return { ok: true, ds: sincronizarDividasVinculadas({ ...ds, dividas }) };
+}
+
+/** Solta o vínculo: o saldo devedor atual fica como está e volta a ser controle próprio. */
+export function desvincularDivida(ds: Dataset, dividaId: number): Op {
+  const d = ds.dividas.find((x) => x.id === dividaId);
+  if (!d) return erro("Dívida não encontrada.");
+  const { lancamentoIds: _ids, ...resto } = d;
+  void _ids;
+  return { ok: true, ds: { ...ds, dividas: ds.dividas.map((x) => (x.id === dividaId ? resto : x)) } };
 }

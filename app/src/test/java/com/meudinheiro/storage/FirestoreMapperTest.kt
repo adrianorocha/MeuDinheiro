@@ -155,4 +155,15 @@ class FirestoreMapperTest {
         assertNull(FirestoreMapper.toDoc(c.copy(limiteProprio = 0.0))["limiteProprio"])
         assertTrue(FirestoreMapper.toDoc(c.copy(limiteProprio = null)).containsKey("limiteProprio"))
     }
+
+    @Test fun `cartao leva fechamentoMelhorDia no documento e leitura sem o campo assume false`() {
+        val c = Cartao(id = 2, nome = "V", finalCartao = "1", tipo = "CRÉDITO", limiteDisponivel = 0.0, limiteTotal = 100.0,
+            diaFechamento = 10, diaVencimento = 20, contaId = 1, fechamentoMelhorDia = true)
+        val doc = FirestoreMapper.toDoc(c)
+        assertEquals(true, doc["fechamentoMelhorDia"])
+        assertTrue(FirestoreMapper.cartaoFromDoc(doc).fechamentoMelhorDia)
+        assertEquals(false, FirestoreMapper.toDoc(c.copy(fechamentoMelhorDia = false))["fechamentoMelhorDia"])
+        assertTrue(!FirestoreMapper.cartaoFromDoc(doc - "fechamentoMelhorDia").fechamentoMelhorDia)
+        assertTrue(!FirestoreMapper.cartaoFromDoc(mapOf("id" to 1L, "nome" to "Visa")).fechamentoMelhorDia)
+    }
 }

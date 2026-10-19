@@ -140,6 +140,8 @@ export interface Divida {
   diaVencimento?: number | null;
   /** Conta (número) de onde costuma sair o pagamento. */
   conta?: string | null;
+  /** R73 - ids das pendências (despesas a pagar) vinculadas: o saldo devedor passa a ser a soma das ainda não pagas. */
+  lancamentoIds?: number[];
   ativa: boolean;
 }
 
@@ -195,6 +197,11 @@ export interface Cartao {
   limiteDisponivel: number;
   limiteTotal: number;
   diaFechamento: number;
+  /**
+   * R77 - true: o próprio dia do fechamento já é o melhor dia de compra (compra nesse dia vai para a PRÓXIMA fatura).
+   * Ausente/false (ex.: Caixa): a compra no dia do fechamento ainda entra na fatura que fecha, e o melhor dia é o seguinte.
+   */
+  fechamentoMelhorDia?: boolean;
   diaVencimento: number;
   contaId: number;
   /** null = cartão físico (principal); id do físico = cartão virtual (R18). */

@@ -154,10 +154,15 @@ export interface MesAno {
 }
 
 /** Fatura (identificada pelo mes de fechamento) a qual a compra pertence. */
-export function faturaDaCompra(cartao: Pick<Cartao, "diaFechamento">, dataMs: number): MesAno {
+export function faturaDaCompra(cartao: Pick<Cartao, "diaFechamento" | "fechamentoMelhorDia">, dataMs: number): MesAno {
   const { mes, ano } = mesAnoDe(dataMs);
   const dia = new Date(dataMs).getDate();
-  return dia <= fechamentoDia(cartao, mes, ano) ? { mes, ano } : normalizaMes(mes + 1, ano);
+  return dia <= ultimoDiaDaFatura(cartao, mes, ano) ? { mes, ano } : normalizaMes(mes + 1, ano);
+}
+
+/** R77 - último dia do mês cujas compras ainda entram na fatura que fecha nele (o dia do fechamento, ou o anterior se ele já é o melhor dia de compra). */
+export function ultimoDiaDaFatura(cartao: Pick<Cartao, "diaFechamento" | "fechamentoMelhorDia">, mes: number, ano: number): number {
+  return fechamentoDia(cartao, mes, ano) - (cartao.fechamentoMelhorDia ? 1 : 0);
 }
 
 /** Data de fechamento da fatura (ms, inicio do dia). */
@@ -177,7 +182,7 @@ export function vencimentoFatura(
 }
 
 export function itensFatura(
-  cartao: Pick<Cartao, "id" | "diaFechamento">,
+  cartao: Pick<Cartao, "id" | "diaFechamento" | "fechamentoMelhorDia">,
   despesas: readonly Despesa[],
   mes: number,
   ano: number,

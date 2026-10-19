@@ -583,4 +583,36 @@ class FinancasTest {
         assertEquals(setOf(5L, 1L, 2L), Financas.ultimasDaConta(l, "", hoje).map { it.id }.toSet())
         assertEquals(1, Financas.ultimasDaConta(l, "111", hoje, limite = 1).size)
     }
+
+    @Test fun `fechamentoMelhorDia false mantem o ciclo atual (dia do fechamento ainda na fatura do mes)`() {
+        assertEquals(FaturaRef(10, 2026), Financas.faturaDaCompra(ms(2026, 10, 24, 12), 25, false))
+        assertEquals(FaturaRef(10, 2026), Financas.faturaDaCompra(ms(2026, 10, 25, 12), 25, false))
+        assertEquals(FaturaRef(11, 2026), Financas.faturaDaCompra(ms(2026, 10, 26, 12), 25, false))
+    }
+
+    @Test fun `fechamentoMelhorDia true manda a compra do dia do fechamento para a proxima fatura`() {
+        assertEquals(FaturaRef(10, 2026), Financas.faturaDaCompra(ms(2026, 10, 24, 12), 25, true))
+        assertEquals(FaturaRef(11, 2026), Financas.faturaDaCompra(ms(2026, 10, 25, 0), 25, true))
+        assertEquals(FaturaRef(11, 2026), Financas.faturaDaCompra(ms(2026, 10, 26, 12), 25, true))
+        assertEquals(FaturaRef(1, 2027), Financas.faturaDaCompra(ms(2026, 12, 25, 12), 25, true))
+    }
+
+    @Test fun `fechamentoMelhorDia com fechamento no dia 1 joga todo o mes na fatura seguinte`() {
+        assertEquals(FaturaRef(10, 2026), Financas.faturaDaCompra(ms(2026, 10, 1, 12), 1, false))
+        assertEquals(FaturaRef(11, 2026), Financas.faturaDaCompra(ms(2026, 10, 1, 12), 1, true))
+        assertEquals(FaturaRef(11, 2026), Financas.faturaDaCompra(ms(2026, 10, 15, 12), 1, true))
+        assertEquals(FaturaRef(11, 2026), Financas.faturaDaCompra(ms(2026, 10, 31, 12), 1, true))
+    }
+
+    @Test fun `resumoFatura respeita fechamentoMelhorDia e nao muda fechamento nem vencimento`() {
+        val dia = lanc(10.0, TipoDespesa.CREDITO, data = ms(2026, 10, 25, 12), cartaoId = 1, pago = false)
+        val normal = Financas.resumoFatura(1, 25, 5, listOf(dia), FaturaRef(10, 2026), false)
+        val melhor = Financas.resumoFatura(1, 25, 5, listOf(dia), FaturaRef(10, 2026), true)
+        val melhorProx = Financas.resumoFatura(1, 25, 5, listOf(dia), FaturaRef(11, 2026), true)
+        assertEquals(1, normal.itens.size)
+        assertEquals(0, melhor.itens.size)
+        assertEquals(1, melhorProx.itens.size)
+        assertEquals(normal.fechamento, melhor.fechamento)
+        assertEquals(normal.vencimento, melhor.vencimento)
+    }
 }

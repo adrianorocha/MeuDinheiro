@@ -240,12 +240,12 @@ fun CartoesScreen(
             val cartao = listaCartoes.getOrNull(paginaAtual)
             if (cartao == null) null else {
                 // R6: usa o fechamento REAL do cartão (antes era "vencimento − 7", ignorando o cadastro).
-                val aberta = Financas.faturaDaCompra(System.currentTimeMillis(), cartao.diaFechamento)
+                val aberta = Financas.faturaDaCompra(System.currentTimeMillis(), cartao.diaFechamento, cartao.fechamentoMelhorDia)
                 val ref = aberta.deslocar(mesFaturaOffset)
                 // R18: fatura única do grupo (físico + virtuais).
                 val idsGrupo = listaCartoes.filter { it.idDoGrupo == cartao.idDoGrupo }.map { it.id }.toSet()
                 val resumo = Financas.resumoFatura(
-                    idsGrupo, cartao.diaFechamento, cartao.diaVencimento, despesasDoCartaoAtual, ref
+                    idsGrupo, cartao.diaFechamento, cartao.diaVencimento, despesasDoCartaoAtual, ref, cartao.fechamentoMelhorDia
                 )
                 EstadoFatura(
                     lista = resumo.itens,
@@ -257,7 +257,7 @@ fun CartoesScreen(
                     dataReferencia = Date(Financas.inicioDoMes(ref.mes, ref.ano)),
                     carregando = comprasDoFoco == null,
                     debitos = Financas.debitosDaFatura(debitosDoGrupo, ref),
-                    outras = Financas.outrasFaturasEmAberto(idsGrupo, cartao.diaFechamento, despesasDoCartaoAtual, ref)
+                    outras = Financas.outrasFaturasEmAberto(idsGrupo, cartao.diaFechamento, despesasDoCartaoAtual, ref, cartao.fechamentoMelhorDia)
                 )
             }
         }
@@ -472,7 +472,7 @@ fun CartoesScreen(
                                     outras = fatura.outras,
                                     onIr = {
                                         fatura.outras.proxima?.let { alvo ->
-                                            val aberta = Financas.faturaDaCompra(System.currentTimeMillis(), cartaoFocado.diaFechamento)
+                                            val aberta = Financas.faturaDaCompra(System.currentTimeMillis(), cartaoFocado.diaFechamento, cartaoFocado.fechamentoMelhorDia)
                                             mesFaturaOffset = (alvo.ano * 12 + alvo.mes) - (aberta.ano * 12 + aberta.mes)
                                         }
                                     }

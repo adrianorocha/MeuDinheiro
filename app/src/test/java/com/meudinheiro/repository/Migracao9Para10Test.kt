@@ -6,6 +6,7 @@ import com.meudinheiro.data.Acerto
 import com.meudinheiro.data.Divida
 import com.meudinheiro.data.MIGRATION_10_11
 import com.meudinheiro.data.MIGRATION_11_12
+import com.meudinheiro.data.MIGRATION_12_13
 import com.meudinheiro.data.MIGRATION_9_10
 import com.meudinheiro.data.Pessoa
 import kotlinx.coroutines.runBlocking
@@ -40,7 +41,7 @@ class Migracao9Para10Test {
             )
         }
 
-        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig9_10.db", MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+        val db = MigracaoTestHelper.abrirComRoom(ctx, "mig9_10.db", MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
         try {
             // dados antigos intactos
             val d = db.despesaDao().obterTodasStatic().single()

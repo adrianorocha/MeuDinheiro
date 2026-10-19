@@ -17,7 +17,7 @@ import { MOEDAS } from "@/lib/catalogo";
 import { cartaoDeDebito, cartaoIdDe, saldoDoCartao } from "@/lib/finance/calc";
 import { sugerirCategoria } from "@/lib/finance/analises";
 import { normalizar } from "@/lib/finance/texto";
-import { MAX_PARCELAS, modalidadeDaCompra, type Modalidade } from "@/lib/finance/operations";
+import { CATEGORIA_CASHBACK, ehCashbackDoCartao, MAX_PARCELAS, modalidadeDaCompra, type Modalidade } from "@/lib/finance/operations";
 import { Button } from "@/components/ui/Button";
 import { round2 } from "@/lib/finance/money";
 import type { Despesa, Tipo } from "@/lib/finance/types";
@@ -66,7 +66,11 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
     editar ? (cartaoIdDe(editar) !== null ? "cartao" : editar.tipo === "CREDITO" ? "receita" : "despesa") : (predefinicao?.entrada ?? "despesa"),
   );
   const [modo, setModo] = useState<Modo>(!editar && predefinicao?.parcelas ? "parcelada" : "unica");
-  const [estorno, setEstorno] = useState(editar ? cartaoIdDe(editar) !== null && editar.tipo === "CREDITO" : false);
+  const [operacao, setOperacao] = useState<"compra" | "estorno" | "cashback">(
+    editar && cartaoIdDe(editar) !== null && editar.tipo === "CREDITO" ? (ehCashbackDoCartao(editar) ? "cashback" : "estorno") : "compra",
+  );
+  const estorno = operacao !== "compra";
+  const cashback = operacao === "cashback";
   const [descricao, setDescricao] = useState(editar?.descricao ?? predefinicao?.descricao ?? "");
   const [moeda, setMoeda] = useState(editar?.moedaOriginal ?? "BRL");
   const [valorTxt, setValorTxt] = useState(
@@ -90,6 +94,7 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   const nuvem = useSession((s) => s.modo === "firebase" && s.user !== null);
   const [pendentes, setPendentes] = useState<Pendente[]>([]);
   const [removidos, setRemovidos] = useState<string[]>([]);
+  const [manterVinculo, setManterVinculo] = useState(true);
   const [salvoId, setSalvoId] = useState<number | null>(editar?.id ?? null);
   const [enviandoAnexos, setEnviandoAnexos] = useState(false);
   const existentes = normalizarAnexos(ds.despesas.find((d) => d.id === (salvoId ?? -1))?.anexos);
@@ -167,6 +172,7 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
     if (Number.isNaN(timestamp)) return setErro("Informe uma data válida.");
     if (!descricao.trim()) return setErro("Informe a descrição.");
     if (!categoriaEf.trim()) return setErro("Informe a categoria.");
+    if (cashback && noDebito) return setErro("Cashback só vale em compra no crédito: ele abate a fatura.");
     const tipo: Tipo = tipoAtual;
     const picCategoria = picDaCategoria(categoriaEf, ds.categorias) ?? "";
     const moedaOriginal = moeda;
@@ -178,7 +184,7 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
         data: timestamp,
         categoria: categoriaEf,
         tipo,
-        ...(noCartao ? { cartaoId: Number(cartaoId), modalidade } : { cartaoId: null, conta, pago }),
+        ...(noCartao ? { cartaoId: Number(cartaoId), modalidade } : { cartaoId: null, conta, pago, desvincularDebito: !manterVinculo }),
         valorOriginal: valorOriginal ?? valor,
         moedaOriginal,
         cotacaoNaData: cotacao ?? 1,
@@ -274,13 +280,20 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   return (
     <form onSubmit={submeter} className="flex flex-col gap-4" noValidate>
       {semContas && <ErroBox>Cadastre uma conta antes de criar lançamentos.</ErroBox>}
-      {!editar && (
+      {editar && editar.natureza === "NORMAL" && (
+        <p className="text-xs text-muted">
+          Você pode mudar onde o lançamento foi feito (conta ou cartão; no cartão, crédito ou débito). Saldos, limites e faturas são recalculados
+          {editar.grupoId?.startsWith("parc:") ? "; em compra parcelada a mudança vale para todas as parcelas" : ""}.
+        </p>
+      )}
+      {(!editar || editar.natureza === "NORMAL") && (
         <Segmentado
-          rotulo="Tipo de lançamento"
+          rotulo={editar ? "Lançado em" : "Tipo de lançamento"}
           valor={entrada}
           onChange={(v) => {
             setEntrada(v);
             if (v === "cartao") setPago(false);
+            else if (editar && entrada === "cartao") setPago(deInputData(data) <= Date.now());
             if (v === "cartao" && modo === "fixa") setModo("unica");
           }}
           opcoes={[
@@ -364,9 +377,23 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
               </option>
             ))}
           </Select>
-          <Select rotulo="Operação" value={estorno ? "estorno" : "compra"} onChange={(e) => setEstorno(e.target.value === "estorno")}>
+          <Select
+            rotulo="Operação"
+            value={operacao}
+            onChange={(e) => {
+              const v = e.target.value as typeof operacao;
+              setOperacao(v);
+              if (v === "cashback") {
+                setCategoria(CATEGORIA_CASHBACK);
+                setCategoriaManual(true);
+                if (!descricao.trim()) setDescricao("Cashback");
+                setModo("unica");
+              }
+            }}
+          >
             <option value="compra">Compra</option>
             <option value="estorno">Estorno</option>
+            <option value="cashback">Cashback (abate a fatura)</option>
           </Select>
         </div>
       ) : (
@@ -390,7 +417,12 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
         />
       )}
       {noDebito && <p className="text-xs text-warn" role="status">Compra no débito: sai direto da conta e aparece na tela do cartão (fora da fatura e do limite)</p>}
-      {!noCartao && vinculoDebito && <p className="text-xs text-muted" role="status">Compra no débito do cartão {vinculoDebito.nome}: sai da conta e aparece na tela do cartão.</p>}
+      {!noCartao && vinculoDebito && (
+        <div>
+          <p className="text-xs text-muted" role="status">Compra no débito do cartão {vinculoDebito.nome}: sai da conta e aparece na tela do cartão.</p>
+          <Checkbox rotulo={`Manter o vínculo com o cartão ${vinculoDebito.nome}`} checked={manterVinculo} onChange={(e) => setManterVinculo(e.target.checked)} />
+        </div>
+      )}
       {avisoLimiteProprio && <p className="text-xs text-warn" role="status">{avisoLimiteProprio}</p>}
       {!noCartao && modo === "unica" && <Checkbox rotulo={entrada === "receita" ? "Já recebida" : "Já paga"} checked={pago} onChange={(e) => setPago(e.target.checked)} />}
       {modo === "parcelada" && !editar && !noDebito && <p className="text-xs text-muted">O valor informado é o total da compra; a última parcela recebe o resto dos centavos.{noCartao && Number(parcelaAtualTxt) > 1 ? " Com parcela atual maior que 1, só as parcelas restantes são lançadas (todas reservam o limite)." : ""}</p>}

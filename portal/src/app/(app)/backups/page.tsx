@@ -88,7 +88,8 @@ function AbaBackups() {
 
   async function guardar(tipo: RegistroBackup["tipo"], baixar: boolean): Promise<boolean> {
     const quando = Date.now();
-    const json = gerarJson(ds);
+    const completo = await useStore.getState().dsCompleto();
+    const json = gerarJson(completo);
     if (baixar) baixarArquivo(nomeArquivo(tipo === "SEGURANCA" ? "seguranca" : "backup", quando), json, "application/json");
     const ok = await historicoStore.adicionar({
       id: `${quando}-${Math.random().toString(36).slice(2, 8)}`,
@@ -331,7 +332,7 @@ function AbaAlteracoes() {
           {lista.map((e, i) => (
             <li key={`${e.quando}-${e.id ?? "x"}-${i}`} className="rounded-2xl border border-line bg-surface p-3 text-sm">
               <p className="flex flex-wrap items-center gap-2">
-                <Badge tom={e.acao === "EXCLUIR" ? "neg" : e.acao === "CRIAR" || e.acao === "PAGAR" ? "pos" : "primary"}>{ROTULO_ACAO[e.acao]}</Badge>
+                <Badge tom={e.acao === "EXCLUIR" || e.acao === "EXCLUIR_CARTAO" ? "neg" : e.acao === "CRIAR" || e.acao === "PAGAR" ? "pos" : "primary"}>{ROTULO_ACAO[e.acao]}</Badge>
                 <span className="text-xs text-muted">{dataHora.format(e.quando)}</span>
               </p>
               <p className="mt-1 font-medium">

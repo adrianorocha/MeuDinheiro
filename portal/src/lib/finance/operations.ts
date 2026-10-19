@@ -279,13 +279,53 @@ export interface EdicaoLancamento {
   cotacaoNaData?: number;
   /** R42 - ao trocar o cartão/modalidade; só vale em cartão MÚLTIPLO. */
   modalidade?: Modalidade;
+  /** R78 - ao virar lançamento de conta (cartaoId null), solta o vínculo de compra no débito (`debito:<id>`) que ele tinha. */
+  desvincularDebito?: boolean;
   /** R56 - substitui as tags (lista vazia remove todas); ausente = mantém. */
   tags?: string[];
   /** R60 - substitui os anexos (saneados; lista vazia remove o campo); ausente = mantém. */
   anexos?: Anexo[];
 }
 
+/** R78 - onde o lançamento está: conta, cartão de crédito ou compra no débito de um cartão. */
+export function ondeEstaLancamento(d: Pick<Despesa, "cartaoId" | "grupoId" | "conta">): string {
+  const credito = cartaoIdDe(d);
+  if (credito !== null) return `credito:${credito}`;
+  const debito = cartaoDeDebito(d);
+  return debito !== null ? `debito:${debito}` : `conta:${d.conta}`;
+}
+
+/**
+ * Edita o lançamento. R78: dá para mudar ONDE ele foi lançado (conta, cartão de crédito, cartão de débito); saldos e limites são
+ * recalculados. Parcelas (`parc:`): a mudança de local vale para todas as parcelas do grupo, cada uma com o `pago` coerente.
+ */
 export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancamento, ctx: Ctx = { agora: Date.now() }): Op {
+  const antes = ds.despesas.find((d) => d.id === id);
+  const r = editarUm(ds, id, patch, ctx);
+  if (!r.ok || !antes || !antes.grupoId?.startsWith("parc:")) return r;
+  const depois = r.ds.despesas.find((d) => d.id === id);
+  if (!depois || ondeEstaLancamento(antes) === ondeEstaLancamento(depois)) return r;
+  let atualDs = r.ds;
+  const irmas = ds.despesas.filter((d) => d.grupoId === antes.grupoId && d.id !== id && !NATUREZAS_BLOQUEADAS_EDICAO.has(d.natureza));
+  for (const s of irmas) {
+    const noCartao = depois.cartaoId !== null || cartaoDeDebito(depois) !== null;
+    const x = editarUm(
+      atualDs,
+      s.id,
+      {
+        cartaoId: depois.cartaoId !== null ? depois.cartaoId : (cartaoDeDebito(depois) ?? null),
+        ...(noCartao ? { modalidade: depois.cartaoId !== null ? ("CREDITO" as const) : ("DEBITO" as const) } : { conta: depois.conta, pago: s.data <= ctx.agora }),
+        desvincularDebito: !noCartao,
+      },
+      ctx,
+    );
+    if (!x.ok) return x;
+    atualDs = x.ds;
+  }
+  return finaliza(atualDs, {});
+}
+
+function editarUm(ds: Dataset, id: number, patch: EdicaoLancamento, ctx: Ctx): Op {
   const atual = ds.despesas.find((d) => d.id === id);
   if (!atual) return erro("Lançamento não encontrado.");
   if (NATUREZAS_BLOQUEADAS_EDICAO.has(atual.natureza)) {
@@ -306,6 +346,8 @@ export function editarLancamento(ds: Dataset, id: number, patch: EdicaoLancament
   let grupoIdFinal = atual.grupoId;
   // Mover para outra conta desfaz o vínculo; editar sem mudar a conta (mesmo com cartaoId null) preserva.
   if (cartaoDeDebito(atual) !== null && patch.conta !== undefined && patch.conta !== atual.conta) grupoIdFinal = null;
+  // R78 - virou lançamento comum de conta de forma explícita: solta o vínculo de débito mesmo na mesma conta.
+  if (patch.desvincularDebito && cartaoIdNovo === null && cartaoDeDebito(atual) !== null) grupoIdFinal = null;
   if (cartaoIdNovo !== null) {
     const cartao = ds.cartoes.find((c) => c.id === cartaoIdNovo);
     if (!cartao) return erro("Cartão não encontrado.");
@@ -563,8 +605,8 @@ function validaCartao(ds: Dataset, c: NovoCartao): string | null {
 }
 
 /** Campos que o virtual herda do principal. */
-function herdadosDe(p: Cartao): Pick<Cartao, "tipo" | "limiteTotal" | "diaFechamento" | "diaVencimento" | "contaId"> {
-  return { tipo: p.tipo, limiteTotal: p.limiteTotal, diaFechamento: p.diaFechamento, diaVencimento: p.diaVencimento, contaId: p.contaId };
+function herdadosDe(p: Cartao): Pick<Cartao, "tipo" | "limiteTotal" | "diaFechamento" | "fechamentoMelhorDia" | "diaVencimento" | "contaId"> {
+  return { tipo: p.tipo, limiteTotal: p.limiteTotal, diaFechamento: p.diaFechamento, fechamentoMelhorDia: p.fechamentoMelhorDia, diaVencimento: p.diaVencimento, contaId: p.contaId };
 }
 
 function principalValido(ds: Dataset, id: number): Cartao | string {
@@ -727,6 +769,138 @@ export function excluirCartao(ds: Dataset, id: number, opcoes: { forcar?: boolea
   return finaliza(
     { ...ds, cartoes: ds.cartoes.filter((c) => !idsGrupo.has(c.id)), despesas: ds.despesas.filter((d) => !doGrupo(d)) },
     {},
+  );
+}
+
+/** R76 - categoria do cashback do cartão: é um CREDITO no cartão (como o estorno) que abate a fatura. */
+export const CATEGORIA_CASHBACK = "Cashback";
+
+export const ehCashbackDoCartao = (d: Pick<Despesa, "tipo" | "cartaoId" | "categoria">): boolean =>
+  d.tipo === "CREDITO" && cartaoIdDe(d) !== null && d.categoria.trim().toLowerCase() === CATEGORIA_CASHBACK.toLowerCase();
+
+// ------------------------------------------------------------ R74 exclusão forçada de cartão
+
+export interface ResumoExclusaoCartao {
+  /** nomes dos cartões removidos (o principal leva os virtuais) */
+  cartoes: string[];
+  /** recorrências que pagavam com o cartão (removidas) */
+  recorrencias: string[];
+  /** compras de crédito apagadas (pagas e em aberto) */
+  lancamentos: number;
+  /** das quais ainda em aberto */
+  abertos: number;
+  /** compras no débito do cartão: apagadas ou apenas desvinculadas */
+  debito: number;
+  debitoApagado: boolean;
+  /** soma dos valores dos lançamentos apagados (reais) */
+  valorApagado: number;
+}
+
+function planoExclusaoCartao(ds: Dataset, id: number, apagarDebito: boolean) {
+  const cartao = ds.cartoes.find((c) => c.id === id);
+  if (!cartao) return null;
+  const ids = new Set(cartao.cartaoPrincipalId != null ? [id] : ds.cartoes.filter((c) => c.id === id || c.cartaoPrincipalId === id).map((c) => c.id));
+  const credito = ds.despesas.filter((d) => {
+    const cid = cartaoIdDe(d);
+    return cid !== null && ids.has(cid);
+  });
+  const debito = ds.despesas.filter((d) => {
+    const cid = cartaoDeDebito(d);
+    return cid !== null && ids.has(cid);
+  });
+  const regras = ds.despesasFixas.filter((f) => f.cartaoId !== null && ids.has(f.cartaoId));
+  const apagadas = apagarDebito ? [...credito, ...debito] : credito;
+  const resumo: ResumoExclusaoCartao = {
+    cartoes: ds.cartoes.filter((c) => ids.has(c.id)).map((c) => c.nome),
+    recorrencias: regras.map((r) => r.descricao),
+    lancamentos: credito.length,
+    abertos: credito.filter((d) => !d.pago).length,
+    debito: debito.length,
+    debitoApagado: apagarDebito,
+    valorApagado: fromCents(apagadas.reduce((s, d) => s + toCents(d.valor), 0)),
+  };
+  return { ids, credito, debito, regras, resumo };
+}
+
+/** Prévia do que a exclusão forçada remove (sem alterar nada). */
+export function resumoExclusaoCartao(ds: Dataset, id: number, opcoes: { apagarDebito?: boolean } = {}): ResumoExclusaoCartao | null {
+  return planoExclusaoCartao(ds, id, opcoes.apagarDebito === true)?.resumo ?? null;
+}
+
+/**
+ * R74 - exclui o cartão MESMO com compras em aberto e recorrências: apaga as compras (pagas e em aberto) e as recorrências
+ * que o usavam. Cartão principal leva os virtuais. Compras no débito só saem com `apagarDebito` (mexem no saldo da conta);
+ * sem isso viram lançamentos comuns. Quem chama deve confirmar a senha e gravar o log.
+ */
+export function excluirCartaoForcado(ds: Dataset, id: number, opcoes: { apagarDebito?: boolean } = {}): Op<{ resumo: ResumoExclusaoCartao }> {
+  const p = planoExclusaoCartao(ds, id, opcoes.apagarDebito === true);
+  if (!p) return erro("Cartão não encontrado.");
+  const apagar = new Set<number>([...p.credito.map((d) => d.id), ...(opcoes.apagarDebito ? p.debito.map((d) => d.id) : [])]);
+  const desvincular = new Set(p.debito.map((d) => d.id));
+  const despesas = ds.despesas.filter((d) => !apagar.has(d.id)).map((d) => (desvincular.has(d.id) ? { ...d, grupoId: null } : d));
+  const idsRegras = new Set(p.regras.map((r) => r.id));
+  return finaliza(
+    {
+      ...ds,
+      cartoes: ds.cartoes.filter((c) => !p.ids.has(c.id)),
+      despesas,
+      despesasFixas: ds.despesasFixas.filter((f) => !idsRegras.has(f.id)),
+    },
+    { resumo: p.resumo },
+  );
+}
+
+/** Lançamentos que podem ser apagados pela tela do cartão: compras de crédito do grupo e compras no débito dele. */
+export function lancamentosApagaveisDoCartao(ds: Dataset, id: number): { credito: Despesa[]; debito: Despesa[] } | null {
+  const p = planoExclusaoCartao(ds, id, false);
+  return p ? { credito: p.credito, debito: p.debito } : null;
+}
+
+export interface ResumoApagarLancamentos {
+  lancamentos: number;
+  abertos: number;
+  valorApagado: number;
+  cartaoExcluido: boolean;
+}
+
+/**
+ * R75 - apaga só alguns (ou todos) os lançamentos do cartão, escolhidos por id, sem lixeira. O cartão fica, salvo `excluirCartao`
+ * (aí vale a regra do R74: todas as compras de crédito e as recorrências saem junto). Quem chama confirma a senha e grava o log.
+ */
+export function apagarLancamentosDoCartao(
+  ds: Dataset,
+  id: number,
+  ids: readonly number[],
+  opcoes: { excluirCartao?: boolean } = {},
+): Op<{ resumo: ResumoApagarLancamentos }> {
+  const p = planoExclusaoCartao(ds, id, true);
+  if (!p) return erro("Cartão não encontrado.");
+  const validos = new Map([...p.credito, ...p.debito].map((d) => [d.id, d]));
+  const escolhidos = new Set<number>();
+  for (const i of new Set(ids)) {
+    if (!validos.has(i)) return erro("Algum lançamento escolhido não pertence a este cartão.");
+    escolhidos.add(i);
+  }
+  if (opcoes.excluirCartao) for (const d of p.credito) escolhidos.add(d.id);
+  if (escolhidos.size === 0 && !opcoes.excluirCartao) return erro("Escolha ao menos um lançamento.");
+  const apagados = [...escolhidos].map((i) => validos.get(i) as Despesa);
+  const resumo: ResumoApagarLancamentos = {
+    lancamentos: apagados.length,
+    abertos: apagados.filter((d) => !d.pago && cartaoIdDe(d) !== null).length,
+    valorApagado: fromCents(apagados.reduce((s, d) => s + toCents(d.valor), 0)),
+    cartaoExcluido: opcoes.excluirCartao === true,
+  };
+  const desvincular = new Set(opcoes.excluirCartao ? p.debito.filter((d) => !escolhidos.has(d.id)).map((d) => d.id) : []);
+  const despesas = ds.despesas.filter((d) => !escolhidos.has(d.id)).map((d) => (desvincular.has(d.id) ? { ...d, grupoId: null } : d));
+  const idsRegras = new Set(opcoes.excluirCartao ? p.regras.map((r) => r.id) : []);
+  return finaliza(
+    {
+      ...ds,
+      cartoes: opcoes.excluirCartao ? ds.cartoes.filter((c) => !p.ids.has(c.id)) : ds.cartoes,
+      despesas,
+      despesasFixas: ds.despesasFixas.filter((f) => !idsRegras.has(f.id)),
+    },
+    { resumo },
   );
 }
 

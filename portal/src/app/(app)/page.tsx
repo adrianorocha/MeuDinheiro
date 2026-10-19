@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, Receipt } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Banknote, CreditCard, Percent, Receipt, Scale, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { GraficoPatrimonio, GraficoPizza } from "@/components/charts/Graficos";
@@ -9,6 +9,7 @@ import { AlertasOrcamento } from "@/components/layout/AlertasOrcamento";
 import { Segmentado } from "@/components/ui/Field";
 import { Badge, Card, CardTitulo, EmptyState, PageHeader, ProgressBar } from "@/components/ui/Misc";
 import { Money } from "@/components/ui/Money";
+import { estiloMatiz, type Matiz } from "@/components/ui/rotas";
 import {
   kpisDoMes,
   kpisPeriodo,
@@ -31,10 +32,17 @@ const ROTULO_SAUDE: Record<StatusSaude, { texto: string; tom: "pos" | "warn" | "
   PERIGO: { texto: "Perigo", tom: "neg" },
 };
 
-function Kpi({ rotulo, children, destaque, legenda }: { rotulo: string; children: React.ReactNode; destaque?: boolean; legenda?: React.ReactNode }) {
+function Kpi({ rotulo, children, destaque, legenda, icone: Icone, matiz = 1 }: { rotulo: string; children: React.ReactNode; destaque?: boolean; legenda?: React.ReactNode; icone?: LucideIcon; matiz?: Matiz }) {
   return (
     <Card className={destaque ? "border-primary/40 bg-primary-soft" : ""}>
-      <p className="text-xs font-medium text-muted">{rotulo}</p>
+      <div className="flex items-center gap-2">
+        {Icone && (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl" style={estiloMatiz(matiz)} aria-hidden>
+            <Icone size={17} />
+          </span>
+        )}
+        <p className="text-xs font-medium text-muted">{rotulo}</p>
+      </div>
       <p className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">{children}</p>
       {legenda && <p className="mt-1 text-xs text-muted">{legenda}</p>}
     </Card>
@@ -117,10 +125,10 @@ export default function DashboardPage() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Kpi rotulo="Patrimônio líquido" destaque>
+        <Kpi rotulo="Patrimônio líquido" destaque icone={Wallet} matiz={1}>
           <Money valor={patrimonio} />
         </Kpi>
-        <Kpi rotulo="Saldo total das contas">
+        <Kpi rotulo="Saldo total das contas" icone={Banknote} matiz={2}>
           <Money valor={saldoContas} />
         </Kpi>
       </div>
@@ -142,11 +150,13 @@ export default function DashboardPage() {
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi rotulo="Receitas">
+        <Kpi rotulo="Receitas" icone={ArrowUpCircle} matiz={6}>
           <Money valor={kpis.receitasRealizadas} />
         </Kpi>
         <Kpi
           rotulo="Despesas"
+          icone={ArrowDownCircle}
+          matiz={5}
           legenda={
             <>
               pagas <Money valor={kpis.despesasPagas} /> · a pagar <Money valor={kpis.despesasPendentes} />
@@ -155,10 +165,10 @@ export default function DashboardPage() {
         >
           <Money valor={kpis.despesasTotal} />
         </Kpi>
-        <Kpi rotulo="Resultado">
+        <Kpi rotulo="Resultado" icone={Scale} matiz={3}>
           <Money valor={kpis.resultado} tom="auto" />
         </Kpi>
-        <Kpi rotulo="Taxa de poupança">
+        <Kpi rotulo="Taxa de poupança" icone={Percent} matiz={4}>
           <span className="tabular">{privado ? "••••" : formatPercentual(kpis.taxaPoupanca)}</span>
         </Kpi>
       </div>

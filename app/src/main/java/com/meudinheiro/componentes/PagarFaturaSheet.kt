@@ -91,7 +91,7 @@ fun PagarFaturaSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cartao = remember(principal) { principal.paraCartao() }
     val faturas = remember(despesasDoGrupo, cartao) { Financas.faturasEmAberto(cartao, despesasDoGrupo, idsDoGrupo) }
-    val atual = remember(cartao) { Financas.faturaDaCompra(System.currentTimeMillis(), cartao.diaFechamento) }
+    val atual = remember(cartao) { Financas.faturaDaCompra(System.currentTimeMillis(), cartao.diaFechamento, cartao.fechamentoMelhorDia) }
     val fmtDia = remember { SimpleDateFormat("dd/MM", Locale("pt", "BR")) }
 
     fun idsDe(f: Financas.ResumoFatura) = f.itensPendentes.map { it.id }

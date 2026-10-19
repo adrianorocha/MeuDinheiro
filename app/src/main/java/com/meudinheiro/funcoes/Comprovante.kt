@@ -125,7 +125,7 @@ fun montarComprovante(
     val vinculoDebito = Financas.cartaoDeDebito(despesa)
     add("Data do lançamento", dia.format(despesa.data))
     if (noCredito && cartao != null) {
-        val ref = Financas.faturaDaCompra(despesa.dataMs, cartao.diaFechamento)
+        val ref = Financas.faturaDaCompra(despesa.dataMs, cartao.diaFechamento, cartao.fechamentoMelhorDia)
         add("Fatura de referência", "%02d/%04d".format(ref.mes, ref.ano))
         add("Vencimento da fatura", dia.format(Date(Financas.dataVencimento(cartao.diaFechamento, cartao.diaVencimento, ref))))
     } else if (noCredito) {

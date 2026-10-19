@@ -1,5 +1,7 @@
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
@@ -34,6 +36,13 @@ export async function cadastrar(email: string, senha: string): Promise<void> {
 
 export async function recuperarSenha(email: string): Promise<void> {
   await sendPasswordResetEmail(getFirebaseAuth(), email.trim());
+}
+
+/** R74 - confirma a senha de login do usuário atual (reautenticação) antes de ações destrutivas. */
+export async function confirmarSenha(senha: string): Promise<void> {
+  const user = getFirebaseAuth().currentUser;
+  if (!user?.email) throw new Error("Sessão sem e-mail: entre novamente.");
+  await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, senha));
 }
 
 export async function sair(): Promise<void> {

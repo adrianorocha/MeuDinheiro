@@ -22,6 +22,8 @@ import {
   editarConta,
   editarLancamento,
   excluirCartao,
+  excluirCartaoForcado,
+  apagarLancamentosDoCartao,
   excluirConta,
   excluirLancamento,
   excluirMeta,
@@ -49,10 +51,13 @@ import {
   type NovoLancamento,
 } from "../finance/operations";
 import { auditarSaldos, recalcularSaldos } from "../finance/conferencia";
-import { reprocessarFatura, reprocessarSaldos, type AlvoFatura } from "../finance/reprocessar";
+import { reprocessarFatura, reprocessarSaldos, type AlvoFatura, type AlvoCartao } from "../finance/reprocessar";
 import { round2 } from "../finance/money";
 import {
+  criarDividaDePendencias,
+  desvincularDivida,
   excluirDivida,
+  vincularPendencias,
   pagarDivida,
   registrarJurosDivida,
   salvarDivida,
@@ -82,6 +87,7 @@ import { estamparNovos, type Identidade } from "../finance/autoria";
 import { limparAnexosDaLixeira } from "../firebase/anexosArquivos";
 import { useStore } from "./store";
 import { trilhaStore } from "../backups/instancias";
+import { entradasDoDiff, type EntradaTrilha } from "../backups/trilha";
 
 /** Quem está lançando (R32); null no modo local. */
 function autorAtual(): string | null {
@@ -171,6 +177,66 @@ export const acoes = {
   criarCartao: (input: NovoCartao) => exec()((ds, ctx) => criarCartao(ds, input, ctx)),
   editarCartao: (id: number, patch: Partial<NovoCartao>) => exec()((ds) => editarCartao(ds, id, patch)),
   excluirCartao: (id: number, forcar = false) => exec()((ds) => excluirCartao(ds, id, { forcar })),
+  /**
+   * R74 - exclui o cartão mesmo com compras em aberto e recorrências (apaga-as). A confirmação da senha é feita ANTES, por quem chama;
+   * aqui grava no log de controle (trilha local) uma entrada "Cartão excluído" com o resumo e uma "Excluído" por lançamento apagado.
+   */
+  /** R75 - apaga só lançamentos do cartão (e, se pedido, o cartão); confirmação de senha feita por quem chama; grava no log. */
+  apagarLancamentosDoCartao: (id: number, ids: number[], opcoes: { excluirCartao?: boolean } = {}) => {
+    const antes = useStore.getState().ds;
+    const cartao = antes.cartoes.find((c) => c.id === id);
+    const r = exec()((ds) => apagarLancamentosDoCartao(ds, id, ids, opcoes));
+    if (r.ok && cartao) {
+      try {
+        const quando = Date.now();
+        const s = r.resumo;
+        const resumo: EntradaTrilha = {
+          quando,
+          acao: "EXCLUIR_CARTAO",
+          id,
+          descricao: s.cartaoExcluido ? `Cartão ${cartao.nome} e seus lançamentos` : `Lançamentos do cartão ${cartao.nome}`,
+          valor: s.valorApagado,
+          alteracoes: [
+            { campo: "usuário", antigo: "", novo: autorAtual() ?? "modo local" },
+            { campo: "lançamentos apagados", antigo: String(s.lancamentos), novo: `${s.abertos} em aberto` },
+            { campo: "cartão", antigo: "", novo: s.cartaoExcluido ? "excluído" : "mantido" },
+          ],
+        };
+        void trilhaStore.registrar([...entradasDoDiff(antes, useStore.getState().ds, quando), resumo]);
+      } catch {
+        /* auditoria é informativa */
+      }
+    }
+    return r;
+  },
+  excluirCartaoForcado: (id: number, opcoes: { apagarDebito?: boolean } = {}) => {
+    const antes = useStore.getState().ds;
+    const cartao = antes.cartoes.find((c) => c.id === id);
+    const r = exec()((ds) => excluirCartaoForcado(ds, id, opcoes));
+    if (r.ok && cartao) {
+      try {
+        const quando = Date.now();
+        const s = r.resumo;
+        const resumo: EntradaTrilha = {
+          quando,
+          acao: "EXCLUIR_CARTAO",
+          id,
+          descricao: `Cartão ${s.cartoes.join(", ")}`,
+          valor: s.valorApagado,
+          alteracoes: [
+            { campo: "usuário", antigo: "", novo: autorAtual() ?? "modo local" },
+            { campo: "compras de crédito apagadas", antigo: String(s.lancamentos), novo: `${s.abertos} em aberto` },
+            { campo: "compras no débito", antigo: String(s.debito), novo: s.debitoApagado ? "apagadas" : "mantidas (desvinculadas)" },
+            { campo: "recorrências removidas", antigo: s.recorrencias.join("; "), novo: String(s.recorrencias.length) },
+          ],
+        };
+        void trilhaStore.registrar([...entradasDoDiff(antes, useStore.getState().ds, quando), resumo]);
+      } catch {
+        /* auditoria é informativa */
+      }
+    }
+    return r;
+  },
   pagarFatura: (cartaoId: number, mes: number, ano: number) => exec()((ds, ctx) => pagarFatura(ds, cartaoId, mes, ano, ctx)),
   pagarItensFatura: (input: PagamentoItensFatura) => exec()((ds, ctx) => pagarItensFatura(ds, input, ctx)),
   marcarItensFaturaComoPagos: (input: PagamentoItensFatura) => exec()((ds) => marcarItensFaturaComoPagos(ds, input)),
@@ -263,6 +329,16 @@ export const acoes = {
       }),
     ),
 
+  // R77 - reprocessar todas as faturas de um cartão (ciclo atual: dia de fechamento / melhor dia)
+  reprocessarCartao: (cartaoId: number, corrigirFaturas = true) =>
+    rastreado(() =>
+      exec()((ds, ctx) => {
+        const alvo: AlvoCartao = { cartaoId };
+        const r = reprocessarSaldos(ds, { corrigirFaturas, fatura: alvo, agora: ctx.agora });
+        return { ok: true as const, ds: r.ds, correcoes: r.correcoes, itensMarcados: r.itensMarcados };
+      }),
+    ),
+
   // R71 - reprocessar uma fatura (itens de fatura quitada + pagamento duplicado no cartão + recálculo de limite)
   reprocessarFatura: (alvo: AlvoFatura, corrigirFaturas = true, removerPagamentosNoCartao = true, removerIds: readonly number[] = []) =>
     rastreado(() =>
@@ -341,6 +417,9 @@ export const acoes = {
 
   // R58 - dívidas
   salvarDivida: (dados: DadosDivida, id?: number) => exec()((ds, ctx) => salvarDivida(ds, dados, id, ctx)),
+  criarDividaDePendencias: (dados: Parameters<typeof criarDividaDePendencias>[1], ids: number[]) => exec()((ds, ctx) => criarDividaDePendencias(ds, dados, ids, ctx)),
+  vincularPendencias: (dividaId: number, ids: number[]) => exec()((ds) => vincularPendencias(ds, dividaId, ids)),
+  desvincularDivida: (id: number) => exec()((ds) => desvincularDivida(ds, id)),
   excluirDivida: (id: number) => exec()((ds) => excluirDivida(ds, id)),
   registrarJurosDivida: (id: number, juros: number) => exec()((ds) => registrarJurosDivida(ds, id, juros)),
   pagarDivida: (input: PagamentoDivida) => exec()((ds, ctx) => pagarDivida(ds, { autor: autorAtual(), ...input }, ctx)),

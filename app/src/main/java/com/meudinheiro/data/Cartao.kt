@@ -30,7 +30,9 @@ data class Cartao(
     /** null = cartão físico (principal). Preenchido = cartão VIRTUAL que compartilha limite/fatura com esse físico (R18). */
     val cartaoPrincipalId: Int? = null,
     /** R41: teto de gasto DESTE cartão dentro do limite compartilhado do grupo. null = sem teto próprio. */
-    val limiteProprio: Double? = null
+    val limiteProprio: Double? = null,
+    /** true = o dia do fechamento já é o melhor dia de compra (compras nesse dia vão para a PRÓXIMA fatura). */
+    val fechamentoMelhorDia: Boolean = false
 ) {
     val ehVirtual: Boolean get() = cartaoPrincipalId != null
 

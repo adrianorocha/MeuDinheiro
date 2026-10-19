@@ -338,32 +338,98 @@ class MainRepository(
         }
     }
 
-    suspend fun atualizarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null) {
+    /**
+     * R11/R42/R78 — grava a edição. Onde o lançamento está pode mudar (conta, cartão de crédito, compra no débito):
+     * - [Despesa.cartaoId] preenchido = cartão escolhido; [modalidade] não nula força a reavaliação (crédito/débito) mesmo
+     *   sem trocar de cartão (cartão MÚLTIPLO). Nula: só reavalia quando o cartão mudou (padrão do tipo do cartão).
+     * - [Despesa.cartaoId] nulo = conta ([Despesa.conta]); [desvincularDebito] solta o vínculo `debito:` ao virar lançamento comum.
+     * Em parcelamento, a mudança de local vale para todas as parcelas do grupo.
+     */
+    suspend fun atualizarLancamento(despesa: Despesa, modalidade: Financas.Modalidade? = null, desvincularDebito: Boolean = false) {
         val antes = runCatching { despesaDao.obterDespesaPorId(despesa.id) }.getOrNull()
-        atualizarLancamentoBase(despesa, modalidade)
+        atualizarLancamentoBase(despesa, modalidade, desvincularDebito)
         if (antes != null) registrarTrilha {
             val depois = runCatching { despesaDao.obterDespesaPorId(despesa.id) }.getOrNull() ?: despesa
             com.meudinheiro.domain.Trilha.editar(agora(), antes, depois)
         }
     }
 
-    private suspend fun atualizarLancamentoBase(despesa: Despesa, modalidade: Financas.Modalidade?) = db.withTransaction {
+    /** Onde um lançamento está: conta, crédito de um cartão ou compra no débito de um cartão (R42b). */
+    private sealed class Local {
+        data class Conta(val numero: String) : Local()
+        data class Credito(val cartaoId: Int) : Local()
+        data class Debito(val cartaoId: Int) : Local()
+    }
+
+    private fun localDe(d: Despesa): Local {
+        d.cartaoId?.takeIf { it != 0 }?.let { return Local.Credito(it) }
+        Financas.cartaoDeDebito(d)?.let { return Local.Debito(it) }
+        return Local.Conta(d.conta)
+    }
+
+    private suspend fun atualizarLancamentoBase(
+        despesa: Despesa, modalidade: Financas.Modalidade?, desvincularDebito: Boolean
+    ) = db.withTransaction {
         val antigo = despesaDao.obterDespesaPorId(despesa.id)
             ?: throw RegraFinanceiraException("Lançamento não encontrado.")
         if (antigo.natureza in LancamentoAcoes.BLOQUEADAS_EDICAO) throw RegraFinanceiraException(LancamentoAcoes.MSG_NAO_EDITAVEL)
-        // R42: só reavalia a modalidade quando o cartão foi trocado (dados antigos não são migrados).
-        val trocouCartao = despesa.cartaoId?.takeIf { it != 0 } != null && despesa.cartaoId != antigo.cartaoId
-        var base = if (trocouCartao) comModalidade(despesa, modalidade) else despesa
-        // Trocou para outro cartão (crédito): a compra volta a ficar em aberto, quitada só pela fatura.
-        if (trocouCartao && base.cartaoId != null) base = base.copy(pago = false)
-        // Mover o lançamento de débito para outra conta desfaz o vínculo com o cartão (R42b).
-        if (Financas.cartaoDeDebito(antigo) != null && base.cartaoId == null && base.conta != antigo.conta &&
-            base.grupoId == antigo.grupoId) base = base.copy(grupoId = null)
+        val localAntigo = localDe(antigo)
+        val cartaoNovoId = despesa.cartaoId?.takeIf { it != 0 }
+        var base = despesa
+        // Destino das demais parcelas (parcelamento): o local escolhido, sem os campos próprios de cada parcela.
+        val destino: Local
+        if (cartaoNovoId != null) {
+            val cartao = cartaoDao.getCartaoPorId(cartaoNovoId) ?: throw RegraFinanceiraException("Cartão não encontrado.")
+            val contaDoCartao = contaSaldoDao.obterPorId(cartao.contaId)?.conta
+                ?: throw RegraFinanceiraException("A conta vinculada ao cartão não existe mais.")
+            val trocouCartao = cartaoNovoId != antigo.cartaoId
+            // R42: só reavalia a modalidade quando o cartão mudou ou quando ela foi pedida (dados antigos não são migrados).
+            val reavaliar = trocouCartao || modalidade != null
+            if (reavaliar && Financas.modalidadeDaCompra(cartao, modalidade) == Financas.Modalidade.DEBITO) {
+                // Débito: lançamento direto da conta do cartão; vínculo `debito:<cartão>` só se não há outro grupo (ex.: parc:).
+                destino = Local.Debito(cartao.id)
+                base = despesa.copy(
+                    cartaoId = null, conta = contaDoCartao,
+                    pago = if (localAntigo == destino) despesa.pago else despesa.dataMs <= agora(),
+                    grupoId = if (despesa.grupoId == null || Financas.cartaoDeDebito(despesa) != null) Financas.grupoIdDebito(cartao.id) else despesa.grupoId
+                )
+            } else {
+                destino = Local.Credito(cartaoNovoId)
+                // Trocou de cartão/origem (crédito): volta a ficar em aberto, quitada só pela fatura. Sem vínculo de débito.
+                base = despesa.copy(
+                    pago = if (localAntigo == destino) despesa.pago else false,
+                    grupoId = if (Financas.cartaoDeDebito(despesa) != null) null else despesa.grupoId
+                )
+            }
+        } else {
+            destino = Local.Conta(despesa.conta)
+            // Vira lançamento comum de conta: solta o vínculo de débito se a conta mudou (R42b) ou se foi pedido (R78).
+            val soltar = Financas.cartaoDeDebito(antigo) != null && base.grupoId == antigo.grupoId &&
+                (desvincularDebito || base.conta != antigo.conta)
+            if (soltar) base = base.copy(grupoId = null)
+        }
         if (antigo.natureza == Natureza.SALDO_INICIAL) base = base.copy(pago = true)
         // R60: anexos só mudam por `atualizarAnexos` (um envio em segundo plano pode ter trocado o caminho enquanto o formulário estava aberto).
         val novo = validar(base).copy(anexos = antigo.anexos)
         despesaDao.inserirDespesa(novo)
-        recalcularAfetados(listOf(antigo, novo))
+        val afetados = mutableListOf(antigo, novo)
+
+        // Parcelamento: o local novo vale para todas as parcelas do grupo (cada uma com `pago` coerente com a sua data).
+        if (localAntigo != destino && LancamentoAcoes.ehGrupoParcelas(antigo.natureza, antigo.grupoId)) {
+            val ts = agora()
+            despesaDao.obterDoGrupo(antigo.grupoId!!)
+                .filter { it.id != antigo.id && it.natureza == Natureza.NORMAL }
+                .forEach { irma ->
+                    val movida = when (destino) {
+                        is Local.Credito -> irma.copy(cartaoId = destino.cartaoId, conta = novo.conta, pago = false)
+                        is Local.Debito -> irma.copy(cartaoId = null, conta = novo.conta, pago = irma.dataMs <= ts)
+                        is Local.Conta -> irma.copy(cartaoId = null, conta = novo.conta, pago = irma.dataMs <= ts)
+                    }
+                    despesaDao.inserirDespesa(movida)
+                    afetados += irma; afetados += movida
+                }
+        }
+        recalcularAfetados(afetados)
         atualizarSnapshotPatrimonial()
     }
 
@@ -739,7 +805,8 @@ class MainRepository(
             }
             c = c.copy(
                 contaId = principal.contaId, limiteTotal = principal.limiteTotal,
-                diaFechamento = principal.diaFechamento, diaVencimento = principal.diaVencimento, tipo = principal.tipo
+                diaFechamento = principal.diaFechamento, diaVencimento = principal.diaVencimento, tipo = principal.tipo,
+                fechamentoMelhorDia = principal.fechamentoMelhorDia
             )
             principalTotal = principal.limiteTotal
         } else if (anterior?.cartaoPrincipalId != null) {
@@ -748,7 +815,8 @@ class MainRepository(
             if (c.limiteTotal <= 0.0 && c.contaId == 0) {
                 c = c.copy(
                     contaId = anterior.contaId, limiteTotal = anterior.limiteTotal, diaFechamento = anterior.diaFechamento,
-                    diaVencimento = anterior.diaVencimento, tipo = anterior.tipo
+                    diaVencimento = anterior.diaVencimento, tipo = anterior.tipo,
+                    fechamentoMelhorDia = anterior.fechamentoMelhorDia
                 )
             }
             principalTotal = c.limiteTotal
@@ -779,7 +847,7 @@ class MainRepository(
             c.copy(limiteTotal = Dinheiro.arredondar(c.limiteTotal), limiteDisponivel = Dinheiro.arredondar(c.limiteTotal))
         )
         if (c.cartaoPrincipalId == null && c.id != 0) {
-            cartaoDao.propagarParaVirtuais(c.id, c.contaId, Dinheiro.arredondar(c.limiteTotal), c.diaFechamento, c.diaVencimento, c.tipo)
+            cartaoDao.propagarParaVirtuais(c.id, c.contaId, Dinheiro.arredondar(c.limiteTotal), c.diaFechamento, c.diaVencimento, c.tipo, c.fechamentoMelhorDia)
         }
         // R42: as compras do cartão seguem o número de conta do cartão (e dos virtuais, se for físico).
         if (c.id != 0) {
@@ -866,12 +934,12 @@ class MainRepository(
         val liquidoC = itens.sumOf { -it.centavosAssinados }
         if (liquidoC <= 0L) throw RegraFinanceiraException("Não há valor a pagar nos itens selecionados.")
 
-        val refs = itens.map { Financas.faturaDaCompra(it.dataMs, cartao.diaFechamento) }.distinct()
+        val refs = itens.map { Financas.faturaDaCompra(it.dataMs, cartao.diaFechamento, cartao.fechamentoMelhorDia) }.distinct()
         val rotulo: String
         val grupoId: String
         if (refs.size == 1) {
             val ref = refs.first()
-            val abertosDaFatura = doGrupo.count { !it.pago && Financas.faturaDaCompra(it.dataMs, cartao.diaFechamento) == ref }
+            val abertosDaFatura = doGrupo.count { !it.pago && Financas.faturaDaCompra(it.dataMs, cartao.diaFechamento, cartao.fechamentoMelhorDia) == ref }
             val base = "fatura:${cartao.id}:${ref.ano}-%02d".format(ref.mes)
             if (abertosDaFatura == itens.size) {
                 rotulo = "%02d/%d".format(ref.mes, ref.ano); grupoId = base
@@ -930,7 +998,7 @@ class MainRepository(
             alternarPago(item.id, true)
         } else {
             val cartao = cartaoDao.getCartaoPorId(cartaoId) ?: return
-            pagarFatura(cartaoId, Financas.faturaDaCompra(item.dataMs, cartao.diaFechamento))
+            pagarFatura(cartaoId, Financas.faturaDaCompra(item.dataMs, cartao.diaFechamento, cartao.fechamentoMelhorDia))
         }
     }
 
@@ -1225,7 +1293,7 @@ class MainRepository(
             .filter { it.cartaoId != null && !it.pago && it.tipo == TipoDespesa.DEBITO }
             .filter { d ->
                 val cartao = cartoes[d.cartaoId] ?: return@filter false
-                val ref = Financas.faturaDaCompra(d.dataMs, cartao.diaFechamento)
+                val ref = Financas.faturaDaCompra(d.dataMs, cartao.diaFechamento, cartao.fechamentoMelhorDia)
                 Financas.dataVencimento(cartao.diaFechamento, cartao.diaVencimento, ref) <= fim.time
             }
             .sortedBy { it.data.time }

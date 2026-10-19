@@ -8,6 +8,9 @@ import { diffDataset, type CollectionDiff } from "./diff";
 
 const LIMITE_BATCH = 500;
 
+/** R72 - coleções legadas do app que o portal não usa em nenhuma tela: só são lidas sob demanda (backup/exportação/restauração). */
+export const COLECOES_SOB_DEMANDA: readonly CollectionName[] = ["transacoes"];
+
 type Operacao =
   | { tipo: "set"; colecao: CollectionName; id: number; dados: DocumentData }
   | { tipo: "delete"; colecao: CollectionName; id: number };
@@ -34,7 +37,8 @@ export class FirebaseAdapter implements PersistenceAdapter {
 
   start(onData: (ds: Dataset) => void, onError: (e: Error) => void): () => void {
     const docs = new Map<CollectionName, DocumentData[]>();
-    const unsubs = COLLECTIONS.map((nome) =>
+    const escutadas = COLLECTIONS.filter((n) => !COLECOES_SOB_DEMANDA.includes(n));
+    const unsubs = escutadas.map((nome) =>
       onSnapshot(
         this.col(nome),
         (snap) => {
@@ -42,7 +46,7 @@ export class FirebaseAdapter implements PersistenceAdapter {
             nome,
             snap.docs.map((d) => ({ ...d.data(), id: Number(d.id) })),
           );
-          if (docs.size === COLLECTIONS.length) onData(this.montar(docs));
+          if (docs.size === escutadas.length) onData(this.montar(docs));
         },
         (e) => onError(e),
       ),
@@ -55,6 +59,22 @@ export class FirebaseAdapter implements PersistenceAdapter {
     for (const nome of COLLECTIONS) bruto[nome === "transacoes" ? "transacao" : nome] = docs.get(nome) ?? [];
     const r = backupSchema.safeParse(bruto);
     return r.success ? normalizarBackup(r.data, Date.now()) : emptyDataset();
+  }
+
+  private ocultos: Promise<Pick<Dataset, "transacoes">> | null = null;
+
+  /** R72 - lê uma única vez (por sessão) as coleções sob demanda. */
+  carregarDadosOcultos(): Promise<Pick<Dataset, "transacoes">> {
+    this.ocultos ??= (async () => {
+      const snap = await getDocs(this.col("transacoes"));
+      const bruto = { versaoBackup: 2, transacao: snap.docs.map((d) => ({ ...d.data(), id: Number(d.id) })) };
+      const r = backupSchema.safeParse(bruto);
+      return { transacoes: r.success ? normalizarBackup(r.data, Date.now()).transacoes : [] };
+    })().catch((e: unknown) => {
+      this.ocultos = null;
+      throw e;
+    });
+    return this.ocultos;
   }
 
   private operacoes(diffs: CollectionDiff[]): Operacao[] {
@@ -86,7 +106,16 @@ export class FirebaseAdapter implements PersistenceAdapter {
   async replaceAll(prev: Dataset, next: Dataset): Promise<void> {
     const gravar = diffDataset(emptyDataset(), next);
     const apagar = diffDataset(prev, next).map((d) => ({ ...d, upserts: [] }));
-    await this.executar(this.operacoes([...gravar, ...apagar]));
+    // R72 - o que existe no servidor nas coleções sob demanda e não está no novo conteúdo também sai (restauração = substituição).
+    const sobra: CollectionDiff[] = [];
+    for (const nome of COLECOES_SOB_DEMANDA) {
+      const idsNovos = new Set((next[nome] as readonly Entity[]).map((i) => i.id));
+      const snap = await getDocs(this.col(nome));
+      const deletes = snap.docs.map((d) => Number(d.id)).filter((id) => !idsNovos.has(id));
+      if (deletes.length > 0) sobra.push({ colecao: nome, upserts: [], deletes });
+    }
+    this.ocultos = null;
+    await this.executar(this.operacoes([...gravar, ...apagar, ...sobra]));
   }
 
   async clear(): Promise<void> {

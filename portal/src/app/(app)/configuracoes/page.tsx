@@ -83,8 +83,9 @@ export default function ConfiguracoesPage() {
     if (arquivoRef.current) arquivoRef.current.value = "";
   }
 
-  function exportar() {
-    baixarArquivo(`meudinheiro-backup-${paraInputData(Date.now())}.json`, JSON.stringify(exportarBackup(ds, useConfigGeral.getState().config), null, 2), "application/json");
+  async function exportar() {
+    const completo = await useStore.getState().dsCompleto();
+    baixarArquivo(`meudinheiro-backup-${paraInputData(Date.now())}.json`, JSON.stringify(exportarBackup(completo, useConfigGeral.getState().config), null, 2), "application/json");
   }
 
   async function trocarModo() {

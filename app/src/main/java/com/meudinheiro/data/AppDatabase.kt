@@ -222,6 +222,13 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+/** 12 → 13: fechamentoMelhorDia — o dia do fechamento já é o melhor dia de compra (padrão 0 = comportamento anterior). */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE cartoes ADD COLUMN fechamentoMelhorDia INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 /** 7 → 8: R47 — pausar recorrência (despesas/receitas fixas), com retomada automática opcional. */
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -237,7 +244,7 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         PatrimonioHistorico::class, Cartao::class, SyncMeta::class, Lixeira::class,
         RegraCategoria::class, Projeto::class, Configuracao::class, Divida::class, Pessoa::class, Acerto::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -275,7 +282,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DB_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // Só em downgrade (APK antigo sobre banco novo). Upgrades NUNCA apagam dados.
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()
