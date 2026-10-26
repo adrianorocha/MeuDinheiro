@@ -603,7 +603,8 @@ fun MainScreen(
                                                     )
                                                     TransacoesRecentesSection(
                                                         transacoes = listaTransacoes, isPrivate = isPrivate,
-                                                        onAcoes = { id -> alvoLancamento = AlvoLancamento(id.toLong()) }
+                                                        onAcoes = { id -> alvoLancamento = AlvoLancamento(id.toLong()) },
+                                                        onVerTudo = { showExtratoScreen = true }
                                                     )
                                                 }
                                             }

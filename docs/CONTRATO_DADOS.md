@@ -772,3 +772,14 @@ Sem mudança de formato de dados nem de regras. Para reduzir leituras do Firesto
 - Vencimento da fatura em destaque: acerto **A receber pendente** ligado a lançamento no **crédito** ganha `vencimento` (data da fatura via `faturaDaCompra`/`vencimentoFatura`, "vence"/"venceu"). Cada pessoa mostra uma faixa "VENCIMENTO DA FATURA DO CARTÃO" (o mais antigo/próximo + valor ligado a faturas). Requer `cartoes` em `OpcoesRelatorioPessoas`.
 - `excluirAcertoIds`: acertos escolhidos ficam de fora do relatório (e dos totais) e entram no próximo; nenhum dado é alterado. `adiados` conta quantos ficaram de fora.
 - Sem novos campos persistidos. O app (`RelatorioPessoas.kt`) ainda usa os textos antigos: alinhar quando for pedido.
+
+## R83 - Novo Lcto (app): despesa ou receita
+- Na linha de ações do app o botão "Nova Despesa" virou **"Novo Lcto"** e passou a ser o primeiro (ordem: Novo Lcto, Depositar, Assinaturas, Configurar; "Ajustar saldo da conta" segue abaixo).
+- Ao tocar, abre um seletor com **Despesa** (formulário completo de antes, inalterado) e **Receita** (novo `ReceitaDialog`, que existia só no portal). Continua exigindo conta selecionada.
+- Receita gravada como no portal: lançamento com `tipo=CREDITO`, `natureza=NORMAL`, `descricao`, `valor`, `categoria` (+ `pic` da categoria), `conta`, `data`, `pago`. Data futura (ou "Já recebido" desmarcado) = `pago=false` (pendente, não altera o saldo até a baixa). Sem campo de observação (o modelo não tem).
+- Nenhum campo novo no modelo nem no Firestore. Regras puras em `domain/NovaReceita.kt` (testadas em `NovaReceitaTest`).
+
+## R84 - Receita (app): comprovante, origem por pessoa e "Ver tudo"
+- **Comprovante:** o `ReceitaDialog` usa a mesma `SecaoAnexos`/`AnexosFormState` da despesa (foto pela câmera com permissão, ou arquivo) e salva por `adicionarDespesaSalvando(rec, null, anexos)` (R60). Grava no campo `anexos` do lançamento, como na despesa; falha no anexo nunca desfaz a receita.
+- **De quem veio (pessoa), opcional:** o portal só aceita receita vinculada como A_PAGAR (repasse, R68); não há regra para "fulano me pagou". Decisão simples e segura: vínculo **informativo**, gravado como a tag `De: <nome>` (campo `tags` já existente, R56; máx. 30 caracteres). **Não** cria/quita acerto, não mexe em dívidas, saldos nem relatórios de Pessoas. Regra pura em `NovaReceita.tagsComOrigem` (testada). Sem campo novo no modelo/Firestore. Limitação: a tela de Pessoas não lista essa receita; renomear a pessoa não renomeia a tag.
+- **Bug "Ver tudo"** (Contas, "Últimas Movimentações"): o clique era `{ /* Abrir extrato */ }` (vazio). Agora abre o `ExtratoScreen` (lista completa), o mesmo do menu "extrato".

@@ -44,7 +44,9 @@ fun TransacoesRecentesSection(
     transacoes: List<TransacaoModel>,
     isPrivate: Boolean,
     /** Abre o menu de ações do lançamento (toque longo ou ⋮); recebe o id do lançamento. */
-    onAcoes: ((Long) -> Unit)? = null
+    onAcoes: ((Long) -> Unit)? = null,
+    /** "Ver tudo": abre o extrato completo. */
+    onVerTudo: () -> Unit = {}
 ) {
     // Só renderiza a seção INTEIRA se houver transações
     if (transacoes.isNotEmpty()) {
@@ -72,7 +74,10 @@ fun TransacoesRecentesSection(
                     color = Color(0xFF00E5FF),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clickable { /* Abrir extrato */ }
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onVerTudo)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
             }
 

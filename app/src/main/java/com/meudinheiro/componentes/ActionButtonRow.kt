@@ -126,7 +126,9 @@ fun ActionButtonRow(
     val currentContext = LocalContext.current
     val parentScope = rememberCoroutineScope()
 
+    var exibirNovoLcto by remember { mutableStateOf(false) }
     var exibirFormulario by remember { mutableStateOf(false) }
+    var exibirReceita by remember { mutableStateOf(false) }
     var exibirDeposito by remember { mutableStateOf(false) }
     var exibirAssinaturas by remember { mutableStateOf(false) }
     var exibirAjuste by remember { mutableStateOf(false) }
@@ -150,6 +152,21 @@ fun ActionButtonRow(
             val modifierItem = Modifier.weight(1f)
 
             ActionButton(
+                icon = R.drawable.add,
+                text = "Novo Lcto",
+                color = NeonCyan,
+                modifier = modifierItem,
+                onClick = {
+                    if (contaSelecionada.isBlank()) Toast.makeText(
+                        currentContext,
+                        "Selecione uma conta",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    else exibirNovoLcto = true
+                }
+            )
+
+            ActionButton(
                 icon = R.drawable.deposit,
                 text = "Depositar",
                 color = NeonGreen,
@@ -161,21 +178,6 @@ fun ActionButtonRow(
                         Toast.LENGTH_SHORT
                     ).show()
                     else exibirDeposito = true
-                }
-            )
-
-            ActionButton(
-                icon = R.drawable.add,
-                text = "Nova Despesa",
-                color = NeonCyan,
-                modifier = modifierItem,
-                onClick = {
-                    if (contaSelecionada.isBlank()) Toast.makeText(
-                        currentContext,
-                        "Selecione uma conta",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    else exibirFormulario = true
                 }
             )
 
@@ -214,6 +216,25 @@ fun ActionButtonRow(
 
     if (exibirAjuste) {
         AjusteSaldoDialog(contaSelecionada = contaSelecionada, viewModel = viewModel, onDismiss = { exibirAjuste = false })
+    }
+
+    if (exibirNovoLcto) {
+        NovoLancamentoSeletorDialog(
+            onDespesa = { exibirNovoLcto = false; exibirFormulario = true },
+            onReceita = { exibirNovoLcto = false; exibirReceita = true },
+            onDismiss = { exibirNovoLcto = false }
+        )
+    }
+
+    if (exibirReceita) {
+        ReceitaDialog(
+            categorias = categorias,
+            contaSelecionada = contaSelecionada,
+            getPicCategoria = getPicCategoria,
+            viewModel = viewModel,
+            parentScope = parentScope,
+            onDismiss = { exibirReceita = false }
+        )
     }
 
     if (exibirFormulario) {
@@ -426,6 +447,225 @@ fun AjusteSaldoDialog(contaSelecionada: String, viewModel: ContaSaldoViewModel, 
                             autenticarParaLancar(ctx, exigirBio, "Confirmar ajuste de saldo", "Autentique para ajustar o saldo de ${conta.banco}") {
                                 viewModel.ajustarSaldoConta(conta.conta, saldoReal, observacao)
                                 Toast.makeText(ctx, "Saldo ajustado", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+/** "Novo Lcto": escolhe entre lançar uma despesa (formulário completo) ou uma receita. */
+@Composable
+private fun NovoLancamentoSeletorDialog(onDespesa: () -> Unit, onReceita: () -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        PremiumDialogCard {
+            Text("Novo lançamento", style = MaterialTheme.typography.titleLarge, color = TextColor, fontWeight = FontWeight.Bold)
+            Text("O que você quer lançar?", color = TextColor.copy(alpha = 0.7f))
+            BotaGlassmorphic(
+                texto = "Despesa", corAcento = Color(0xFFFF8A80), hapticType = "impacto",
+                animateIdleJump = false, modifier = Modifier.fillMaxWidth(), onClick = onDespesa
+            )
+            BotaGlassmorphic(
+                texto = "Receita", corAcento = NeonGreen, hapticType = "impacto",
+                animateIdleJump = false, modifier = Modifier.fillMaxWidth(), onClick = onReceita
+            )
+            BotaGlassmorphic(
+                texto = "Cancelar", corAcento = Color.White.copy(alpha = 0.6f), hapticType = "impacto",
+                animateIdleJump = false, modifier = Modifier.fillMaxWidth(), onClick = onDismiss
+            )
+        }
+    }
+}
+
+/** Receita = Despesa(tipo=CREDITO, natureza NORMAL), igual ao portal. Futura fica pendente (pago=false). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReceitaDialog(
+    categorias: List<String>,
+    contaSelecionada: String,
+    getPicCategoria: (String) -> String,
+    viewModel: ContaSaldoViewModel,
+    parentScope: CoroutineScope,
+    onDismiss: () -> Unit
+) {
+    val ctx = LocalContext.current
+    val exigirBio by remember { com.meudinheiro.funcoes.UserPreferences(ctx).biometriaLancarFlow }.collectAsState(initial = true)
+    var descricao by rememberSaveable { mutableStateOf("") }
+    var valor by rememberSaveable { mutableStateOf("") }
+    var categoria by remember { mutableStateOf(com.meudinheiro.domain.NovaReceita.categoriaInicial(categorias)) }
+    val dataMillis = remember { mutableStateOf(System.currentTimeMillis()) }
+    var jaRecebido by remember { mutableStateOf(true) }
+    var recebidoManual by remember { mutableStateOf(false) }
+    var mostrarCalendario by remember { mutableStateOf(false) }
+    var catExpandida by remember { mutableStateOf(false) }
+    // R84: comprovante (mesmo componente/fluxo da despesa) e origem informativa (pessoa).
+    val anexosForm = remember { AnexosFormState() }
+    val pessoas by viewModel.pessoas.collectAsState()
+    var pessoaOrigemId by remember { mutableStateOf<Int?>(null) }
+    var pessoaExpandida by remember { mutableStateOf(false) }
+
+    if (mostrarCalendario) {
+        CustomCalendarDialog(
+            onDismiss = { mostrarCalendario = false },
+            onDateSelected = { y, m, d ->
+                val c = Calendar.getInstance().apply { set(y, m, d) }
+                dataMillis.value = c.timeInMillis
+                if (!recebidoManual) jaRecebido = com.meudinheiro.domain.NovaReceita.pagoInicial(c.timeInMillis, System.currentTimeMillis())
+                mostrarCalendario = false
+            }
+        )
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        PremiumDialogCard(modifier = Modifier.verticalScroll(rememberScrollState())) {
+            Text("Nova Receita", style = MaterialTheme.typography.titleLarge, color = TextColor, fontWeight = FontWeight.Bold)
+            Text("Para: $contaSelecionada", color = NeonGreen)
+
+            PremiumTextField(
+                value = descricao,
+                onValueChange = { descricao = it.take(80) },
+                label = "Descrição",
+                onClick = { }
+            )
+            PremiumTextField(
+                value = valor,
+                onValueChange = { valor = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                label = "Valor",
+                prefix = { Text("R$ ", color = NeonGreen) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                onClick = { }
+            )
+
+            ExposedDropdownMenuBox(expanded = catExpandida, onExpandedChange = { catExpandida = it }) {
+                PremiumTextField(
+                    value = categoria ?: "Selecione...",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = "Categoria",
+                    modifier = Modifier.menuAnchor(),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpandida) },
+                    onClick = { catExpandida = true }
+                )
+                ExposedDropdownMenu(
+                    expanded = catExpandida,
+                    onDismissRequest = { catExpandida = false },
+                    modifier = Modifier.background(DialogBg)
+                ) {
+                    categorias.forEach { cat ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(cat, color = Color.White) },
+                            onClick = { categoria = cat; catExpandida = false }
+                        )
+                    }
+                }
+            }
+
+            PremiumTextField(
+                value = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(dataMillis.value)),
+                onValueChange = {},
+                label = "Data",
+                readOnly = true,
+                onClick = { mostrarCalendario = true },
+                trailingIcon = {
+                    IconButton(onClick = { mostrarCalendario = true }) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = TextColor)
+                    }
+                }
+            )
+
+            if (pessoas.isNotEmpty()) {
+                val pessoaOrigem = pessoas.firstOrNull { it.id == pessoaOrigemId }
+                ExposedDropdownMenuBox(expanded = pessoaExpandida, onExpandedChange = { pessoaExpandida = it }) {
+                    PremiumTextField(
+                        value = pessoaOrigem?.nome ?: "Ninguém (opcional)",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = "De quem veio (pessoa)",
+                        modifier = Modifier.menuAnchor(),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = pessoaExpandida) },
+                        onClick = { pessoaExpandida = true }
+                    )
+                    ExposedDropdownMenu(
+                        expanded = pessoaExpandida,
+                        onDismissRequest = { pessoaExpandida = false },
+                        modifier = Modifier.background(DialogBg)
+                    ) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Ninguém", color = Color.White) },
+                            onClick = { pessoaOrigemId = null; pessoaExpandida = false }
+                        )
+                        pessoas.forEach { p ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(p.nome, color = Color.White) },
+                                onClick = { pessoaOrigemId = p.id; pessoaExpandida = false }
+                            )
+                        }
+                    }
+                }
+                if (pessoaOrigem != null) {
+                    Text(
+                        "Só registra a origem (tag \"De: ${pessoaOrigem.nome}\"). Não cria nem quita dívida e não altera saldos.",
+                        color = Color.White.copy(0.5f), fontSize = 11.sp
+                    )
+                }
+            }
+
+            SecaoAnexos(existentes = emptyList(), estado = anexosForm)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.Checkbox(
+                    checked = jaRecebido,
+                    onCheckedChange = { recebidoManual = true; jaRecebido = it }
+                )
+                Text("Já recebido", color = TextColor)
+            }
+            if (!jaRecebido || dataMillis.value > System.currentTimeMillis()) {
+                Text(
+                    "Fica pendente e só entra no saldo quando for recebida.",
+                    color = Color.White.copy(0.5f), fontSize = 11.sp
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+                BotaGlassmorphic(
+                    texto = "Cancelar", corAcento = Color.White.copy(alpha = 0.6f), hapticType = "impacto",
+                    animateIdleJump = false, modifier = Modifier.weight(1f), onClick = onDismiss
+                )
+                BotaGlassmorphic(
+                    texto = "Confirmar", corAcento = NeonGreen, hapticType = "sucesso",
+                    animateIdleJump = false, modifier = Modifier.weight(1f),
+                    onClick = {
+                        val erro = com.meudinheiro.domain.NovaReceita.validar(descricao, valor, categoria)
+                        if (erro != null) {
+                            Toast.makeText(ctx, erro, Toast.LENGTH_SHORT).show()
+                        } else {
+                            val cat = categoria!!
+                            val agora = System.currentTimeMillis()
+                            val rec = Despesa(
+                                descricao = descricao.trim(),
+                                categoria = cat,
+                                valor = com.meudinheiro.domain.NovaReceita.parseValor(valor)!!,
+                                data = Date(dataMillis.value),
+                                pic = getPicCategoria(cat),
+                                conta = contaSelecionada.trim(),
+                                tipo = TipoDespesa.CREDITO,
+                                pago = com.meudinheiro.domain.NovaReceita.pagoFinal(jaRecebido, dataMillis.value, agora),
+                                mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
+                                ano = Calendar.getInstance().get(Calendar.YEAR),
+                                tags = com.meudinheiro.domain.NovaReceita.tagsComOrigem(
+                                    emptyList(), pessoas.firstOrNull { it.id == pessoaOrigemId }?.nome
+                                )
+                            )
+                            val novosAnexos = anexosForm.novos.toList()
+                            autenticarParaLancar(ctx, exigirBio, "Confirmar receita", "Autentique para lançar a receita") {
+                                parentScope.launch {
+                                    viewModel.adicionarDespesaSalvando(rec, null, novosAnexos)
+                                    delay(200)
+                                    viewModel.carregarResumoFinanceiro()
+                                }
                                 onDismiss()
                             }
                         }
