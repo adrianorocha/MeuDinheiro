@@ -11,9 +11,10 @@
  * - Σ subtotais das pessoas = totais do resumo (garantido por construção e por teste).
  */
 import { brlCentavos } from "./centavos";
+import { cartaoIdDe, faturaDaCompra, principalDe, vencimentoFatura } from "./calc";
 import { toCents } from "./money";
 import { resumoRateios, type ItemRateio } from "./rateios";
-import type { Acerto, Despesa, Pessoa, TipoAcerto } from "./types";
+import type { Acerto, Cartao, Despesa, Pessoa, TipoAcerto } from "./types";
 
 export type SituacaoRelatorio = "TODOS" | "PENDENTES" | "QUITADOS";
 export type AgruparRelatorio = "POR_PESSOA" | "CRONOLOGICO";
@@ -32,6 +33,10 @@ export interface OpcoesRelatorioPessoas {
   incluirRateios?: boolean;
   /** epoch ms da emissão */
   agora: number;
+  /** cartões, para destacar o vencimento da fatura dos lançamentos no crédito */
+  cartoes?: readonly Cartao[];
+  /** acertos que NÃO entram neste relatório (ficam para o próximo; nada é alterado nos dados) */
+  excluirAcertoIds?: readonly number[];
 }
 
 export interface LinhaRelatorioPessoas {
@@ -52,6 +57,8 @@ export interface LinhaRelatorioPessoas {
   statusTexto: string;
   /** só com `grupoRateio` e lançamento existente */
   rateio: { totalDespesa: number; cota: number; texto: string } | null;
+  /** só A receber pendente de lançamento no cartão de crédito: data limite para acertar (vencimento da fatura) */
+  vencimento: { ms: number; texto: string; vencido: boolean } | null;
 }
 
 export interface PessoaRelatorio {
@@ -65,11 +72,13 @@ export interface PessoaRelatorio {
   aPagar: number;
   liquido: number;
   sentido: SentidoSaldo;
-  /** "te deve R$ 10,00" | "você deve R$ 10,00" | "quites" */
+  /** "a acertar R$ 10,00" | "a compensar R$ 10,00" | "contas em dia" */
   saldoTexto: string;
   quitadoAReceber: number;
   quitadoAPagar: number;
   nAcertos: number;
+  /** vencimento de fatura mais próximo (ou o já vencido mais antigo) entre os pendentes, com o valor ligado a faturas */
+  proximoVencimento: { ms: number; texto: string; vencido: boolean; centavos: number } | null;
   /** vazio quando `incluirDetalhes` é falso */
   linhas: LinhaRelatorioPessoas[];
 }
@@ -105,12 +114,18 @@ export interface RelatorioPessoas {
   /** só em CRONOLOGICO com detalhes: todas as linhas por data */
   cronologico: LinhaRelatorioPessoas[];
   rateios: RateiosRelatorio | null;
+  /** quantos acertos ficaram de fora por escolha (para o próximo relatório) */
+  adiados: number;
   /** nada a mostrar: não gerar arquivo */
   vazio: boolean;
 }
 
 export const MSG_SEM_ACERTOS = "Nenhum acerto no período";
 
+const inicioDia = (ms: number) => {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
 const dois = (n: number) => String(n).padStart(2, "0");
 export const dataBR = (ms: number) => {
   const d = new Date(ms);
@@ -139,9 +154,9 @@ export function iniciaisDoNome(nome: string): string {
 }
 
 export function saldoTextoDe(liquido: number): { sentido: SentidoSaldo; texto: string } {
-  if (liquido > 0) return { sentido: "TE_DEVE", texto: `te deve ${brlCentavos(liquido)}` };
-  if (liquido < 0) return { sentido: "VOCE_DEVE", texto: `você deve ${brlCentavos(-liquido)}` };
-  return { sentido: "QUITES", texto: "quites" };
+  if (liquido > 0) return { sentido: "TE_DEVE", texto: `a acertar ${brlCentavos(liquido)}` };
+  if (liquido < 0) return { sentido: "VOCE_DEVE", texto: `a compensar ${brlCentavos(-liquido)}` };
+  return { sentido: "QUITES", texto: "contas em dia" };
 }
 
 export type AtalhoPeriodo = "ESTE_MES" | "MES_PASSADO" | "TRES_MESES" | "ANO" | "TUDO";
@@ -178,12 +193,24 @@ export function montarRelatorioPessoas(
   const porDespesa = new Map(despesas.map((d) => [d.id, d]));
   const escolhidas = new Set(op.pessoaIds);
   const alvo = pessoas.filter((p) => escolhidas.size === 0 || escolhidas.has(p.id));
+  const adiados = new Set(op.excluirAcertoIds ?? []);
   const noPeriodo = (a: Acerto) => !op.periodo || (a.data >= op.periodo.inicio && a.data <= op.periodo.fim);
   const naSituacao = (a: Acerto) => op.situacao === "TODOS" || (op.situacao === "PENDENTES" ? !a.quitado : a.quitado);
 
   const linhaDe = (a: Acerto, p: Pessoa): LinhaRelatorioPessoas => {
     const cents = toCents(a.valor);
     const d = a.despesaId != null ? porDespesa.get(a.despesaId) : undefined;
+    let vencimento: LinhaRelatorioPessoas["vencimento"] = null;
+    if (d && a.tipo === "A_RECEBER" && !a.quitado && cartaoIdDe(d) !== null) {
+      const cartao = op.cartoes?.find((c) => c.id === cartaoIdDe(d));
+      if (cartao) {
+        const principal = principalDe(cartao, op.cartoes ?? []);
+        const ref = faturaDaCompra(principal, d.data);
+        const ms = vencimentoFatura(principal, ref.mes, ref.ano);
+        const vencido = ms < inicioDia(op.agora);
+        vencimento = { ms, texto: `Fatura do cartão ${vencido ? "venceu" : "vence"} em ${dataBR(ms)}`, vencido };
+      }
+    }
     const origemTipo = a.despesaId == null ? "AVULSO" : d ? "LANCAMENTO" : "REMOVIDO";
     let rateio: LinhaRelatorioPessoas["rateio"] = null;
     if (a.grupoRateio && d) {
@@ -206,6 +233,7 @@ export function montarRelatorioPessoas(
       status: a.quitado ? "QUITADO" : "PENDENTE",
       statusTexto: a.quitado ? (a.quitadoEm != null ? `Quitado em ${diaMes(a.quitadoEm)}` : "Quitado") : "Pendente",
       rateio,
+      vencimento,
     };
   };
   const porData = (x: LinhaRelatorioPessoas, y: LinhaRelatorioPessoas) => x.data - y.data || x.acertoId - y.acertoId;
@@ -218,7 +246,7 @@ export function montarRelatorioPessoas(
   const blocos: PessoaRelatorio[] = [];
   const todas: LinhaRelatorioPessoas[] = [];
   for (const p of ordenadas) {
-    const meus = acertos.filter((a) => a.pessoaId === p.id && noPeriodo(a) && naSituacao(a));
+    const meus = acertos.filter((a) => a.pessoaId === p.id && noPeriodo(a) && naSituacao(a) && !adiados.has(a.id));
     if (meus.length === 0) continue;
     const soma = (tipo: TipoAcerto, quitado: boolean) => meus.filter((a) => a.tipo === tipo && a.quitado === quitado).reduce((s, a) => s + toCents(a.valor), 0);
     const aReceber = soma("A_RECEBER", false);
@@ -227,6 +255,11 @@ export function montarRelatorioPessoas(
     const saldo = saldoTextoDe(liquido);
     const linhas = meus.map((a) => linhaDe(a, p)).sort(porData);
     todas.push(...linhas);
+    const comVenc = linhas.filter((l) => l.vencimento);
+    const primeiro = comVenc.length > 0 ? comVenc.reduce((x, y) => (y.vencimento!.ms < x.vencimento!.ms ? y : x)) : null;
+    const proximoVencimento = primeiro
+      ? { ...primeiro.vencimento!, centavos: comVenc.reduce((s, l) => s + l.centavos, 0) }
+      : null;
     blocos.push({
       pessoaId: p.id,
       nome: p.nome,
@@ -241,6 +274,7 @@ export function montarRelatorioPessoas(
       quitadoAReceber: soma("A_RECEBER", true),
       quitadoAPagar: soma("A_PAGAR", true),
       nAcertos: meus.length,
+      proximoVencimento,
       linhas: op.incluirDetalhes ? linhas : [],
     });
   }
@@ -289,6 +323,7 @@ export function montarRelatorioPessoas(
     pessoas: blocos,
     cronologico: op.agrupar === "CRONOLOGICO" && op.incluirDetalhes ? [...todas].sort(porData) : [],
     rateios,
+    adiados: acertos.filter((a) => adiados.has(a.id) && alvo.some((p) => p.id === a.pessoaId) && noPeriodo(a) && naSituacao(a)).length,
     vazio: blocos.length === 0,
   };
 }

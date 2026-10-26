@@ -55,21 +55,21 @@ function quebrar(m: Medidor, texto: string, peso: string | number, tam: number, 
   return quebrarTexto(m, texto, max);
 }
 
-const H_RESUMO = 2 * 118 + 20;
+const hPessoa = (p: PessoaRelatorio) => 120 + (p.proximoVencimento ? 64 : 0);
 
 export function planejarImagens(rel: RelatorioPessoas, m: Medidor, maxAltura = MAX_ALTURA): PlanoImagens {
   const filtrosLinhas = quebrar(m, rel.filtros.join("   ·   "), 400, 18, CW);
-  const hCabecalho1 = 12 + 28 + 64 + 18 + 48 + 34 + filtrosLinhas.length * 26 + 22 + H_RESUMO + 24;
+  const hCabecalho1 = 12 + 28 + 64 + 18 + 48 + 34 + filtrosLinhas.length * 26 + 12;
 
   const blocos: Bloco[] = [];
   const cronologico = rel.agrupar === "CRONOLOGICO" && rel.incluirDetalhes;
-  const textoW = CW - 72 - 250;
+  const textoW = CW - 8 - 250;
 
   const linhaBloco = (l: LinhaRelatorioPessoas, p: PessoaRelatorio | undefined, mostrarPessoa: boolean): Bloco => {
     const desc = quebrar(m, l.descricao, 600, 22, textoW);
     const origem = quebrar(m, `${l.dataTexto} · ${l.origem}`, 400, 18, textoW);
     const rateio = l.rateio ? quebrar(m, l.rateio.texto, 500, 17, textoW - 26) : [];
-    const texto = (mostrarPessoa ? 34 : 0) + desc.length * 28 + origem.length * 24 + rateio.length * 24;
+    const texto = (mostrarPessoa ? 34 : 0) + desc.length * 28 + origem.length * 24 + rateio.length * 24 + (l.vencimento ? 40 : 0);
     return {
       tipo: "linha",
       h: Math.max(texto + 30, 104),
@@ -86,12 +86,12 @@ export function planejarImagens(rel: RelatorioPessoas, m: Medidor, maxAltura = M
   const pessoaPorId = new Map(rel.pessoas.map((p) => [p.pessoaId, p]));
   if (cronologico) {
     blocos.push({ tipo: "titulo", h: 64, texto: "Saldo por pessoa", manter: true });
-    for (const p of rel.pessoas) blocos.push({ tipo: "pessoa", h: 156, pessoa: p, manter: true });
+    for (const p of rel.pessoas) blocos.push({ tipo: "pessoa", h: hPessoa(p), pessoa: p, manter: true });
     blocos.push({ tipo: "titulo", h: 64, texto: "Acertos em ordem cronológica", manter: true });
     for (const l of rel.cronologico) blocos.push(linhaBloco(l, pessoaPorId.get(l.pessoaId), true));
   } else {
     for (const p of rel.pessoas) {
-      blocos.push({ tipo: "pessoa", h: 156, pessoa: p, manter: true });
+      blocos.push({ tipo: "pessoa", h: hPessoa(p), pessoa: p, manter: true });
       for (const l of p.linhas) blocos.push(linhaBloco(l, p, false));
     }
   }
@@ -196,7 +196,7 @@ function corSaldo(s: PessoaRelatorio["sentido"]) {
 
 function desenharPessoa(ctx: Ctx, p: PessoaRelatorio, y0: number) {
   const y = y0 + 20;
-  const h = 136;
+  const h = 100;
   const cor = corAvatar(p.corIndice);
   ctx.save();
   ctx.beginPath();
@@ -227,17 +227,22 @@ function desenharPessoa(ctx: Ctx, p: PessoaRelatorio, y0: number) {
   texto(ctx, p.saldoTexto, direita, y + 46, 700, ts, cs, "right");
   icone(ctx, p.sentido === "QUITES" ? "check" : "balanca", direita - wSaldo - 40, y + 20, 30, cs, 2.2);
   texto(ctx, "saldo pendente (a receber − a pagar)", direita, y + 74, 400, 16, COR.cinza, "right");
-  // subtotais
-  const itens: [NomeIcone, string, string][] = [
-    ["entrada", `A receber ${brlCentavos(p.aReceber)}`, COR.verde],
-    ["saida", `A pagar ${brlCentavos(p.aPagar)}`, COR.laranja],
-    ["check", `Quitado ${brlCentavos(p.quitadoAReceber + p.quitadoAPagar)}`, COR.quitado],
-  ];
-  let x = M + 28;
-  for (const [ic, t, c] of itens) {
-    icone(ctx, ic, x, y + h - 42, 22, c, 2);
-    texto(ctx, t, x + 30, y + h - 24, 600, 19, c);
-    x += 30 + larg(ctx, t, 600, 19) + 36;
+  const v = p.proximoVencimento;
+  if (v) {
+    const yb = y + h + 8;
+    const c = v.vencido ? COR.laranja : COR.ambar;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(M, yb, CW, 52, 14);
+    ctx.clip();
+    ctx.fillStyle = v.vencido ? COR.laranjaFundo : COR.ambarFundo;
+    ctx.fillRect(M, yb, CW, 52);
+    ctx.fillStyle = c;
+    ctx.fillRect(M, yb, 8, 52);
+    ctx.restore();
+    icone(ctx, "calendario", M + 26, yb + 12, 28, c, 2.2);
+    texto(ctx, `VENCIMENTO DA FATURA DO CARTÃO: ${dataBR(v.ms)}${v.vencido ? " (vencida)" : ""}`, M + 66, yb + 34, 800, 23, c);
+    texto(ctx, `valor ligado à fatura: ${brlCentavos(v.centavos)}`, M + CW - 24, yb + 33, 500, 18, c, "right");
   }
 }
 
@@ -245,14 +250,7 @@ function desenharLinha(ctx: Ctx, b: Extract<Bloco, { tipo: "linha" }>, y0: numbe
   const l = b.linha;
   const recebe = l.tipo === "A_RECEBER";
   const cor = recebe ? COR.verde : COR.laranja;
-  const fundo = recebe ? COR.verdeFundo : COR.laranjaFundo;
-  const textoX = M + 72;
-  // ícone do tipo
-  ctx.fillStyle = fundo;
-  ctx.beginPath();
-  ctx.arc(M + 26, y0 + 38, 22, 0, Math.PI * 2);
-  ctx.fill();
-  icone(ctx, recebe ? "entrada" : "saida", M + 15, y0 + 27, 22, cor, 2.2);
+  const textoX = M + 8;
 
   let ty = y0 + 12;
   if (b.mostrarPessoa) {
@@ -273,10 +271,19 @@ function desenharLinha(ctx: Ctx, b: Extract<Bloco, { tipo: "linha" }>, y0: numbe
     texto(ctx, t, textoX + 26, ty + 18, 500, 17, COR.marca);
     ty += 24;
   }
+  if (l.vencimento) {
+    const c = l.vencimento.vencido ? COR.laranja : COR.ambar;
+    const wv = larg(ctx, l.vencimento.texto, 700, 18) + 48;
+    ctx.fillStyle = l.vencimento.vencido ? COR.laranjaFundo : COR.ambarFundo;
+    ctx.beginPath();
+    ctx.roundRect(textoX, ty + 6, wv, 30, 15);
+    ctx.fill();
+    icone(ctx, "calendario", textoX + 10, ty + 11, 20, c, 2);
+    texto(ctx, l.vencimento.texto, textoX + 36, ty + 27, 700, 18, c);
+  }
   // coluna de valor
   const dir = M + CW;
   texto(ctx, brlCentavos(l.centavos), dir, y0 + 38, 700, 26, cor, "right");
-  texto(ctx, l.tipoTexto, dir, y0 + 62, 600, 17, cor, "right");
   if (l.status === "PENDENTE") pilula(ctx, l.statusTexto, dir, y0 + 72, COR.ambarFundo, COR.ambar, "relogio");
   else pilula(ctx, l.statusTexto, dir, y0 + 72, COR.quitadoFundo, COR.quitado, "check");
   ctx.fillStyle = COR.divisor;
@@ -334,40 +341,6 @@ function desenharBloco(ctx: Ctx, b: Bloco, y: number) {
   }
 }
 
-function desenharResumo(ctx: Ctx, rel: RelatorioPessoas, y0: number) {
-  const r = rel.resumo;
-  const w = (CW - 40) / 3;
-  const sentido = r.saldoLiquido > 0 ? "a seu favor" : r.saldoLiquido < 0 ? "contra você" : "quites";
-  const corSal = r.saldoLiquido > 0 ? COR.verde : r.saldoLiquido < 0 ? COR.laranja : COR.cinza;
-  const caixas: { ic: NomeIcone; rot: string; val: string; sub: string; cor: string }[] = [
-    { ic: "entrada", rot: "A receber (pendente)", val: brlCentavos(r.aReceberPendente), sub: "quem te deve", cor: COR.verde },
-    { ic: "saida", rot: "A pagar (pendente)", val: brlCentavos(r.aPagarPendente), sub: "o que você deve", cor: COR.laranja },
-    { ic: "balanca", rot: "Saldo líquido", val: brlCentavos(Math.abs(r.saldoLiquido)), sub: sentido, cor: corSal },
-    { ic: "check", rot: "Quitado · a receber", val: brlCentavos(r.quitadoAReceber), sub: "já recebido", cor: COR.quitado },
-    { ic: "check", rot: "Quitado · a pagar", val: brlCentavos(r.quitadoAPagar), sub: "já pago", cor: COR.quitado },
-    { ic: "carteira", rot: "Acertos", val: `${r.nAcertos}`, sub: `${r.nPessoas} pessoa${r.nPessoas === 1 ? "" : "s"} · ${r.nPessoasComSaldo} com saldo`, cor: COR.marca },
-  ];
-  caixas.forEach((c, i) => {
-    const x = M + (i % 3) * (w + 20);
-    const y = y0 + Math.floor(i / 3) * 138;
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, 118, 16);
-    ctx.clip();
-    ctx.fillStyle = COR.cinzaClaro;
-    ctx.fillRect(x, y, w, 118);
-    ctx.fillStyle = c.cor;
-    ctx.fillRect(x, y, 8, 118);
-    ctx.restore();
-    icone(ctx, c.ic, x + 24, y + 16, 24, c.cor, 2);
-    texto(ctx, c.rot, x + 56, y + 34, 600, 17, COR.cinza);
-    let t = 34;
-    while (t > 20 && larg(ctx, c.val, 700, t) > w - 44) t -= 2;
-    texto(ctx, c.val, x + 24, y + 80, 700, t, c.cor);
-    texto(ctx, c.sub, x + 24, y + 104, 500, 16, COR.cinza);
-  });
-}
-
 function desenharCabecalho1(ctx: Ctx, rel: RelatorioPessoas, plano: PlanoImagens) {
   ctx.fillStyle = COR.marca;
   ctx.fillRect(0, 0, LARGURA_IMG, 12);
@@ -388,8 +361,6 @@ function desenharCabecalho1(ctx: Ctx, rel: RelatorioPessoas, plano: PlanoImagens
     texto(ctx, t, M, y, 400, 18, COR.cinza);
     y += 26;
   }
-  y += 8;
-  desenharResumo(ctx, rel, y);
 }
 
 function desenharPagina(ctx: Ctx, rel: RelatorioPessoas, plano: PlanoImagens, p: PaginaImagem) {

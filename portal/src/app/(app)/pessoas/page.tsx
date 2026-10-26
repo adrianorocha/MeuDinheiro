@@ -288,7 +288,7 @@ export default function PessoasPage() {
     <>
       <PageHeader
         titulo="Pessoas"
-        descricao="Rateios, empréstimos e acertos: quem te deve e quem você deve"
+        descricao="Rateios, empréstimos e acertos: o que você tem a receber e a compensar"
         acoes={
           <span className="flex flex-wrap gap-2">
             <Button variante="primary" icone={<Plus size={16} aria-hidden />} onClick={() => setFormPessoa({ editar: null })}>
@@ -401,7 +401,7 @@ export default function PessoasPage() {
                 <Money valor={fromCents(s.liquido)} tom="auto" />
               </p>
               <p className="text-xs text-muted">
-                {s.liquido > 0 ? "te deve (a receber − a pagar)" : s.liquido < 0 ? "você deve (a pagar − a receber)" : "sem saldo pendente"}
+                {s.liquido > 0 ? "a acertar com você (a receber − a pagar)" : s.liquido < 0 ? "a compensar (a pagar − a receber)" : "sem saldo pendente"}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button tamanho="sm" variante="primary" disabled={s.aReceber === 0} onClick={() => setCobrando(s.pessoa)}>
@@ -451,7 +451,7 @@ export default function PessoasPage() {
         {avulso && <AvulsoForm tipo={avulso.tipo} pessoaId={avulso.pessoaId} onFechar={() => setAvulso(null)} />}
       </Modal>
       <VincularModal aberto={vinculando !== null} pessoaId={vinculando?.pessoaId} onFechar={() => setVinculando(null)} />
-      <RelatorioPessoasModal aberto={relatorio !== null} onFechar={() => setRelatorio(null)} pessoas={ds.pessoas} acertos={ds.acertos} despesas={ds.despesas} pessoaIdInicial={relatorio?.pessoaId} />
+      <RelatorioPessoasModal aberto={relatorio !== null} onFechar={() => setRelatorio(null)} pessoas={ds.pessoas} acertos={ds.acertos} despesas={ds.despesas} cartoes={ds.cartoes} pessoaIdInicial={relatorio?.pessoaId} />
       <QuitarModal acerto={quitando} onFechar={() => setQuitando(null)} />
       <CobrarModal pessoa={cobrando} acertos={cobrando ? ds.acertos.filter((a) => a.pessoaId === cobrando.id) : []} onFechar={() => setCobrando(null)} />
       <Confirmar

@@ -25,7 +25,7 @@ export const PALETA_AVATAR = ["#0f766e", "#0e7490", "#4f46e5", "#b45309", "#be18
 
 export const corAvatar = (indice: number) => PALETA_AVATAR[((indice % PALETA_AVATAR.length) + PALETA_AVATAR.length) % PALETA_AVATAR.length];
 
-export type NomeIcone = "entrada" | "saida" | "relogio" | "check" | "recibo" | "carteira" | "balanca";
+export type NomeIcone = "entrada" | "saida" | "relogio" | "check" | "recibo" | "carteira" | "balanca" | "calendario";
 
 type Forma = { k: "L"; p: readonly (readonly [number, number])[]; fechar?: boolean } | { k: "C"; cx: number; cy: number; r: number };
 
@@ -56,6 +56,12 @@ const ICONES: Record<NomeIcone, readonly Forma[]> = {
     { k: "L", p: [[3, 8], [21, 8], [21, 20], [3, 20]], fechar: true },
     { k: "L", p: [[5, 8], [5, 5], [18, 5], [18, 8]] },
     { k: "C", cx: 16.5, cy: 14, r: 1.3 },
+  ],
+  calendario: [
+    { k: "L", p: [[4, 6], [20, 6], [20, 20], [4, 20]], fechar: true },
+    { k: "L", p: [[4, 11], [20, 11]] },
+    { k: "L", p: [[8, 3], [8, 8]] },
+    { k: "L", p: [[16, 3], [16, 8]] },
   ],
   balanca: [
     { k: "L", p: [[12, 4], [12, 20]] },

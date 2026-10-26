@@ -766,3 +766,9 @@ Sem mudança de formato de dados nem de regras. Para reduzir leituras do Firesto
 - O número do comprovante é **`MD-` + id completo do lançamento** (mínimo 6 dígitos, ex.: `MD-000123`, `MD-1234567890`). O id é único e nunca reaproveitado, então o número identifica um único lançamento e nunca se repete (antes o portal truncava nos 6 últimos dígitos, o que podia colidir).
 - Lançamento ainda não salvo (id 0) não recebe número: aparece `MD-PENDENTE`. O app gera o comprovante **depois** de salvar, a partir do lançamento persistido (assim também reflete a modalidade real: compra no débito sai como "Débito", não "Crédito").
 - Consulta: digitar o número (`MD-000123`, `md123` ou só `123` após `MD`) na busca de Lançamentos acha o lançamento em qualquer mês/ano; no app o número aparece no menu do lançamento e a busca também o aceita. Nenhum campo novo no documento.
+
+## R82 - Relatório de Pessoas mais claro e sem constrangimento (portal)
+- Textos neutros: "a acertar R$ X" (antes "te deve"), "a compensar R$ X" (antes "você deve"), "contas em dia" (antes "quites"). `SentidoSaldo` não mudou.
+- Vencimento da fatura em destaque: acerto **A receber pendente** ligado a lançamento no **crédito** ganha `vencimento` (data da fatura via `faturaDaCompra`/`vencimentoFatura`, "vence"/"venceu"). Cada pessoa mostra uma faixa "VENCIMENTO DA FATURA DO CARTÃO" (o mais antigo/próximo + valor ligado a faturas). Requer `cartoes` em `OpcoesRelatorioPessoas`.
+- `excluirAcertoIds`: acertos escolhidos ficam de fora do relatório (e dos totais) e entram no próximo; nenhum dado é alterado. `adiados` conta quantos ficaram de fora.
+- Sem novos campos persistidos. O app (`RelatorioPessoas.kt`) ainda usa os textos antigos: alinhar quando for pedido.

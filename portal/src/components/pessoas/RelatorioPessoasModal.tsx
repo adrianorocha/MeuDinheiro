@@ -11,6 +11,7 @@ import { brlCentavos } from "@/lib/finance/centavos";
 import { fimDoDia, inicioDoDia } from "@/lib/finance/dates";
 import {
   MSG_SEM_ACERTOS,
+  dataBR,
   montarRelatorioPessoas,
   nomeArquivoPessoas,
   periodoPorAtalho,
@@ -18,7 +19,7 @@ import {
   type AtalhoPeriodo,
   type SituacaoRelatorio,
 } from "@/lib/finance/relatorioPessoas";
-import type { Acerto, Despesa, Pessoa } from "@/lib/finance/types";
+import type { Acerto, Cartao, Despesa, Pessoa } from "@/lib/finance/types";
 import { deInputData, paraInputData } from "@/lib/format";
 import { useAgora } from "@/lib/hooks";
 
@@ -31,6 +32,7 @@ interface Props {
   pessoas: Pessoa[];
   acertos: Acerto[];
   despesas: Despesa[];
+  cartoes: Cartao[];
   /** abre já filtrado nesta pessoa ("Relatório desta pessoa") */
   pessoaIdInicial?: number;
 }
@@ -44,7 +46,7 @@ export function RelatorioPessoasModal({ aberto, onFechar, ...resto }: Props) {
   );
 }
 
-function Conteudo({ onFechar, pessoas, acertos, despesas, pessoaIdInicial }: Omit<Props, "aberto">) {
+function Conteudo({ onFechar, pessoas, acertos, despesas, cartoes, pessoaIdInicial }: Omit<Props, "aberto">) {
   const agora = useAgora();
   const [escolher, setEscolher] = useState(pessoaIdInicial !== undefined);
   const [ids, setIds] = useState<Set<number>>(new Set(pessoaIdInicial !== undefined ? [pessoaIdInicial] : []));
@@ -55,6 +57,7 @@ function Conteudo({ onFechar, pessoas, acertos, despesas, pessoaIdInicial }: Omi
   const [detalhes, setDetalhes] = useState(true);
   const [agrupar, setAgrupar] = useState<AgruparRelatorio>("POR_PESSOA");
   const [rateios, setRateios] = useState(false);
+  const [adiar, setAdiar] = useState<Set<number>>(new Set());
   const [formato, setFormato] = useState<Formato>("pdf");
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -68,21 +71,39 @@ function Conteudo({ onFechar, pessoas, acertos, despesas, pessoaIdInicial }: Omi
     return { ok: true as const, valor: { inicio: inicioDoDia(a), fim: fimDoDia(b) } };
   }, [atalho, de, ate, agora]);
 
+  const base = useMemo(
+    () => ({ pessoaIds: escolher ? [...ids] : [], periodo: periodo.ok ? periodo.valor : null, situacao, cartoes, agora }),
+    [escolher, ids, periodo, situacao, cartoes, agora],
+  );
+
+  /** todos os acertos que o filtro atual alcança (para o usuário escolher quais ficam para o próximo relatório) */
+  const candidatos = useMemo(() => {
+    if (!periodo.ok) return [];
+    return montarRelatorioPessoas(pessoas, acertos, despesas, { ...base, incluirDetalhes: true, agrupar: "POR_PESSOA" }).pessoas;
+  }, [pessoas, acertos, despesas, base, periodo.ok]);
+
   const relatorio = useMemo(() => {
     if (!periodo.ok) return null;
     return montarRelatorioPessoas(pessoas, acertos, despesas, {
-      pessoaIds: escolher ? [...ids] : [],
-      periodo: periodo.valor,
-      situacao,
+      ...base,
       incluirDetalhes: detalhes,
       agrupar,
       incluirRateios: rateios,
-      agora,
+      excluirAcertoIds: [...adiar],
     });
-  }, [pessoas, acertos, despesas, escolher, ids, periodo, situacao, detalhes, agrupar, rateios, agora]);
+  }, [pessoas, acertos, despesas, base, periodo.ok, detalhes, agrupar, rateios, adiar]);
 
   const semEscolha = escolher && ids.size === 0;
   const podeGerar = !gerando && relatorio !== null && !relatorio.vazio && !semEscolha;
+
+  function alternarAdiar(id: number) {
+    setAdiar((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
 
   function alternar(id: number) {
     setIds((s) => {
@@ -180,6 +201,30 @@ function Conteudo({ onFechar, pessoas, acertos, despesas, pessoaIdInicial }: Omi
         />
       </div>
 
+      {candidatos.length > 0 && (
+        <details className="rounded-lg border border-line p-3" open={adiar.size > 0}>
+          <summary className="cursor-pointer text-sm font-medium">
+            Deixar lançamentos para o próximo relatório{adiar.size > 0 ? ` (${adiar.size} fora deste)` : ""}
+          </summary>
+          <p className="mt-1 text-xs text-muted">Marque o que NÃO deve aparecer neste relatório. Nada é alterado nos lançamentos: eles continuam pendentes e entram no próximo.</p>
+          <div className="mt-2 flex max-h-56 flex-col gap-3 overflow-y-auto">
+            {candidatos.map((p) => (
+              <fieldset key={p.pessoaId} className="flex flex-col gap-1.5">
+                <legend className="mb-1 text-xs font-semibold text-muted">{p.nome}</legend>
+                {p.linhas.map((l) => (
+                  <Checkbox
+                    key={l.acertoId}
+                    rotulo={`${l.dataTexto} · ${l.descricao} · ${brlCentavos(l.centavos)} · ${l.tipoTexto}${l.status === "QUITADO" ? " (quitado)" : ""}${l.vencimento ? ` · fatura ${l.vencimento.vencido ? "venceu" : "vence"} ${dataBR(l.vencimento.ms)}` : ""}`}
+                    checked={adiar.has(l.acertoId)}
+                    onChange={() => alternarAdiar(l.acertoId)}
+                  />
+                ))}
+              </fieldset>
+            ))}
+          </div>
+        </details>
+      )}
+
       <section aria-label="Pré-visualização do resumo" className="rounded-lg border border-line bg-surface-2 p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase text-muted">Pré-visualização do resumo</h3>
         {semEscolha ? (
@@ -196,7 +241,7 @@ function Conteudo({ onFechar, pessoas, acertos, despesas, pessoaIdInicial }: Omi
             <dd className="text-right font-semibold text-warn">{brlCentavos(r.aPagarPendente)}</dd>
             <dt className="text-muted">Saldo líquido</dt>
             <dd className="text-right font-semibold">
-              {brlCentavos(Math.abs(r.saldoLiquido))} {r.saldoLiquido > 0 ? "(a seu favor)" : r.saldoLiquido < 0 ? "(contra você)" : "(quites)"}
+              {brlCentavos(Math.abs(r.saldoLiquido))} {r.saldoLiquido > 0 ? "(a acertar)" : r.saldoLiquido < 0 ? "(a compensar)" : "(contas em dia)"}
             </dd>
             <dt className="text-muted">Quitado (a receber / a pagar)</dt>
             <dd className="text-right">{brlCentavos(r.quitadoAReceber)} / {brlCentavos(r.quitadoAPagar)}</dd>

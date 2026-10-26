@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { desp, dt } from "./fixtures";
+import { cartao, desp, dt } from "./fixtures";
 import {
   corIndiceDaPessoa,
   dataBR,
@@ -45,11 +45,11 @@ describe("R69 - relatório de pessoas (modelo puro, centavos)", () => {
     expect(r.pessoas.map((p) => p.nome)).toEqual(["Ana", "Bruno"]);
     const [ana, bruno] = r.pessoas;
     expect([ana.aReceber, ana.aPagar, ana.liquido, ana.nAcertos]).toEqual([6000, 1550, 4450, 3]);
-    expect(ana.saldoTexto).toBe("te deve R$ 44,50");
+    expect(ana.saldoTexto).toBe("a acertar R$ 44,50");
     expect(ana.sentido).toBe("TE_DEVE");
     expect(ana.contato).toBe("11 99999-0000");
     expect([bruno.aReceber, bruno.aPagar, bruno.liquido, bruno.quitadoAReceber, bruno.nAcertos]).toEqual([1000, 10000, -9000, 4000, 3]);
-    expect(bruno.saldoTexto).toBe("você deve R$ 90,00");
+    expect(bruno.saldoTexto).toBe("a compensar R$ 90,00");
     expect(bruno.contato).toBeNull();
     expect(r.resumo).toEqual({
       aReceberPendente: 7000,
@@ -119,7 +119,7 @@ describe("R69 - relatório de pessoas (modelo puro, centavos)", () => {
       nPessoasComSaldo: 0,
       nPessoas: 1,
     });
-    expect(q.pessoas[0].saldoTexto).toBe("quites");
+    expect(q.pessoas[0].saldoTexto).toBe("contas em dia");
     expect(q.pessoas[0].sentido).toBe("QUITES");
     expect(q.filtros).toContain("Situação: Somente quitados");
   });
@@ -196,10 +196,49 @@ describe("R69 - relatório de pessoas (modelo puro, centavos)", () => {
   });
 
   it("textos de saldo e nome do arquivo", () => {
-    expect(saldoTextoDe(123456)).toEqual({ sentido: "TE_DEVE", texto: "te deve R$ 1.234,56" });
-    expect(saldoTextoDe(-5)).toEqual({ sentido: "VOCE_DEVE", texto: "você deve R$ 0,05" });
-    expect(saldoTextoDe(0).texto).toBe("quites");
+    expect(saldoTextoDe(123456)).toEqual({ sentido: "TE_DEVE", texto: "a acertar R$ 1.234,56" });
+    expect(saldoTextoDe(-5)).toEqual({ sentido: "VOCE_DEVE", texto: "a compensar R$ 0,05" });
+    expect(saldoTextoDe(0).texto).toBe("contas em dia");
     expect(nomeArquivoPessoas(agora, "pdf")).toBe("pessoas_2026-09-30.pdf");
     expect(nomeArquivoPessoas(agora, "png", 2)).toBe("pessoas_2026-09-30-2.png");
+  });
+});
+
+describe("vencimento da fatura em destaque e lançamentos adiados", () => {
+  const cartoes = [cartao({ id: 10, diaFechamento: 25, diaVencimento: 5 })];
+  const dsp = [desp({ id: 300, descricao: "TV (1/2)", valor: 100, cartaoId: 10, data: dt(2026, 9, 10) }), desp({ id: 301, descricao: "Pix", valor: 30, data: dt(2026, 9, 11) })];
+  const ac2 = [
+    ac(20, 1, "A_RECEBER", 50, "TV", dt(2026, 9, 10), { despesaId: 300, grupoRateio: "rateio:300" }),
+    ac(21, 1, "A_RECEBER", 15, "Pix", dt(2026, 9, 11), { despesaId: 301, grupoRateio: "rateio:301" }),
+    ac(22, 1, "A_PAGAR", 5, "Café", dt(2026, 9, 12)),
+  ];
+  const g = (o: Partial<OpcoesRelatorioPessoas> = {}) => montarRelatorioPessoas(pessoas, ac2, dsp, { ...base, cartoes, ...o });
+
+  it("só A receber pendente no crédito ganha vencimento; a pessoa recebe o destaque e o aviso", () => {
+    const r = g();
+    const [tv, pix, cafe] = r.pessoas[0].linhas;
+    expect(tv.vencimento?.texto).toBe("Fatura do cartão vence em 05/10/2026");
+    expect(tv.vencimento?.vencido).toBe(false);
+    expect(pix.vencimento).toBeNull();
+    expect(cafe.vencimento).toBeNull();
+    expect(r.pessoas[0].proximoVencimento).toMatchObject({ texto: "Fatura do cartão vence em 05/10/2026", centavos: 5000 });
+  });
+
+  it("sem cartões informados ou depois do vencimento", () => {
+    expect(g({ cartoes: undefined }).pessoas[0].proximoVencimento).toBeNull();
+    const tarde = g({ agora: dt(2026, 10, 20) }).pessoas[0].proximoVencimento;
+    expect(tarde?.vencido).toBe(true);
+    expect(tarde?.texto).toBe("Fatura do cartão venceu em 05/10/2026");
+  });
+
+  it("acertos adiados saem do relatório e dos totais, sem tocar nos dados", () => {
+    const r = g({ excluirAcertoIds: [20] });
+    expect(r.pessoas[0].linhas.map((l) => l.acertoId)).toEqual([21, 22]);
+    expect(r.pessoas[0].aReceber).toBe(1500);
+    expect(r.pessoas[0].proximoVencimento).toBeNull();
+    expect(r.adiados).toBe(1);
+    expect(r.resumo.nAcertos).toBe(2);
+    expect(g({ excluirAcertoIds: [20, 21, 22] }).vazio).toBe(true);
+    expect(ac2).toHaveLength(3);
   });
 });
