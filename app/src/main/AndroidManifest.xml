@@ -14,6 +14,24 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- R85: envio expedido da sincronização (Android < 12 usa serviço em primeiro plano discreto) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Android 11+: sem isto o app não "enxerga" os apps de banco instalados (a tela de captura mostrava "não instalado ou não visível").
+         Só os pacotes de NotificacaoBancaria.PACOTES_PADRAO (sem QUERY_ALL_PACKAGES, por privacidade). Só afeta o NOME exibido; a captura em si não depende disto. -->
+    <queries>
+        <package android:name="com.nu.production" />
+        <package android:name="com.itau" />
+        <package android:name="com.bradesco" />
+        <package android:name="com.santander.app" />
+        <package android:name="br.com.bb.android" />
+        <package android:name="br.com.gabba.Caixa" />
+        <package android:name="br.com.intermedium" />
+        <package android:name="com.c6bank.app" />
+        <package android:name="com.picpay" />
+        <package android:name="com.mercadopago.wallet" />
+    </queries>
 
 
     <application

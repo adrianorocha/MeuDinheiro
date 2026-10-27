@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.math.BigDecimal
 import java.security.MessageDigest
 
@@ -48,7 +49,9 @@ class SyncSession(
     private val db: AppDatabase,
     private val firestore: FirebaseFirestore,
     private val repository: MainRepository,
-    private val aoMudarEstado: (SyncStatus) -> Unit
+    private val aoMudarEstado: (SyncStatus) -> Unit,
+    /** Chamado (em qualquer thread) quando a sessão acabou de enviar escritas ao Firestore. */
+    private val aoEnviar: () -> Unit = {}
 ) {
     private sealed interface Evento {
         data class Snapshot(val colecao: String, val mudancas: List<Mudanca>, val doServidor: Boolean) : Evento
@@ -69,6 +72,32 @@ class SyncSession(
 
     /** Hash do que esta sessão enviou e ainda não foi "carimbado" no histórico (ver [executar]). */
     private val ultimoEnviado = HashMap<String, String>()
+
+    /** Contador de mudanças locais vistas; comparado antes/depois de reconciliar para não perder avisos. */
+    @Volatile
+    private var geracaoLocal = 0
+
+    @Volatile
+    private var pendenciasCache = false
+
+    /**
+     * R85 — há algo a enviar/confirmar? (mudança local ainda não reconciliada, envio não carimbado ou escrita
+     * sem confirmação do servidor). Barato: só lê campos em memória.
+     */
+    val temPendencias: Boolean get() = pendenciasCache
+
+    private fun calcularPendencias() = ultimoEnviado.isNotEmpty() || pendentes.values.any { it.isNotEmpty() }
+
+    /**
+     * R85 — reconcilia agora e espera o servidor confirmar as escritas pendentes (até [timeoutMs]).
+     * Não lê nada novo da nuvem. @return true se tudo foi confirmado a tempo.
+     */
+    suspend fun enviarPendentes(timeoutMs: Long): Boolean =
+        kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+            pedir(ModoSync.MESCLAR)
+            firestore.waitForPendingWrites().await()
+            true
+        } ?: false
 
     private fun raiz(colecao: String) = firestore.collection("users").document(uid).collection(colecao)
 
@@ -103,7 +132,7 @@ class SyncSession(
 
             db.invalidationTracker
                 .createFlow(*TABELAS_LOCAIS, emitInitialState = false)
-                .onEach { eventos.trySend(Evento.LocalMudou) }
+                .onEach { geracaoLocal++; pendenciasCache = true; eventos.trySend(Evento.LocalMudou) }
                 .launchIn(this)
 
             launch {
@@ -128,7 +157,13 @@ class SyncSession(
             while (true) {
                 when (evento) {
                     is Evento.Snapshot -> aplicarSnapshot(evento)
-                    is Evento.Falha -> throw evento.erro
+                    is Evento.Falha -> {
+                        // Quem espera um envio (pedir) não pode ficar pendurado numa sessão que vai cair.
+                        val erro = evento.erro
+                        aguardando.forEach { it.completeExceptionally(erro) }
+                        aguardando.clear()
+                        throw erro
+                    }
                     is Evento.Pedido -> {
                         modoPendente = evento.modo
                         aguardando += evento.concluido
@@ -138,8 +173,10 @@ class SyncSession(
                 evento = withTimeoutOrNullCompat(DEBOUNCE_MS) { eventos.receive() } ?: break
             }
 
+            val geracao = geracaoLocal
             try {
                 reconciliar(modoPendente)
+                pendenciasCache = geracaoLocal != geracao || calcularPendencias()
                 aoMudarEstado(
                     if (confirmadas.size == catalogo.size) SyncStatus.Sincronizado(System.currentTimeMillis())
                     else SyncStatus.Conectando
@@ -271,6 +308,8 @@ class SyncSession(
                 eventos.trySend(Evento.Falha(e))
             }
         }
+        // R85: escritas feitas fora da tela (serviço/receiver/worker) são empurradas na hora pelo WorkManager.
+        if (operacoes.isNotEmpty()) aoEnviar()
 
         // 3) Histórico (hash do último estado sincronizado). Envios NÃO são carimbados aqui: só quando o
         // servidor confirma (snapshot sem pendência e com o mesmo hash → a reconciliação seguinte grava o

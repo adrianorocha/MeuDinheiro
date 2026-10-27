@@ -132,7 +132,8 @@ class StorageManager(context: Context) {
         var tentativa = 0
         while (true) {
             val firestore = FirebaseFirestore.getInstance()
-            val nova = SyncSession(uid, db, firestore, repository) { _status.value = it }
+            val inicio = System.currentTimeMillis()
+            val nova = SyncSession(uid, db, firestore, repository, { _status.value = it }, { EnvioImediato.aoEnviar(appContext) })
             sessao = nova
             try {
                 _status.value = SyncStatus.Conectando
@@ -156,8 +157,10 @@ class StorageManager(context: Context) {
             } finally {
                 sessao = null
             }
-            tentativa++
-            delay((5_000L * tentativa).coerceAtMost(60_000L)) // recuo progressivo
+            // R85: uma sessão que viveu bem recomeça o recuo do zero (antes, a contagem só crescia e uma queda
+            // transitória horas depois já esperava 60 s); erro persistente (ex.: permissão) segue com recuo até 60 s.
+            tentativa = if (System.currentTimeMillis() - inicio > PoliticaEnvio.SESSAO_ESTAVEL_MS) 1 else tentativa + 1
+            delay(PoliticaEnvio.recuoMs(tentativa))
         }
     }
 
@@ -172,6 +175,22 @@ class StorageManager(context: Context) {
     suspend fun baixarTudoDaNuvem() = (sessao ?: error("Sem conexão com a nuvem")).pedir(ModoSync.NUVEM_VENCE)
 
     suspend fun sincronizarAgora() = sessao?.pedir(ModoSync.MESCLAR)
+
+    /** R85 — há algo a enviar para a nuvem (sinal barato, em memória). */
+    val temPendencias: Boolean get() = sessao?.temPendencias == true
+
+    /** R85 — envia o que estiver pendente e espera o servidor confirmar (até [timeoutMs]). false se sem sessão/tempo esgotado/falha. */
+    suspend fun enviarPendentes(timeoutMs: Long): Boolean {
+        val s = sessao ?: return false
+        return try {
+            s.enviarPendentes(timeoutMs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Envio imediato não concluído", e)
+            false
+        }
+    }
 
     /** R32 — passa a usar os dados de quem convidou (a sincronização troca de raiz). */
     suspend fun usarDadosDe(donoUid: String) = prefs.saveCloudRootUid(donoUid)
