@@ -13,5 +13,7 @@
     <!-- R64: sugestões e preferências da captura de notificações do banco ficam só neste aparelho. -->
     <exclude domain="file" path="captura_sugestoes.json" />
     <exclude domain="sharedpref" path="captura_notificacoes.xml" />
+    <exclude domain="sharedpref" path="categorias_aprendidas.xml" />
+    <exclude domain="sharedpref" path="lembretes_vencimento.xml" />
     <exclude domain="sharedpref" path="push_dispositivo.xml" />
 </full-backup-content>

@@ -57,6 +57,10 @@ class UserPreferences(private val context: Context) {
         private val KEY_NOTIF_LAST_DAY =
             longPreferencesKey("notif_last_day") // evita repetir no mesmo dia
         private val KEY_NOTIF_ONLY_PENDING = booleanPreferencesKey("notif_only_pending")
+        // R91 — lembretes com antecedência escolhida (padrão desligado = aviso diário de sempre). Locais: não sincronizam.
+        private val KEY_NOTIF_ANTEC_ATIVO = booleanPreferencesKey("notif_antec_ativo")
+        private val KEY_NOTIF_ANTEC_DIAS = stringPreferencesKey("notif_antec_dias")
+        private val KEY_NOTIF_ANTEC_ATRASADAS = booleanPreferencesKey("notif_antec_atrasadas")
         private val PRIVATE_MODE_KEY = booleanPreferencesKey("private_mode")
         private val BIOMETRIA_LANCAR = booleanPreferencesKey("biometria_lancar")
 
@@ -224,6 +228,23 @@ class UserPreferences(private val context: Context) {
     val notifOnlyPendingFlow = context.dataStore.data.map { prefs ->
         prefs[KEY_NOTIF_ONLY_PENDING] ?: true
     }
+
+    /** R91 — true = avisa só nas antecedências marcadas; false (padrão) = aviso diário com a janela "Antecedência (Dias)". */
+    val notifAntecAtivoFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIF_ANTEC_ATIVO] ?: false }
+    suspend fun saveNotifAntecAtivo(v: Boolean) { context.dataStore.edit { it[KEY_NOTIF_ANTEC_ATIVO] = v } }
+
+    /** R91 — antecedências marcadas (dias antes; 0 = no dia). Sem valor salvo = [com.meudinheiro.domain.LembretesVencimento.PADRAO_MARCADAS]. */
+    val notifAntecMarcadasFlow: Flow<Set<Int>> = context.dataStore.data.map { p ->
+        p[KEY_NOTIF_ANTEC_DIAS]?.let { com.meudinheiro.domain.LembretesVencimento.lerMarcadas(it) }
+            ?: com.meudinheiro.domain.LembretesVencimento.PADRAO_MARCADAS
+    }
+    suspend fun saveNotifAntecMarcadas(dias: Set<Int>) {
+        context.dataStore.edit { it[KEY_NOTIF_ANTEC_DIAS] = com.meudinheiro.domain.LembretesVencimento.gravarMarcadas(dias) }
+    }
+
+    /** R91 — também avisar (uma vez por dia) o que já venceu e segue em aberto. Padrão ligado. */
+    val notifAntecAtrasadasFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIF_ANTEC_ATRASADAS] ?: true }
+    suspend fun saveNotifAntecAtrasadas(v: Boolean) { context.dataStore.edit { it[KEY_NOTIF_ANTEC_ATRASADAS] = v } }
 
     suspend fun saveNotifOnlyPending(v: Boolean) {
         context.dataStore.edit { it[KEY_NOTIF_ONLY_PENDING] = v }

@@ -54,6 +54,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -98,6 +100,7 @@ import com.meudinheiro.viewModel.OrcamentoViewModelFactory
 import com.meudinheiro.viewModel.TransacaoViewModel
 import com.meudinheiro.viewModel.TransacaoViewModelFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -206,6 +209,21 @@ fun MainScreen(
         }
     }
 
+    // R92: atalhos do widget abrem o extrato ou a aba de Cartões / Cofrinhos (metas).
+    LaunchedEffect(com.meudinheiro.AtalhosApp.destinoPedido) {
+        val destino = com.meudinheiro.AtalhosApp.destinoPedido
+        if (destino != null) {
+            val aba = com.meudinheiro.domain.RoteamentoWidget.abaPrincipal(destino)
+            if (aba == null) showExtratoScreen = true else mainTabSelecionada = aba
+            com.meudinheiro.AtalhosApp.consumirDestino()
+        }
+    }
+
+    // R89: toque na notificação de sugestão(ões) abre Ferramentas, que mostra a revisão em lote (e consome o pedido).
+    LaunchedEffect(com.meudinheiro.AtalhosCaptura.sugestoesPedidas) {
+        if (com.meudinheiro.AtalhosCaptura.sugestoesPedidas) showFerramentas = true
+    }
+
     // Atalho do launcher "Nova despesa": abre direto o formulário de lançamento.
     LaunchedEffect(com.meudinheiro.AtalhosApp.novaDespesaPedida) {
         if (com.meudinheiro.AtalhosApp.novaDespesaPedida) {
@@ -247,12 +265,34 @@ fun MainScreen(
     // Chip do cabeçalho: onde os dados estão sendo gravados e o estado da sincronização.
     val storageManager = remember { (application as com.meudinheiro.MyApplication).storageManager }
     val modoArmazenamento by storageManager.modo.collectAsState(initial = com.meudinheiro.storage.StorageMode.LOCAL)
-    val statusSync by storageManager.status.collectAsState()
+    // R86: indicador discreto no chip do cabeçalho (em modo local não mostra nada de sincronização).
+    val infoSync by storageManager.info.collectAsState()
+    var agoraSync by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var mostrarStatusSync by remember { mutableStateOf(false) }
+    val indicadorSync = remember(infoSync, agoraSync) { com.meudinheiro.storage.IndicadorSync.derivar(infoSync, agoraSync) }
+    val relogioPrecisa = com.meudinheiro.storage.IndicadorSync.dependeDoRelogio(indicadorSync)
+    val ciclo = (context as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+    // Recomposição leve do "há X min": só com a tela visível e só quando o texto depende do relógio.
+    LaunchedEffect(relogioPrecisa, ciclo) {
+        agoraSync = System.currentTimeMillis()
+        if (!relogioPrecisa) return@LaunchedEffect
+        val laco: suspend () -> Unit = {
+            while (true) {
+                delay(com.meudinheiro.storage.IndicadorSync.ATUALIZAR_A_CADA_MS)
+                agoraSync = System.currentTimeMillis()
+            }
+        }
+        if (ciclo != null) ciclo.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { agoraSync = System.currentTimeMillis(); laco() } else laco()
+    }
     val chipArmazenamento = when {
         modoArmazenamento != com.meudinheiro.storage.StorageMode.FIREBASE -> "Salvo no celular" to HeaderChipStyle.NEUTRAL
-        statusSync is com.meudinheiro.storage.SyncStatus.Sincronizado -> "Nuvem sincronizada" to HeaderChipStyle.SUCCESS
-        statusSync is com.meudinheiro.storage.SyncStatus.Conectando -> "Sincronizando…" to HeaderChipStyle.PRIMARY
-        statusSync is com.meudinheiro.storage.SyncStatus.AguardandoLogin -> "Nuvem: sem login" to HeaderChipStyle.NEUTRAL
+        indicadorSync != null -> indicadorSync.texto to when (indicadorSync.tom) {
+            com.meudinheiro.storage.TomIndicador.OK -> HeaderChipStyle.SUCCESS
+            com.meudinheiro.storage.TomIndicador.ATIVO -> HeaderChipStyle.PRIMARY
+            com.meudinheiro.storage.TomIndicador.AVISO -> HeaderChipStyle.WARNING
+            com.meudinheiro.storage.TomIndicador.ERRO -> HeaderChipStyle.ERROR
+            com.meudinheiro.storage.TomIndicador.NEUTRO -> HeaderChipStyle.NEUTRAL
+        }
         else -> "Nuvem: atenção" to HeaderChipStyle.NEUTRAL
     }
 
@@ -414,6 +454,7 @@ fun MainScreen(
                         onProfileClick = { emCadastro = true },
                         chipText = chipArmazenamento.first,
                         chipStyle = chipArmazenamento.second,
+                        onChipClick = if (indicadorSync?.detalhes == true) ({ mostrarStatusSync = true }) else null,
                         showNotifications = true,
                         hasUnreadNotifications = (notifCount > 0),
                         notificationCount = notifCount,
@@ -923,6 +964,9 @@ fun MainScreen(
             ImportacaoExtratosScreen(repository = repository, isPrivate = isPrivate, onBack = { showImportarExtratos = false })
         }
 
+        if (mostrarStatusSync) {
+            StatusSyncDialog(storageManager = storageManager, onDismiss = { mostrarStatusSync = false })
+        }
         if (showFerramentas) {
             FerramentasScreen(
                 repository = repository,

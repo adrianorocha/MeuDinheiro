@@ -36,6 +36,12 @@ object DespesasDevidas {
             if (!hasPermission) return@withContext
         }
 
+        // R91: com "Escolher antecedências" ligado, o aviso segue as antecedências marcadas (contas + faturas), agrupado.
+        if (prefs.notifAntecAtivoFlow.firstOrNull() == true) {
+            LembretesVencimentoNotif.executar(appContext, prefs)
+            return@withContext
+        }
+
         // 2. Atrasadas + a vencer na janela (a lista já vem ordenada pela data)
         val daysAhead = prefs.notifDaysAheadFlow.firstOrNull() ?: 3
         val repo = MainRepository(appContext)

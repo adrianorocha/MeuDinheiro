@@ -6,6 +6,7 @@
  *  - resumoSemanal     : domingo 18:00 — entradas/saídas da semana e maior categoria.
  *  - avisarConvite     : novo convite por e-mail em perfis/{email}/convites/{dono}.
  *  - avisarOrcamento   : escrita de despesa -> orçamento da categoria em 80%/100% (idempotente via avisosEnviados).
+ *  - sinalizarSincronizacao (R86): portal gravou dados -> push silencioso que faz o app sincronizar mesmo fechado.
  */
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
@@ -19,6 +20,7 @@ import {
   despesasNaoPagas,
   dispositivosDoUsuario,
   enviar,
+  enviarSinal,
   membrosDe,
   todosOsDispositivos,
 } from "./acesso";
@@ -31,6 +33,7 @@ import {
   idDaMarca,
   montarAvisoOrcamento,
 } from "./dominio/orcamento";
+import { dispositivosParaSinal, origemDoSinal } from "./dominio/sinal";
 import { calcularResumoSemanal, janelaSemana, montarResumoSemanal } from "./dominio/resumoSemanal";
 import { chaveMes, FUSO, inicioDoDiaMs, limitesDoMes } from "./dominio/tempo";
 import { lerDespesa, lerOrcamento, type Dispositivo } from "./dominio/tipos";
@@ -100,6 +103,22 @@ export const avisarConvite = onDocumentCreated("perfis/{email}/convites/{dono}",
     extra: {},
   });
   logger.info("avisarConvite", r);
+});
+
+/**
+ * R86 - o portal grava `users/{raiz}/sinais/portal` (no máximo 1x a cada poucos segundos) depois de salvar dados; aqui isso vira UM
+ * push silencioso (só dados, prioridade alta) para os aparelhos Android da conta, que então sincronizam. Não lê nenhum dado
+ * financeiro: 1 execução + leitura de membros/dispositivos por sinal. Sem aparelho elegível, não envia nada.
+ */
+export const sinalizarSincronizacao = onDocumentWritten({ document: "users/{raiz}/sinais/{origem}", maxInstances: 3 }, async (event) => {
+  if (!event.data?.after.exists) return;
+  const origem = origemDoSinal(event.params.origem);
+  if (!origem) return;
+  const { dispositivos, membros } = await candidatosDaRaiz(event.params.raiz);
+  const alvos = dispositivosParaSinal(event.params.raiz, dispositivos, membros);
+  if (alvos.length === 0) return;
+  const r = await enviarSinal(alvos, origem);
+  logger.info("sinalizarSincronizacao", { raiz: event.params.raiz, ...r });
 });
 
 /**

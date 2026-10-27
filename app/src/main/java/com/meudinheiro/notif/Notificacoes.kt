@@ -63,7 +63,9 @@ data class Aviso(
     /** Ação do Intent que abre o app ao tocar na notificação (nula = só abrir). */
     val acao: String? = null,
     /** R64 — botões extras (ex.: Confirmar / Ignorar). */
-    val botoes: List<BotaoAviso> = emptyList()
+    val botoes: List<BotaoAviso> = emptyList(),
+    /** R89 — atualizar uma notificação já exibida sem alertar de novo (ex.: resumo "N sugestões"). */
+    val soAlertaUmaVez: Boolean = false
 )
 
 /** R64 — botão de ação de uma notificação de [Aviso]; exige o aparelho desbloqueado (mexe no seu dinheiro). */
@@ -163,6 +165,7 @@ object Notificacoes {
             .setGroup("meudinheiro_${t.canal}")
             .setContentIntent(abrirApp(app, aviso.id, aviso.acao))
             .setAutoCancel(true)
+            .setOnlyAlertOnce(aviso.soAlertaUmaVez)
 
         b.setStyle(
             if (aviso.linhas.size > 1) NotificationCompat.InboxStyle().also { s ->

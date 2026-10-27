@@ -8,6 +8,7 @@ import { getMessaging } from "firebase-admin/messaging";
 import * as logger from "firebase-functions/logger";
 import { dispositivosParaRemover, lerDispositivo, lotes } from "./dominio/dispositivos";
 import { montarMensagemFcm } from "./dominio/mensagens";
+import { montarMensagemSinal } from "./dominio/sinal";
 import { lerDespesa, type DespesaDoc, type Dispositivo, type MensagemPush } from "./dominio/tipos";
 
 function db(): Firestore {
@@ -95,6 +96,30 @@ export async function enviar(ds: readonly Dispositivo[], mensagem: MensagemPush)
     } catch (e) {
       r.falhas += grupo.length;
       logger.error("Falha ao enviar push", { tipo: mensagem.tipo, erro: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return r;
+}
+
+/** R86 - envia o sinal de sincronização (push silencioso). Mesma limpeza de tokens inválidos; nunca lança. */
+export async function enviarSinal(ds: readonly Dispositivo[], origem: string): Promise<ResultadoEnvio> {
+  const r: ResultadoEnvio = { enviados: 0, falhas: 0, removidos: 0 };
+  const unicos = [...new Map(ds.map((d) => [d.token, d])).values()];
+  for (const grupo of lotes(unicos)) {
+    try {
+      const resp = await getMessaging().sendEachForMulticast(montarMensagemSinal(grupo, origem));
+      r.enviados += resp.successCount;
+      r.falhas += resp.failureCount;
+      const apagar = dispositivosParaRemover(grupo, resp.responses.map((x) => x.error?.code));
+      if (apagar.length > 0) {
+        const batch = db().batch();
+        for (const d of apagar) batch.delete(db().collection("users").doc(d.uid).collection("dispositivos").doc(d.id));
+        await batch.commit();
+        r.removidos += apagar.length;
+      }
+    } catch (e) {
+      r.falhas += grupo.length;
+      logger.error("Falha ao enviar sinal de sincronização", { erro: e instanceof Error ? e.message : String(e) });
     }
   }
   return r;

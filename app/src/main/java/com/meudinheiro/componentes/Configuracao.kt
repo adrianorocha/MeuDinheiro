@@ -147,6 +147,9 @@ fun Configuracao(
     val hour by userPrefs.notifHourFlow.collectAsState(initial = 9)
     val minute by userPrefs.notifMinuteFlow.collectAsState(initial = 0)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
+    val antecAtivo by userPrefs.notifAntecAtivoFlow.collectAsState(initial = false) // R91
+    val antecMarcadas by userPrefs.notifAntecMarcadasFlow.collectAsState(initial = com.meudinheiro.domain.LembretesVencimento.PADRAO_MARCADAS)
+    val antecAtrasadas by userPrefs.notifAntecAtrasadasFlow.collectAsState(initial = true)
     val avisoLimiteDiario by userPrefs.limiteDiarioAvisoFlow.collectAsState(initial = true)
     val biometriaEnabled by userPrefs.biometriaEnabledFlow.collectAsState(initial = true)
     val biometriaLancar by userPrefs.biometriaLancarFlow.collectAsState(initial = true)
@@ -446,6 +449,51 @@ fun Configuracao(
                                 modifier = Modifier.padding(vertical = 12.dp)
                             )
 
+                            // R91 — lembrar com antecedência (contas a pagar + faturas), em uma única notificação por execução.
+                            ConfiguracaoSwitchItem(
+                                icone = Icons.Default.NotificationsActive,
+                                titulo = "Lembrar com antecedência",
+                                descricao = "Avisa contas e faturas de cartão só nos dias que você marcar (horário acima). Desligado: aviso diário de sempre.",
+                                checked = antecAtivo,
+                                onCheckedChange = { v -> scope.launch { userPrefs.saveNotifAntecAtivo(v) } },
+                                padding = PaddingValues(0.dp)
+                            )
+                            if (antecAtivo) {
+                                com.meudinheiro.domain.LembretesVencimento.ANTECEDENCIAS.forEach { dias ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        androidx.compose.material3.Checkbox(
+                                            checked = dias in antecMarcadas,
+                                            onCheckedChange = { marcado ->
+                                                scope.launch { userPrefs.saveNotifAntecMarcadas(if (marcado) antecMarcadas + dias else antecMarcadas - dias) }
+                                            },
+                                            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                                checkedColor = NeonCyan, uncheckedColor = TextWhite.copy(0.5f), checkmarkColor = DeepSpaceBlue
+                                            )
+                                        )
+                                        Text(com.meudinheiro.domain.LembretesVencimento.rotuloAntecedencia(dias), color = TextWhite, fontSize = 14.sp)
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    androidx.compose.material3.Checkbox(
+                                        checked = antecAtrasadas,
+                                        onCheckedChange = { v -> scope.launch { userPrefs.saveNotifAntecAtrasadas(v) } },
+                                        colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                            checkedColor = NeonCyan, uncheckedColor = TextWhite.copy(0.5f), checkmarkColor = DeepSpaceBlue
+                                        )
+                                    )
+                                    Text("Também avisar o que já venceu (1 vez por dia)", color = TextWhite, fontSize = 14.sp)
+                                }
+                                Text(
+                                    "Cada aviso sai uma única vez por item e antecedência. O \"Antecedência (Dias)\" acima só vale com esta opção desligada.",
+                                    color = TextWhite.copy(0.5f), fontSize = 12.sp
+                                )
+                            }
+
+                            HorizontalDivider(
+                                color = TextWhite.copy(0.05f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+
                             ConfiguracaoSwitchItem(
                                 icone = Icons.Default.FilterAlt,
                                 titulo = "Filtro Rígido",
@@ -592,7 +640,7 @@ fun Configuracao(
 
                 // SEÇÃO: CAPTURA DE NOTIFICAÇÕES DO BANCO (R64) — opt-in, desligada por padrão
                 item { SectionTitle("CAPTURA DE NOTIFICAÇÕES DO BANCO") }
-                item { SecaoCapturaNotificacoes() }
+                item { SecaoCapturaNotificacoes(isPrivate = userPrefs.privateModeFlow.collectAsState(initial = false).value) }
 
                 // SEÇÃO: DESTRUIÇÃO
                 item { SectionTitle("ZONA DE RISCO", NeonRed) }

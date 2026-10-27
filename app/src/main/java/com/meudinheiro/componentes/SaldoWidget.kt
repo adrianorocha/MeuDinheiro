@@ -2,28 +2,31 @@ package com.meudinheiro.componentes
 
 import android.content.Context
 import android.content.Intent
-import androidx.compose.ui.graphics.Color
+import androidx.annotation.ColorRes
+import androidx.annotation.DrawableRes
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.Button
-import androidx.glance.ButtonDefaults
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
+import androidx.glance.action.Action
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
-import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -31,47 +34,40 @@ import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
+import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.meudinheiro.MainActivity
 import com.meudinheiro.R
-import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.domain.AtalhoWidget
+import com.meudinheiro.domain.ContaWidget
+import com.meudinheiro.domain.DestinoApp
+import com.meudinheiro.domain.RoteamentoLancamento
+import com.meudinheiro.domain.WidgetFormato
+import com.meudinheiro.domain.WidgetPlano
 import com.meudinheiro.domain.WidgetResumo
 import com.meudinheiro.funcoes.UserPreferences
-import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Locale
-
-private val Fundo = Color(0xE61B263B)
-private val Ciano = Color(0xFF00E5FF)
-private val Verde = Color(0xFF69F0AE)
-private val Vermelho = Color(0xFFFF8A80)
-private val Ambar = Color(0xFFFFD180)
-
-private val TAMANHO_PEQUENO = DpSize(110.dp, 90.dp)
-private val TAMANHO_MEDIO = DpSize(180.dp, 110.dp)
-private val TAMANHO_GRANDE = DpSize(250.dp, 180.dp)
-private val TAMANHO_EXTRA = DpSize(250.dp, 260.dp)
 
 /** Dias à frente considerados "a vencer" no widget. */
 private const val JANELA_DIAS = 7
 
-/** O que o widget desenha: o resumo (ou null se o banco falhou) e se os valores devem ficar ocultos. */
-private data class EstadoWidget(val resumo: WidgetResumo?, val privado: Boolean)
+/** O que o widget desenha: o resumo (ou null se o banco falhou), o modo privado e o instante da leitura. */
+private data class EstadoWidget(val resumo: WidgetResumo?, val privado: Boolean, val instanteMs: Long)
 
 /**
- * Widget de saldo. Os dados são lidos do banco a cada desenho (sem cópia em SharedPreferences),
- * então ele nunca fica defasado em relação ao app e respeita o modo privado.
+ * Widget de saldo (R92: visual novo, responsivo). Os dados são lidos do banco a cada desenho (sem cópia em
+ * SharedPreferences), então ele nunca fica defasado em relação ao app e respeita o modo privado.
+ * Cores e fundos vêm de recursos (claro/escuro e, no Android 12+, tons do papel de parede no cartão).
  */
 class SaldoWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(setOf(TAMANHO_PEQUENO, TAMANHO_MEDIO, TAMANHO_GRANDE, TAMANHO_EXTRA))
+    override val sizeMode = SizeMode.Responsive(WidgetPlano.TAMANHOS.map { (l, a) -> DpSize(l.dp, a.dp) }.toSet())
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val estado = carregar(context)
@@ -81,7 +77,7 @@ class SaldoWidget : GlanceAppWidget() {
     private suspend fun carregar(context: Context): EstadoWidget = withContext(Dispatchers.IO) {
         val privado = runCatching { UserPreferences(context).privateModeFlow.first() }.getOrDefault(false)
         val resumo = runCatching { MainRepository(context).resumoParaWidget(JANELA_DIAS) }.getOrNull()
-        EstadoWidget(resumo, privado)
+        EstadoWidget(resumo, privado, System.currentTimeMillis())
     }
 }
 
@@ -93,10 +89,20 @@ private fun abrirApp(context: Context) = actionStartActivity(
     }
 )
 
+/** Abre o app direto no destino (ação própria por destino; a MainActivity já é o ponto de entrada do app). */
+private fun abrirDestino(context: Context, destino: DestinoApp) = actionStartActivity(
+    Intent(context, MainActivity::class.java).apply {
+        action = destino.acao
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
+)
+
 /** Painel flutuante de lançamento: o app principal não é aberto. */
-private fun lancarRapido(context: Context, tipo: TipoDespesa) = actionStartActivity(
+private fun lancarRapido(context: Context, modo: RoteamentoLancamento.Modo) = actionStartActivity(
     Intent(context, LancamentoRapidoActivity::class.java).apply {
-        putExtra(LancamentoRapidoActivity.EXTRA_TIPO, tipo.name)
+        // Ação distinta por modo: as PendingIntents dos dois botões não se confundem (extras não contam na comparação).
+        action = if (modo == RoteamentoLancamento.Modo.RECEITA) RoteamentoLancamento.ACAO_NOVA_RECEITA else RoteamentoLancamento.ACAO_NOVO_LANCAMENTO
+        putExtra(LancamentoRapidoActivity.EXTRA_TIPO, RoteamentoLancamento.tipoDoExtra(modo))
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
     }
 )
@@ -113,131 +119,274 @@ private fun repetirAtalho(context: Context, a: AtalhoWidget) = actionStartActivi
     }
 )
 
-private val DATA_CURTA = SimpleDateFormat("dd/MM", Locale("pt", "BR"))
+private fun cor(@ColorRes id: Int) = ColorProvider(id)
+
+private fun estilo(@ColorRes cor: Int, tamanho: Int, negrito: Boolean = false, centro: Boolean = false) = TextStyle(
+    color = cor(cor),
+    fontSize = tamanho.sp,
+    fontWeight = if (negrito) FontWeight.Bold else FontWeight.Normal,
+    textAlign = if (centro) TextAlign.Center else TextAlign.Start
+)
 
 @androidx.compose.runtime.Composable
 private fun Conteudo(context: Context, estado: EstadoWidget) {
     val tamanho = LocalSize.current
-    val compacto = tamanho.width < TAMANHO_MEDIO.width
-    val medio = tamanho.height >= TAMANHO_MEDIO.height && !compacto
-    val grande = tamanho.height >= TAMANHO_GRANDE.height && !compacto
-    val extra = tamanho.height >= TAMANHO_EXTRA.height && !compacto
+    val plano = WidgetPlano.para(tamanho.width.value.toInt(), tamanho.height.value.toInt())
     val resumo = estado.resumo
-    val p = estado.privado
+    val raiz = GlanceModifier.fillMaxSize().background(ImageProvider(R.drawable.widget_bg_card), ContentScale.FillBounds)
 
-    Column(
-        modifier = GlanceModifier
-            .fillMaxSize()
-            .background(Fundo)
-            .cornerRadius(20.dp)
-            .padding(12.dp)
-            .clickable(abrirApp(context))
-    ) {
-        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Image(provider = ImageProvider(R.drawable.sim_chip_2), contentDescription = null, modifier = GlanceModifier.size(16.dp))
-            Spacer(GlanceModifier.size(6.dp))
-            Text("SALDO", style = TextStyle(color = ColorProvider(Color.White.copy(0.55f)), fontSize = 10.sp))
-            Spacer(GlanceModifier.defaultWeight())
-            Image(
-                provider = ImageProvider(R.drawable.ic_popup_sync),
-                contentDescription = "Atualizar",
-                modifier = GlanceModifier.size(22.dp).clickable(actionRunCallback<RefreshAction>())
-            )
+    if (resumo == null) {
+        Column(modifier = raiz.padding(12.dp).clickable(abrirApp(context)), verticalAlignment = Alignment.CenterVertically) {
+            Text(context.getString(R.string.widget_erro_dados), maxLines = 3, style = estilo(R.color.widget_text_sec, 12))
         }
+        return
+    }
 
-        if (resumo == null) {
-            Text("Não foi possível ler os dados.", style = TextStyle(color = ColorProvider(Color.White.copy(0.6f)), fontSize = 11.sp))
+    when (plano.variacao) {
+        WidgetPlano.Variacao.COMPACTO -> Compacto(context, resumo, estado.privado, raiz)
+        WidgetPlano.Variacao.ENXUTO -> Enxuto(context, resumo, estado.privado, raiz)
+        WidgetPlano.Variacao.MEDIO -> Medio(context, resumo, estado.privado, plano, estado.instanteMs, raiz)
+        WidgetPlano.Variacao.GRANDE -> Grande(context, resumo, estado.privado, plano, estado.instanteMs, raiz)
+    }
+}
+
+// ───────────────────────── Variações ─────────────────────────
+
+/** Saldo + botão "+" (abre o painel de lançamento com seletor Despesa/Receita). */
+@androidx.compose.runtime.Composable
+private fun Compacto(context: Context, r: WidgetResumo, privado: Boolean, raiz: GlanceModifier) {
+    Column(modifier = raiz.padding(horizontal = 10.dp, vertical = 6.dp).clickable(abrirApp(context))) {
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(context.getString(R.string.widget_label_saldo), maxLines = 1, modifier = GlanceModifier.defaultWeight(), style = estilo(R.color.widget_text_sec, 11))
+            Box(
+                modifier = GlanceModifier.size(26.dp)
+                    .background(ImageProvider(R.drawable.widget_bg_btn_rec), ContentScale.FillBounds)
+                    .clickable(lancarRapido(context, RoteamentoLancamento.Modo.DESPESA)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    ImageProvider(R.drawable.ic_w_add), context.getString(R.string.widget_novo_lancamento),
+                    modifier = GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(cor(R.color.widget_btn_rec_fg))
+                )
+            }
+        }
+        Saldo(r, privado, WidgetPlano.Variacao.COMPACTO)
+    }
+}
+
+/** Saldo, entradas/saídas em uma linha e os dois botões. */
+@androidx.compose.runtime.Composable
+private fun Enxuto(context: Context, r: WidgetResumo, privado: Boolean, raiz: GlanceModifier) {
+    Column(modifier = raiz.padding(horizontal = 12.dp, vertical = 5.dp).clickable(abrirApp(context))) {
+        Text(context.getString(R.string.widget_label_saldo), maxLines = 1, style = estilo(R.color.widget_text_sec, 11))
+        Saldo(r, privado, WidgetPlano.Variacao.ENXUTO)
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(WidgetFormato.chipEntradas(r.receitasMes, privado), maxLines = 1, style = estilo(R.color.widget_positive, 11, negrito = true))
+            Spacer(GlanceModifier.width(10.dp))
+            Text(WidgetFormato.chipSaidas(r.despesasMes, privado), maxLines = 1, modifier = GlanceModifier.defaultWeight(), style = estilo(R.color.widget_negative, 11, negrito = true))
+            BotaoOlho(context, privado)
+        }
+        Spacer(GlanceModifier.defaultWeight())
+        BotoesLancar(context, 28.dp)
+    }
+}
+
+/** Cabeçalho com olho/atualizar, saldo, chips de entradas/saídas, [próxima conta] e os botões. */
+@androidx.compose.runtime.Composable
+private fun Medio(context: Context, r: WidgetResumo, privado: Boolean, plano: WidgetPlano.Plano, instanteMs: Long, raiz: GlanceModifier) {
+    Column(modifier = raiz.padding(10.dp).clickable(abrirApp(context))) {
+        Cabecalho(context, privado, comAtualizar = true)
+        Saldo(r, privado, WidgetPlano.Variacao.MEDIO)
+        Spacer(GlanceModifier.height(4.dp))
+        Chips(r, privado)
+        if (plano.proxima) {
+            r.proximas.firstOrNull()?.let { c ->
+                Row(modifier = GlanceModifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    LinhaVencimento(c, privado, instanteMs, GlanceModifier.defaultWeight())
+                }
+            }
+        }
+        Spacer(GlanceModifier.defaultWeight())
+        BotoesLancar(context, 30.dp)
+    }
+}
+
+/** Tudo do médio + próximos vencimentos, acesso rápido (extrato, cartões, metas, app) e "atualizado às". */
+@androidx.compose.runtime.Composable
+private fun Grande(context: Context, r: WidgetResumo, privado: Boolean, plano: WidgetPlano.Plano, instanteMs: Long, raiz: GlanceModifier) {
+    Column(modifier = raiz.padding(10.dp).clickable(abrirApp(context))) {
+        Cabecalho(context, privado, comAtualizar = true)
+        Saldo(r, privado, WidgetPlano.Variacao.GRANDE)
+        Spacer(GlanceModifier.height(4.dp))
+        Chips(r, privado)
+        Spacer(GlanceModifier.height(6.dp))
+        BotoesLancar(context, 30.dp)
+        Spacer(GlanceModifier.height(6.dp))
+
+        Text(context.getString(R.string.widget_proximos_vencimentos), maxLines = 1, style = estilo(R.color.widget_text_sec, 11, negrito = true))
+        if (r.proximas.isEmpty()) {
+            Text(context.getString(R.string.widget_sem_vencimentos), maxLines = 1, modifier = GlanceModifier.padding(top = 2.dp), style = estilo(R.color.widget_text_sec, 11))
         } else {
-            Text(
-                text = formatarMoedaBR(resumo.saldoTotal, p),
-                maxLines = 1,
-                style = TextStyle(
-                    color = ColorProvider(if (resumo.saldoTotal < 0) Vermelho else Verde),
-                    fontSize = if (compacto) 17.sp else 21.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-
-            if (medio) {
-                Linha("Mês  ▲ ${formatarMoedaBR(resumo.receitasMes, p)}  ▼ ${formatarMoedaBR(resumo.despesasMes, p)}", Color.White.copy(0.75f))
-            }
-            if (grande) Linha("Hoje  ${formatarMoedaBR(resumo.gastoHoje, p)} gastos", Color.White.copy(0.75f))
-
-            if (resumo.atrasadas > 0 || resumo.aVencer > 0) {
-                val partes = buildList {
-                    if (resumo.atrasadas > 0) add("${resumo.atrasadas} atrasada(s)")
-                    if (resumo.aVencer > 0) add("${resumo.aVencer} a vencer")
-                }
-                Linha(
-                    partes.joinToString(" · ") + if (compacto) "" else " · " + formatarMoedaBR(resumo.valorPendente, p),
-                    if (resumo.atrasadas > 0) Vermelho else Ambar
-                )
-            }
-            if (grande) resumo.proximaConta?.let { c ->
-                Linha("Próxima: ${c.descricao} · ${DATA_CURTA.format(c.data)} · ${formatarMoedaBR(c.valor, p)}", if (c.atrasada) Vermelho else Color.White.copy(0.75f))
-            }
-
-            if (extra) {
-                resumo.orcamento?.let { o ->
-                    Linha("Orçamento ${o.categoria}: ${o.percentual}%", if (o.percentual >= 100) Vermelho else if (o.percentual >= 80) Ambar else Verde)
-                }
-                Spacer(GlanceModifier.height(4.dp))
-                if (resumo.metas.isEmpty()) {
-                    Linha("Nenhuma meta", Color.White.copy(0.4f))
-                } else {
-                    resumo.metas.forEach { meta ->
-                        Row(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "🎯 ${meta.nome}",
-                                maxLines = 1,
-                                modifier = GlanceModifier.defaultWeight(),
-                                style = TextStyle(color = ColorProvider(Ciano), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            )
-                            Text("${meta.percentual}%", style = TextStyle(color = ColorProvider(Color.White.copy(0.75f)), fontSize = 10.sp))
-                        }
-                    }
+            r.proximas.take(plano.vencimentos).forEach { c ->
+                Row(modifier = GlanceModifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    LinhaVencimento(c, privado, instanteMs, GlanceModifier.defaultWeight())
                 }
             }
         }
 
         Spacer(GlanceModifier.defaultWeight())
 
-        // Atalhos de 1 toque (despesas que você repete): lançam na hora, sem abrir nada.
-        if (grande && resumo != null && resumo.atalhos.isNotEmpty()) {
+        if (plano.atalhos && r.atalhos.isNotEmpty()) {
             Row(modifier = GlanceModifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                resumo.atalhos.forEachIndexed { i, a ->
-                    if (i > 0) Spacer(GlanceModifier.size(6.dp))
-                    Button(
-                        text = "↻ ${a.descricao.take(12)} ${formatarMoedaBR(a.valor, false)}",
-                        onClick = repetirAtalho(context, a),
-                        colors = ButtonDefaults.buttonColors(backgroundColor = ColorProvider(Color(0x3300E5FF)), contentColor = ColorProvider(Ciano)),
-                        modifier = GlanceModifier.defaultWeight().height(30.dp)
+                r.atalhos.take(if (plano.rotulos) 2 else 1).forEachIndexed { i, a ->
+                    if (i > 0) Spacer(GlanceModifier.width(6.dp))
+                    Pilula(
+                        texto = "↻ ${a.descricao.take(10)} ${WidgetFormato.valorChip(a.valor, privado)}",
+                        bg = R.drawable.widget_bg_tile, fg = R.color.widget_accent,
+                        acao = repetirAtalho(context, a), altura = 28.dp, modifier = GlanceModifier.defaultWeight()
                     )
                 }
             }
         }
 
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Button(
-                text = "+ DESPESA",
-                onClick = lancarRapido(context, TipoDespesa.DEBITO),
-                colors = ButtonDefaults.buttonColors(backgroundColor = ColorProvider(Ciano), contentColor = ColorProvider(Color(0xFF1B263B))),
-                modifier = GlanceModifier.defaultWeight().height(36.dp)
+        AcessoRapido(context, plano.rotulos)
+        if (plano.atualizado) {
+            Text(
+                context.getString(R.string.widget_atualizado_as, WidgetFormato.horaAtualizacao(instanteMs)),
+                maxLines = 1, modifier = GlanceModifier.fillMaxWidth().padding(top = 3.dp),
+                style = estilo(R.color.widget_text_sec, 10, centro = true)
             )
-            if (!compacto) {
-                Spacer(GlanceModifier.size(6.dp))
-                Button(
-                    text = "+ RECEITA",
-                    onClick = lancarRapido(context, TipoDespesa.CREDITO),
-                    colors = ButtonDefaults.buttonColors(backgroundColor = ColorProvider(Verde), contentColor = ColorProvider(Color(0xFF1B263B))),
-                    modifier = GlanceModifier.defaultWeight().height(36.dp)
+        }
+    }
+}
+
+// ───────────────────────── Peças ─────────────────────────
+
+@androidx.compose.runtime.Composable
+private fun Saldo(r: WidgetResumo, privado: Boolean, variacao: WidgetPlano.Variacao) {
+    val texto = WidgetFormato.saldo(r.saldoTotal, privado, variacao)
+    Text(
+        text = texto,
+        maxLines = 1,
+        style = estilo(if (r.saldoTotal < 0) R.color.widget_negative else R.color.widget_positive, WidgetFormato.fonteSaldoSp(texto, variacao), negrito = true)
+    )
+}
+
+@androidx.compose.runtime.Composable
+private fun Cabecalho(context: Context, privado: Boolean, comAtualizar: Boolean) {
+    Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(context.getString(R.string.widget_label_saldo), maxLines = 1, modifier = GlanceModifier.defaultWeight(), style = estilo(R.color.widget_text_sec, 11, negrito = true))
+        BotaoOlho(context, privado)
+        if (comAtualizar) {
+            Box(
+                modifier = GlanceModifier.size(24.dp).clickable(actionRunCallback<RefreshAction>()),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    ImageProvider(R.drawable.ic_w_refresh), context.getString(R.string.widget_atualizar),
+                    modifier = GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(cor(R.color.widget_text_sec))
                 )
             }
         }
     }
 }
 
+/** Alterna ocultar/mostrar valores (a mesma preferência de modo privado do app). */
 @androidx.compose.runtime.Composable
-private fun Linha(texto: String, cor: Color) {
-    Text(text = texto, maxLines = 1, modifier = GlanceModifier.padding(top = 2.dp), style = TextStyle(color = ColorProvider(cor), fontSize = 10.sp))
+private fun BotaoOlho(context: Context, privado: Boolean) {
+    Box(modifier = GlanceModifier.size(24.dp).clickable(actionRunCallback<AlternarPrivacidadeAction>()), contentAlignment = Alignment.Center) {
+        Image(
+            ImageProvider(if (privado) R.drawable.ic_w_eye_off else R.drawable.ic_w_eye),
+            context.getString(if (privado) R.string.widget_mostrar else R.string.widget_ocultar),
+            modifier = GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(cor(R.color.widget_text_sec))
+        )
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun Chips(r: WidgetResumo, privado: Boolean) {
+    Row(modifier = GlanceModifier.fillMaxWidth()) {
+        Chip(WidgetFormato.chipEntradas(r.receitasMes, privado), R.drawable.widget_bg_chip_pos, R.color.widget_positive, GlanceModifier.defaultWeight())
+        Spacer(GlanceModifier.width(6.dp))
+        Chip(WidgetFormato.chipSaidas(r.despesasMes, privado), R.drawable.widget_bg_chip_neg, R.color.widget_negative, GlanceModifier.defaultWeight())
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun Chip(texto: String, @DrawableRes bg: Int, @ColorRes fg: Int, modifier: GlanceModifier) {
+    Box(
+        modifier = modifier.height(22.dp).background(ImageProvider(bg), ContentScale.FillBounds),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(texto, maxLines = 1, style = estilo(fg, 11, negrito = true, centro = true))
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun BotoesLancar(context: Context, altura: Dp) {
+    Row(modifier = GlanceModifier.fillMaxWidth()) {
+        Pilula(
+            context.getString(R.string.widget_btn_despesa), R.drawable.widget_bg_btn_desp, R.color.widget_btn_desp_fg,
+            lancarRapido(context, RoteamentoLancamento.Modo.DESPESA), altura, GlanceModifier.defaultWeight()
+        )
+        Spacer(GlanceModifier.width(6.dp))
+        Pilula(
+            context.getString(R.string.widget_btn_receita), R.drawable.widget_bg_btn_rec, R.color.widget_btn_rec_fg,
+            lancarRapido(context, RoteamentoLancamento.Modo.RECEITA), altura, GlanceModifier.defaultWeight()
+        )
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun Pilula(texto: String, @DrawableRes bg: Int, @ColorRes fg: Int, acao: Action, altura: Dp, modifier: GlanceModifier) {
+    Box(
+        modifier = modifier.height(altura).background(ImageProvider(bg), ContentScale.FillBounds).clickable(acao),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(texto, maxLines = 1, style = estilo(fg, 12, negrito = true, centro = true))
+    }
+}
+
+/** "descrição · dia · valor" de uma conta a vencer; atrasadas em cor de alerta. */
+@androidx.compose.runtime.Composable
+private fun LinhaVencimento(c: ContaWidget, privado: Boolean, agoraMs: Long, modifier: GlanceModifier) {
+    val destaque = if (c.atrasada) R.color.widget_negative else R.color.widget_text
+    Text(c.descricao, maxLines = 1, modifier = modifier, style = estilo(destaque, 11))
+    Text(
+        WidgetFormato.rotuloDia(c, agoraMs), maxLines = 1,
+        modifier = GlanceModifier.padding(horizontal = 6.dp),
+        style = estilo(if (c.atrasada) R.color.widget_negative else R.color.widget_text_sec, 11, negrito = c.atrasada)
+    )
+    Text(WidgetFormato.valorConta(c.valor, privado), maxLines = 1, style = estilo(destaque, 11, negrito = true))
+}
+
+@androidx.compose.runtime.Composable
+private fun AcessoRapido(context: Context, rotulos: Boolean) {
+    Row(modifier = GlanceModifier.fillMaxWidth()) {
+        Atalho(context, R.drawable.ic_w_extrato, R.string.widget_acesso_extrato, rotulos, abrirDestino(context, DestinoApp.EXTRATO), GlanceModifier.defaultWeight())
+        Spacer(GlanceModifier.width(4.dp))
+        Atalho(context, R.drawable.ic_w_cartao, R.string.widget_acesso_cartoes, rotulos, abrirDestino(context, DestinoApp.CARTOES), GlanceModifier.defaultWeight())
+        Spacer(GlanceModifier.width(4.dp))
+        Atalho(context, R.drawable.ic_w_meta, R.string.widget_acesso_metas, rotulos, abrirDestino(context, DestinoApp.METAS), GlanceModifier.defaultWeight())
+        Spacer(GlanceModifier.width(4.dp))
+        Atalho(context, R.drawable.ic_w_app, R.string.widget_acesso_app, rotulos, abrirApp(context), GlanceModifier.defaultWeight())
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun Atalho(context: Context, @DrawableRes icone: Int, rotulo: Int, comRotulo: Boolean, acao: Action, modifier: GlanceModifier) {
+    val nome = context.getString(rotulo)
+    Box(
+        modifier = modifier.height(34.dp).background(ImageProvider(R.drawable.widget_bg_tile), ContentScale.FillBounds).clickable(acao),
+        contentAlignment = Alignment.Center
+    ) {
+        if (comRotulo) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(ImageProvider(icone), null, modifier = GlanceModifier.size(14.dp), colorFilter = ColorFilter.tint(cor(R.color.widget_accent)))
+                Text(nome, maxLines = 1, style = estilo(R.color.widget_text, 10, centro = true))
+            }
+        } else {
+            Image(ImageProvider(icone), nome, modifier = GlanceModifier.size(18.dp), colorFilter = ColorFilter.tint(cor(R.color.widget_accent)))
+        }
+    }
 }

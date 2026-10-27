@@ -5,6 +5,9 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.meudinheiro.MyApplication
 import com.meudinheiro.domain.PushTextos
+import com.meudinheiro.domain.SinalSync
+import com.meudinheiro.storage.EnvioImediato
+import com.meudinheiro.storage.JanelaRecebimento
 import com.meudinheiro.domain.TipoPush
 import com.meudinheiro.funcoes.UserPreferences
 import com.meudinheiro.notif.Aviso
@@ -41,6 +44,11 @@ class MeuDinheiroMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        // R88: sinal silencioso portal -> app (sem notificação). Tratado antes dos textos.
+        if (SinalSync.ehSinal(message.data)) {
+            tratarSinalSync()
+            return
+        }
         val texto = PushTextos.montar(message.data) ?: return
         scope.launch {
             runCatching {
@@ -58,6 +66,25 @@ class MeuDinheiroMessagingService : FirebaseMessagingService() {
                     Aviso(tipo = tipo, titulo = texto.titulo, resumo = texto.corpo, id = id, textoPublico = texto.publico)
                 )
             }.onFailure { Log.w(TAG, "onMessageReceived", it) }
+        }
+    }
+
+    private fun tratarSinalSync() {
+        scope.launch {
+            runCatching {
+                val prefs = UserPreferences(applicationContext)
+                val app = applicationContext as MyApplication
+                val agir = SinalSync.deveAgir(
+                    pushLigado = prefs.pushEnabledFlow.first(),
+                    nuvem = prefs.storageModeFlow.first() == StorageMode.FIREBASE,
+                    logado = app.storageManager.auth.uidAtual != null
+                )
+                if (!agir) return@runCatching
+                if (!SinalSync.precisaJanela(EnvioImediato.emPrimeiroPlano)) return@runCatching
+                val agora = System.currentTimeMillis()
+                if (!JanelaRecebimento.registrarSeNovo(applicationContext, agora)) return@runCatching
+                JanelaRecebimento.agendar(applicationContext, agora)
+            }.onFailure { Log.w(TAG, "sinal SYNC", it) }
         }
     }
 

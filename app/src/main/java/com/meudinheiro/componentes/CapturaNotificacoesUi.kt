@@ -68,8 +68,6 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private val Claro = Color(0xFFE0E1DD)
-private val FundoCartao = Color(0xFF1B263B)
 
 /** Recarrega o conteúdo quando o usuário volta das configurações do sistema ou do formulário de lançamento. */
 @Composable
@@ -82,7 +80,7 @@ private fun AoRetomar(acao: () -> Unit) {
     }
 }
 
-private fun rotuloDoApp(ctx: Context, pacote: String): String {
+internal fun rotuloDoApp(ctx: Context, pacote: String): String {
     if (pacote.endsWith(".*")) return "Todos os apps $pacote"
     return runCatching {
         val pm = ctx.packageManager
@@ -92,7 +90,7 @@ private fun rotuloDoApp(ctx: Context, pacote: String): String {
 
 /** Configurações > "Captura de notificações do banco" (R64). Desligada por padrão. */
 @Composable
-fun SecaoCapturaNotificacoes() {
+fun SecaoCapturaNotificacoes(isPrivate: Boolean = false) {
     val ctx = LocalContext.current
     var versao by remember { mutableIntStateOf(0) }
     AoRetomar { versao++ }
@@ -106,6 +104,7 @@ fun SecaoCapturaNotificacoes() {
     var novoPacote by remember { mutableStateOf("") }
     var erroPacote by remember { mutableStateOf<String?>(null) }
     var confirmaApagar by remember { mutableStateOf(false) }
+    var revisando by remember { mutableStateOf(false) } // R89: revisão em lote como tela cheia
 
     fun abrirAcesso() {
         runCatching { ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -217,8 +216,22 @@ fun SecaoCapturaNotificacoes() {
                 TextButton(onClick = { CapturaConfig.limparVistos(ctx); versao++ }) { Text("Limpar esta lista", color = TextWhite.copy(0.6f)) }
             }
 
+            Button(
+                onClick = { revisando = true }, enabled = pendentes > 0, modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = DeepSpaceBlue)
+            ) { Text(if (pendentes > 0) "Revisar sugestões em lote ($pendentes)" else "Nenhuma sugestão para revisar") }
             OutlinedButton(onClick = { confirmaApagar = true }, modifier = Modifier.fillMaxWidth()) {
                 Text(if (pendentes > 0) "Apagar sugestões ($pendentes pendentes)" else "Apagar sugestões", color = NeonRed)
+            }
+        }
+    }
+    if (revisando) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { revisando = false; versao++ },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
+        ) {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(DeepSpaceBlue)) {
+                SugestoesLancamentoScreen(isPrivate, null) { revisando = false; versao++ }
             }
         }
     }
@@ -235,80 +248,5 @@ fun SecaoCapturaNotificacoes() {
             },
             dismissButton = { TextButton(onClick = { confirmaApagar = false }) { Text("Cancelar") } }
         )
-    }
-}
-
-/** Ferramentas > "Sugestões de lançamento": confirmar (abre o formulário preenchido), ignorar ou apagar. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SugestoesLancamentoScreen(isPrivate: Boolean, onBack: () -> Unit) {
-    val ctx = LocalContext.current
-    BackHandler(onBack = onBack)
-    var versao by remember { mutableIntStateOf(0) }
-    var itens by remember { mutableStateOf<List<SugestaoGuardada>>(emptyList()) }
-    AoRetomar { versao++ }
-    LaunchedEffect(versao) { itens = withContext(Dispatchers.IO) { SugestoesStore.pendentes(ctx) } }
-    val formato = remember { SimpleDateFormat("dd/MM HH:mm", Locale("pt", "BR")) }
-    val capturaLigada = remember(versao) { CapturaConfig.ativo(ctx) }
-
-    Scaffold(
-        containerColor = DeepSpaceBlue,
-        topBar = {
-            TopAppBar(
-                title = { Text("Sugestões de lançamento", color = Claro, fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Voltar", tint = Claro) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        }
-    ) { padding ->
-        LazyColumn(
-            Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item {
-                Text(
-                    if (capturaLigada) "Criadas a partir das notificações dos apps permitidos. Nada é lançado sem você confirmar; expiram em 7 dias."
-                    else "A captura está desligada (Configurações > Captura de notificações do banco).",
-                    color = Claro.copy(0.6f), fontSize = 12.sp
-                )
-            }
-            if (itens.isEmpty()) item { Text("Nenhuma sugestão pendente.", color = Claro.copy(0.7f), modifier = Modifier.padding(top = 12.dp)) }
-            items(itens, key = { it.id }) { g ->
-                Column(Modifier.fillMaxWidth().background(FundoCartao, RoundedCornerShape(14.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(NotificacaoBancaria.tituloLancamento(g), color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                            Text(
-                                g.tipo.rotulo + " · " + formato.format(java.util.Date(g.horarioMs)) + (g.finalCartao?.let { " · final $it" } ?: "") +
-                                    if (g.confianca == NotificacaoBancaria.Confianca.BAIXA) " · revise" else "",
-                                color = Color.White.copy(0.5f), fontSize = 11.sp
-                            )
-                        }
-                        Text(
-                            (if (g.entrada) "+ " else "- ") + if (isPrivate) "R$ ••••" else FormatoCentavos.brl(g.valorCentavos),
-                            color = if (g.entrada) NeonGreen else Color.White, fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { runCatching { ctx.startActivity(NotificadorSugestoes.intentConfirmar(ctx, g)) } },
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = DeepSpaceBlue)
-                        ) { Text("Confirmar") }
-                        OutlinedButton(onClick = {
-                            SugestoesStore.marcar(ctx, g.id, Estado.IGNORADA); NotificadorSugestoes.cancelar(ctx, g.id); versao++
-                        }) { Text("Ignorar") }
-                        TextButton(onClick = {
-                            SugestoesStore.remover(ctx, g.id); NotificadorSugestoes.cancelar(ctx, g.id); versao++
-                        }) { Text("Apagar", color = NeonRed) }
-                    }
-                }
-            }
-            if (itens.isNotEmpty()) item {
-                TextButton(onClick = {
-                    NotificadorSugestoes.cancelarTodas(ctx, SugestoesStore.todas(ctx).map { it.id })
-                    SugestoesStore.apagarTudo(ctx); versao++
-                }) { Text("Apagar todas as sugestões", color = NeonRed) }
-            }
-        }
     }
 }

@@ -11,6 +11,7 @@ import com.meudinheiro.data.AppDatabase
 import com.meudinheiro.data.SyncMeta
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -51,13 +52,23 @@ class SyncSession(
     private val repository: MainRepository,
     private val aoMudarEstado: (SyncStatus) -> Unit,
     /** Chamado (em qualquer thread) quando a sessão acabou de enviar escritas ao Firestore. */
-    private val aoEnviar: () -> Unit = {}
+    private val aoEnviar: () -> Unit = {},
+    /** R87 — registros que a nuvem recusou (isolados para não travar o envio dos demais). */
+    private val quarentena: Quarentena = Quarentena(object : PersistenciaQuarentena {
+        override fun ler(): String? = null
+        override fun gravar(texto: String) = Unit
+    }),
+    /** R86 — (documentos com escrita pendente, instante da última confirmação do servidor). Chamado em qualquer thread. */
+    private val aoMudarEnvio: (Int, Long?) -> Unit = { _, _ -> }
 ) {
     private sealed interface Evento {
         data class Snapshot(val colecao: String, val mudancas: List<Mudanca>, val doServidor: Boolean) : Evento
         data object LocalMudou : Evento
         data class Pedido(val modo: ModoSync, val concluido: CompletableDeferred<Unit>) : Evento
         data class Falha(val erro: Throwable) : Evento
+
+        /** R87 — um lote terminou de ser enviado (com ou sem registros isolados / falha). */
+        data class LoteResolvido(val resultado: IsolamentoLote.Resultado) : Evento
     }
 
     private data class Mudanca(val id: String, val removido: Boolean, val doc: Doc?, val pendente: Boolean)
@@ -79,6 +90,22 @@ class SyncSession(
 
     @Volatile
     private var pendenciasCache = false
+
+    /** Escopo da sessão (para os envios em lote rodarem sem bloquear o laço de eventos). */
+    @Volatile
+    private var escopo: CoroutineScope? = null
+
+    @Volatile
+    private var confirmadoEm: Long? = null
+
+    /** R86 — documentos aguardando confirmação do servidor (escrita pendente ou enviada e ainda não carimbada). */
+    private fun contarPendentes(): Int {
+        val chaves = HashSet<String>(ultimoEnviado.keys)
+        pendentes.forEach { (col, ids) -> ids.forEach { chaves += "$col/$it" } }
+        return chaves.size
+    }
+
+    private fun publicarEnvio() = aoMudarEnvio(contarPendentes(), confirmadoEm)
 
     /**
      * R85 — há algo a enviar/confirmar? (mudança local ainda não reconciliada, envio não carimbado ou escrita
@@ -111,6 +138,7 @@ class SyncSession(
     /** Roda até ser cancelada (mudança de modo, logout…). Lança em falha irrecuperável (ex.: permissão). */
     suspend fun rodar() = coroutineScope {
         val registros = mutableListOf<ListenerRegistration>()
+        escopo = this
         try {
             catalogo.forEach { col ->
                 registros += raiz(col.nome).addSnapshotListener(MetadataChanges.INCLUDE) { snap, erro ->
@@ -144,6 +172,7 @@ class SyncSession(
             aoMudarEstado(SyncStatus.Conectando)
             laco()
         } finally {
+            escopo = null
             registros.forEach { it.remove() }
         }
     }
@@ -168,6 +197,22 @@ class SyncSession(
                         modoPendente = evento.modo
                         aguardando += evento.concluido
                     }
+                    is Evento.LoteResolvido -> {
+                        val r = evento.resultado
+                        val agora = System.currentTimeMillis()
+                        r.recusados.forEach {
+                            Log.w(TAG, "Registro recusado, em quarentena: ${it.item.chave}", it.erro)
+                            quarentena.registrar(it.item, IsolamentoLote.motivo(it.erro), agora)
+                            ultimoEnviado.remove(it.item.chave)
+                        }
+                        val falha = r.falha
+                        if (falha != null) {
+                            // Transitório/sistêmico: segue o recuo da sessão (não é culpa de um registro).
+                            aguardando.forEach { it.completeExceptionally(falha) }
+                            aguardando.clear()
+                            throw falha
+                        }
+                    }
                     Evento.LocalMudou -> Unit
                 }
                 evento = withTimeoutOrNullCompat(DEBOUNCE_MS) { eventos.receive() } ?: break
@@ -177,6 +222,7 @@ class SyncSession(
             try {
                 reconciliar(modoPendente)
                 pendenciasCache = geracaoLocal != geracao || calcularPendencias()
+                publicarEnvio()
                 aoMudarEstado(
                     if (confirmadas.size == catalogo.size) SyncStatus.Sincronizado(System.currentTimeMillis())
                     else SyncStatus.Conectando
@@ -198,6 +244,7 @@ class SyncSession(
     private fun aplicarSnapshot(e: Evento.Snapshot) {
         val docs = remoto.getValue(e.colecao)
         val pend = pendentes.getValue(e.colecao)
+        val antes = contarPendentes()
         e.mudancas.forEach { m ->
             if (m.removido) {
                 docs.remove(m.id); pend.remove(m.id)
@@ -207,6 +254,11 @@ class SyncSession(
             }
         }
         if (e.doServidor) confirmadas += e.colecao
+        // R86: confirmação do servidor = dados recebidos ou pendências zeradas (sem custo: é o mesmo snapshot).
+        val agora = System.currentTimeMillis()
+        if (e.doServidor && e.mudancas.any { !it.pendente }) confirmadoEm = agora
+        confirmadoEm = IndicadorSync.confirmacao(antes, contarPendentes(), e.doServidor, agora, confirmadoEm)
+        publicarEnvio()
     }
 
     // ------------------------------------------------------------------ reconciliação
@@ -237,7 +289,14 @@ class SyncSession(
             val hashesLocais = local.mapValues { hash(col, it.value) }
             val hashesNuvem = nuvem.mapValues { hash(col, it.value) }
 
+            // R87: registro em quarentena que sumiu dos dois lados não precisa mais de acompanhamento.
+            quarentena.chaves().filter { it.startsWith(col.nome + "/") }.map { it.removePrefix(col.nome + "/") }
+                .filter { it !in hashesLocais && it !in hashesNuvem }
+                .forEach { quarentena.remover(col.nome, it) }
+
             for (id in hashesLocais.keys + hashesNuvem.keys + historico.keys) {
+                // R87: se o usuário editou o registro recusado, vale uma nova tentativa.
+                hashesLocais[id]?.let { quarentena.liberarSeEditado(col.nome, id, it) }
                 val acao = Reconciliador.decidir(
                     local = hashesLocais[id],
                     nuvem = hashesNuvem[id],
@@ -247,6 +306,18 @@ class SyncSession(
                     colecaoConfirmada = confirmada,
                     modo = modo
                 )
+                if (quarentena.bloqueia(col.nome, id) &&
+                    acao != Reconciliador.Acao.CARIMBAR && acao != Reconciliador.Acao.ESQUECER
+                ) {
+                    // Em quarentena: não envia, não apaga e não sobrescreve o dado local (nada é perdido).
+                    ultimoEnviado.remove("${col.nome}/$id")
+                    continue
+                }
+                if (acao == Reconciliador.Acao.CARIMBAR || acao == Reconciliador.Acao.ESQUECER ||
+                    acao == Reconciliador.Acao.PUXAR || acao == Reconciliador.Acao.APAGAR_LOCAL
+                ) {
+                    quarentena.remover(col.nome, id) // já bate com a nuvem (ou a nuvem prevaleceu): resolvido
+                }
                 when (acao) {
                     Reconciliador.Acao.NADA -> Unit
                     Reconciliador.Acao.PUXAR -> plano.puxar(col.nome, id, nuvem.getValue(id), hashesNuvem.getValue(id))
@@ -287,25 +358,37 @@ class SyncSession(
             repository.recalcularTudo()
         }
 
-        // 2) Celular → nuvem (lotes de até 400 operações).
+        // 2) Celular → nuvem (lotes atômicos de até 400 operações). R87: se um lote for recusado por culpa de
+        // registro(s), eles são isolados por bisseção e vão para a quarentena; o resto é enviado normalmente.
         val agora = System.currentTimeMillis()
-        val operacoes = mutableListOf<(com.google.firebase.firestore.WriteBatch) -> Unit>()
-        plano.enviar.forEach { (colecao, itens) ->
+        val itens = mutableListOf<ItemEnvio>()
+        plano.enviar.forEach { (colecao, lista) ->
             val col = catalogo.first { it.nome == colecao }
-            itens.forEach { (id, doc) ->
-                operacoes += { b -> b.set(raiz(colecao).document(id), doc + (CAMPO_ATUALIZADO to agora)) }
-                ultimoEnviado["$colecao/$id"] = hash(col, doc)
+            lista.forEach { (id, doc) ->
+                val h = hash(col, doc)
+                itens += ItemEnvio(colecao, id, doc + (CAMPO_ATUALIZADO to agora), h)
+                ultimoEnviado["$colecao/$id"] = h
             }
         }
         plano.apagarRemoto.forEach { (colecao, ids) ->
-            ids.forEach { id -> operacoes += { b -> b.delete(raiz(colecao).document(id)) } }
+            ids.forEach { id -> itens += ItemEnvio(colecao, id, null, "") }
         }
-        operacoes.chunked(TAMANHO_LOTE).forEach { lote ->
-            val batch = firestore.batch()
-            lote.forEach { it(batch) }
-            batch.commit().addOnFailureListener { e ->
-                Log.e(TAG, "Falha ao gravar no Firestore", e)
-                eventos.trySend(Evento.Falha(e))
+        val operacoes = itens
+        val escopoAtual = escopo
+        if (escopoAtual != null) {
+            val enviador = IsolamentoLote.Enviador { lote ->
+                val batch = firestore.batch()
+                lote.forEach { i ->
+                    val ref = raiz(i.colecao).document(i.id)
+                    if (i.doc != null) batch.set(ref, i.doc) else batch.delete(ref)
+                }
+                batch.commit().await()
+            }
+            itens.chunked(TAMANHO_LOTE).forEach { lote ->
+                escopoAtual.launch {
+                    val resultado = IsolamentoLote.processar(lote, enviador)
+                    eventos.trySend(Evento.LoteResolvido(resultado))
+                }
             }
         }
         // R85: escritas feitas fora da tela (serviço/receiver/worker) são empurradas na hora pelo WorkManager.

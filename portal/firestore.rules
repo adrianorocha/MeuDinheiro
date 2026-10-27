@@ -73,7 +73,8 @@ service cloud.firestore {
     // configurações = só ADMIN/dono; veja derivadoDeEditor para os campos-cache que o lançamento atualiza.)
     function colecaoDeRotina(colecao) {
       return colecao in ['despesas', 'despesasFixas', 'transferenciasAgendadas', 'categorias', 'regrasCategoria',
-                         'projetos', 'dividas', 'pessoas', 'acertos', 'patrimonio', 'transacoes', 'lixeira'];
+                         'projetos', 'dividas', 'pessoas', 'acertos', 'patrimonio', 'transacoes', 'lixeira',
+                         'sinais']; // R86: 'sinais/portal' = "gravei dados" (dispara o push silencioso que acorda o app)
     }
 
     // EDITOR só exclui lançamentos (que vão para a lixeira); excluir definitivamente / esvaziar lixeira e excluir

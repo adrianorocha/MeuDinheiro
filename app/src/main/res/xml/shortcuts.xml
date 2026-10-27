@@ -11,4 +11,27 @@
             android:targetClass="com.meudinheiro.MainActivity"
             android:targetPackage="com.meudinheiro" />
     </shortcut>
+    <!-- R90: abrem o painel de lançamento rápido (o mesmo do widget); a biometria é pedida ao lançar. -->
+    <shortcut
+        android:shortcutId="nova_receita"
+        android:enabled="true"
+        android:icon="@drawable/deposit"
+        android:shortcutShortLabel="@string/atalho_nova_receita"
+        android:shortcutLongLabel="@string/atalho_nova_receita_longo">
+        <intent
+            android:action="com.meudinheiro.action.NOVA_RECEITA"
+            android:targetClass="com.meudinheiro.componentes.LancamentoRapidoActivity"
+            android:targetPackage="com.meudinheiro" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="novo_lancamento"
+        android:enabled="true"
+        android:icon="@drawable/add"
+        android:shortcutShortLabel="@string/atalho_novo_lancamento"
+        android:shortcutLongLabel="@string/atalho_novo_lancamento_longo">
+        <intent
+            android:action="com.meudinheiro.action.NOVO_LANCAMENTO"
+            android:targetClass="com.meudinheiro.componentes.LancamentoRapidoActivity"
+            android:targetPackage="com.meudinheiro" />
+    </shortcut>
 </shortcuts>

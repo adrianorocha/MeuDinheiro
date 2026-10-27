@@ -1,10 +1,11 @@
-import { collection, doc, getDocs, onSnapshot, writeBatch, type DocumentData, type Firestore } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot, setDoc, writeBatch, type DocumentData, type Firestore } from "firebase/firestore";
 import { COLLECTIONS, emptyDataset } from "../finance/types";
 import type { CollectionName, Dataset, Entity } from "../finance/types";
 import { getDb } from "../firebase/client";
 import type { PersistenceAdapter } from "./adapter";
 import { backupSchema, normalizarBackup } from "./backup";
 import { diffDataset, type CollectionDiff } from "./diff";
+import { AgendadorSinal } from "./sinal";
 
 const LIMITE_BATCH = 500;
 
@@ -97,7 +98,11 @@ export class FirebaseAdapter implements PersistenceAdapter {
       }
       await batch.commit();
     }
+    if (ops.length > 0) this.sinal.pedir();
   }
+
+  /** R86 - avisa (debounce) que houve gravação: a Cloud Function acorda o app. Melhor esforço; sem a Function nada muda. */
+  private readonly sinal = new AgendadorSinal(() => setDoc(doc(this.db, "users", this.uid, "sinais", "portal"), { em: Date.now() }));
 
   async save(prev: Dataset, next: Dataset): Promise<void> {
     await this.executar(this.operacoes(diffDataset(prev, next)));

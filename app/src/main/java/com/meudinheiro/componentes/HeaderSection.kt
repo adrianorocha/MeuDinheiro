@@ -60,7 +60,11 @@ private val BadgeRed = Color(0xFFFF3D00)
 enum class HeaderChipStyle {
     PRIMARY,
     SUCCESS,
-    NEUTRAL
+    NEUTRAL,
+    /** R86 — atenção (sem conexão com pendências, registros em quarentena). */
+    WARNING,
+    /** R86 — erro de envio. */
+    ERROR
 }
 
 @Composable
@@ -71,6 +75,8 @@ fun HeaderSection(
     modifier: Modifier = Modifier,
     chipText: String? = "Sincronizado",
     chipStyle: HeaderChipStyle = HeaderChipStyle.SUCCESS,
+    /** R86 — toque no chip (ex.: detalhes da sincronização); null = chip não clicável. */
+    onChipClick: (() -> Unit)? = null,
     showNotifications: Boolean = true,
     hasUnreadNotifications: Boolean = false,
     notificationCount: Int = 0,
@@ -128,7 +134,7 @@ fun HeaderSection(
 
                     if (!chipText.isNullOrBlank()) {
                         Spacer(Modifier.height(2.dp))
-                        PremiumChip(text = chipText, style = chipStyle)
+                        PremiumChip(text = chipText, style = chipStyle, onClick = onChipClick)
                     }
                 }
 
@@ -289,17 +295,20 @@ private fun MiniSummaryItem(
 }
 
 @Composable
-private fun PremiumChip(text: String, style: HeaderChipStyle, modifier: Modifier = Modifier) {
+private fun PremiumChip(text: String, style: HeaderChipStyle, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val shape = RoundedCornerShape(6.dp)
     val (bg, txtColor) = when (style) {
         HeaderChipStyle.SUCCESS -> Color(0xFF00C853).copy(alpha = 0.2f) to Color(0xFF69F0AE)
-        else -> Color.White.copy(alpha = 0.1f) to TextWhite
+        HeaderChipStyle.PRIMARY -> Color(0xFF00B8D4).copy(alpha = 0.18f) to Color(0xFF84FFFF)
+        HeaderChipStyle.WARNING -> Color(0xFFFF9100).copy(alpha = 0.2f) to Color(0xFFFFCC80)
+        HeaderChipStyle.ERROR -> Color(0xFFFF3D00).copy(alpha = 0.22f) to Color(0xFFFF9E80)
+        HeaderChipStyle.NEUTRAL -> Color.White.copy(alpha = 0.1f) to TextWhite
     }
 
     Surface(
         color = bg,
         shape = shape,
-        modifier = modifier
+        modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
     ) {
         Text(
             text = text,

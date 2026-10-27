@@ -11,6 +11,7 @@ import com.meudinheiro.data.TipoDespesa
 import com.meudinheiro.domain.FormatoCentavos
 import com.meudinheiro.domain.NotificacaoBancaria
 import com.meudinheiro.domain.NotificacaoBancaria.Estado
+import com.meudinheiro.domain.RevisaoLote
 import com.meudinheiro.domain.NotificacaoBancaria.SugestaoGuardada
 import com.meudinheiro.notif.Aviso
 import com.meudinheiro.notif.BotaoAviso
@@ -22,6 +23,9 @@ object NotificadorSugestoes {
     const val ACAO_IGNORAR = "com.meudinheiro.action.SUGESTAO_IGNORAR"
     private const val EXTRA_ID = "sugestao_id"
     private const val IMUTAVEL = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+
+    /** R89 — id fixo da notificação-resumo (aparece com 2+ sugestões pendentes e abre a revisão em lote). */
+    const val ID_RESUMO = 0x64FFFFFF
 
     /** Id estável (faixa própria, para não colidir com os outros avisos) a partir do id da sugestão. */
     fun idNotificacao(sugestaoId: String): Int = 0x64000000 or (sugestaoId.hashCode() and 0x00FFFFFF)
@@ -63,14 +67,51 @@ object NotificadorSugestoes {
                 botoes = listOf(BotaoAviso("Confirmar", confirmar), BotaoAviso("Ignorar", ignorar))
             )
         )
+        atualizarResumo(app)
     }
 
-    fun cancelar(ctx: Context, sugestaoId: String) {
+    /**
+     * R89 — com 2+ pendentes mostra UMA notificação-resumo ("N sugestões de lançamento") cujo toque abre a revisão em lote
+     * (sem valores: a tela bloqueada só vê o texto público); com menos, remove o resumo.
+     */
+    fun atualizarResumo(ctx: Context) {
+        val app = ctx.applicationContext
+        val n = runCatching { SugestoesStore.pendentes(app).size }.getOrDefault(0)
+        if (!RevisaoLote.precisaResumo(n)) { cancelarResumo(app); return }
+        Notificacoes.mostrar(
+            app,
+            Aviso(
+                tipo = TipoAviso.SUGESTAO,
+                titulo = RevisaoLote.tituloResumo(n),
+                resumo = "Toque para revisar e confirmar em lote",
+                id = ID_RESUMO,
+                textoPublico = "Você tem sugestões de lançamento",
+                acao = AtalhosCaptura.ACAO_SUGESTOES,
+                soAlertaUmaVez = true
+            )
+        )
+    }
+
+    private fun cancelarResumo(ctx: Context) {
+        val mgr = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        mgr.cancel(Notificacoes.TAG, ID_RESUMO)
+    }
+
+    private fun cancelarSo(ctx: Context, sugestaoId: String) {
         val mgr = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         mgr.cancel(Notificacoes.TAG, idNotificacao(sugestaoId))
     }
 
-    fun cancelarTodas(ctx: Context, ids: Collection<String>) = ids.forEach { cancelar(ctx, it) }
+    /** Remove a notificação da sugestão (chamar DEPOIS de mudar o estado dela) e reajusta o resumo. */
+    fun cancelar(ctx: Context, sugestaoId: String) {
+        cancelarSo(ctx, sugestaoId)
+        atualizarResumo(ctx)
+    }
+
+    fun cancelarTodas(ctx: Context, ids: Collection<String>) {
+        ids.forEach { cancelarSo(ctx, it) }
+        cancelarResumo(ctx)
+    }
 
     class SugestaoAcaoReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {

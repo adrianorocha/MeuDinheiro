@@ -74,7 +74,9 @@ import kotlinx.coroutines.withContext
 class LancamentoRapidoActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val receitaInicial = intent?.getStringExtra(EXTRA_TIPO) == TipoDespesa.CREDITO.name
+        // R90: atalhos do launcher (NOVA_RECEITA / NOVO_LANCAMENTO) e botões do widget (extra tipo) escolhem o modo inicial.
+        val receitaInicial = com.meudinheiro.domain.RoteamentoLancamento.modoInicial(intent?.action, intent?.getStringExtra(EXTRA_TIPO)) ==
+            com.meudinheiro.domain.RoteamentoLancamento.Modo.RECEITA
         val atalho = intent?.takeIf { it.hasExtra(EXTRA_VALOR) }?.let {
             AtalhoExtra(
                 descricao = it.getStringExtra(EXTRA_DESCRICAO).orEmpty(),
@@ -92,6 +94,13 @@ class LancamentoRapidoActivity : FragmentActivity() {
                 PainelRapido(receitaInicial = receitaInicial, atalho = atalho, onFechar = { finish() })
             }
         }
+    }
+
+    /** Activity singleTask: um novo atalho/botão com o painel já aberto recria a tela no modo pedido. */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        recreate()
     }
 
     companion object {
@@ -178,6 +187,7 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
     var descricao by remember { mutableStateOf(atalho?.descricao.orEmpty()) }
     var categoria by remember { mutableStateOf(atalho?.categoria?.ifBlank { null }) }
     var categoriaManual by remember { mutableStateOf(atalho != null && !atalho.revisar) }
+    var categoriaAprendida by remember { mutableStateOf(false) } // R89: a categoria veio do aprendizado por estabelecimento
     var origemChave by remember { mutableStateOf<String?>(atalho?.let { a -> a.cartaoId?.let { "k:$it" } ?: a.conta.takeIf { c -> c.isNotBlank() }?.let { c -> "c:$c" } }) }
     var erro by remember { mutableStateOf<String?>(null) }
     var modalidade by remember { mutableStateOf(if (atalho?.debito == true) Financas.Modalidade.DEBITO else Financas.Modalidade.CREDITO) } // R42: só vale para cartão MÚLTIPLO
@@ -200,10 +210,22 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
     LaunchedEffect(descricao, dados, origemChave) {
         val d = dados ?: return@LaunchedEffect
         if (!categoriaManual && !receita && descricao.isNotBlank()) {
-            val porRegra = com.meudinheiro.domain.Regras.categoria(
-                d.regras, com.meudinheiro.domain.Regras.Entrada(descricao, d.contaDaOrigem[origemChave], TipoDespesa.DEBITO.name)
-            )?.let { s -> d.categoriasDespesa.firstOrNull { it.first.equals(s, true) }?.first }
-            (porRegra ?: Analises.sugerirCategoria(descricao, d.historico))?.let { categoria = it }
+            if (atalho?.sugestaoId != null) {
+                // R89: sugestão da captura -> regra > categoria aprendida do estabelecimento > histórico.
+                val original = withContext(Dispatchers.IO) { com.meudinheiro.captura.SugestoesStore.obter(context, atalho.sugestaoId)?.descricao }
+                val memoria = withContext(Dispatchers.IO) { com.meudinheiro.captura.CategoriasAprendidas.memoria(context) }
+                val e = com.meudinheiro.domain.CategoriaAprendida.escolher(
+                    descricao = original ?: descricao, titulo = descricao, conta = d.contaDaOrigem[origemChave], regras = d.regras,
+                    memoria = memoria, historico = d.historico, categoriasValidas = d.categoriasDespesa.map { it.first }
+                )
+                e.categoria?.let { categoria = it }
+                categoriaAprendida = e.origem == com.meudinheiro.domain.CategoriaAprendida.Origem.APRENDIDA
+            } else {
+                val porRegra = com.meudinheiro.domain.Regras.categoria(
+                    d.regras, com.meudinheiro.domain.Regras.Entrada(descricao, d.contaDaOrigem[origemChave], TipoDespesa.DEBITO.name)
+                )?.let { s -> d.categoriasDespesa.firstOrNull { it.first.equals(s, true) }?.first }
+                (porRegra ?: Analises.sugerirCategoria(descricao, d.historico))?.let { categoria = it }
+            }
         }
     }
 
@@ -237,6 +259,10 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
             runCatching { SaldoWidget().updateAll(context) }
             atalho?.sugestaoId?.let { sid -> // R64: a sugestão virou lançamento
                 runCatching {
+                    // R89: memoriza estabelecimento -> categoria confirmada (só despesa; receita não tem categoria).
+                    if (!receita) com.meudinheiro.captura.SugestoesStore.obter(context, sid)?.let { sg ->
+                        com.meudinheiro.captura.CategoriasAprendidas.aprender(context, sg.descricao, catNome)
+                    }
                     com.meudinheiro.captura.SugestoesStore.marcar(context, sid, com.meudinheiro.domain.NotificacaoBancaria.Estado.ENCAMINHADA)
                     com.meudinheiro.captura.NotificadorSugestoes.cancelar(context, sid)
                 }
@@ -287,7 +313,7 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(d.categoriasDespesa, key = { it.first }) { (nome, _) ->
                             FilterChip(
-                                selected = categoria.equals(nome, true), onClick = { categoria = nome; categoriaManual = true; erro = null },
+                                selected = categoria.equals(nome, true), onClick = { categoria = nome; categoriaManual = true; categoriaAprendida = false; erro = null },
                                 label = { Text(nome) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     labelColor = Color.White.copy(0.8f), selectedContainerColor = NeonCyan.copy(0.25f), selectedLabelColor = NeonCyan
@@ -296,6 +322,7 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
                         }
                     }
                 }
+                if (!receita && categoriaAprendida) Text("categoria aprendida (toque em outra para trocar)", color = NeonGreen, fontSize = 11.sp)
                 Text(if (receita) "Entra na conta" else "Pagar com", color = Color.White.copy(0.6f), fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(d.origens.filter { !receita || it is Origem.DeConta }, key = { it.chave }) { o ->

@@ -13,7 +13,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +51,32 @@ class StorageManager(context: Context) {
 
     val modo = prefs.storageModeFlow
 
+    /** R87 — registros que a nuvem recusou (persistente; não usa Room, então não há migração nem risco para os dados). */
+    val quarentena = Quarentena(object : PersistenciaQuarentena {
+        private val sp = appContext.getSharedPreferences("quarentena_sync", Context.MODE_PRIVATE)
+        override fun ler(): String? = sp.getString("dados", null)
+        override fun gravar(texto: String) { sp.edit().putString("dados", texto).apply() }
+    })
+
+    private data class EnvioEstado(val pendentes: Int = 0, val confirmadoEm: Long? = null)
+
+    private val _envio = MutableStateFlow(EnvioEstado())
+    private val _rede = MutableStateFlow(true)
+
+    /** Acorda o recuo entre tentativas de abrir a sessão ("Tentar enviar agora"). */
+    private val acordar = Channel<Unit>(Channel.CONFLATED)
+
+    /**
+     * R86 — estado observável do envio (status × pendências × rede × quarentena). Derivado só de dados em memória:
+     * nenhuma leitura extra no Firestore. A UI formata com [IndicadorSync.derivar].
+     */
+    val info: StateFlow<InfoSync> = combine(prefs.storageModeFlow, _status, _envio, _rede, quarentena.lista) { m, st, env, rede, q ->
+        InfoSync(
+            nuvem = m == StorageMode.FIREBASE, status = st, pendentes = env.pendentes, rede = rede,
+            quarentena = q.count { !it.ignorado }, confirmadoEm = env.confirmadoEm
+        )
+    }.stateIn(scope, SharingStarted.Eagerly, InfoSync())
+
     /** uid cujo dados estão em uso: o do próprio usuário (vazio) ou o de quem compartilhou com ele (R32). */
     val raizUid: Flow<String> = prefs.cloudRootUidFlow
 
@@ -77,7 +107,21 @@ class StorageManager(context: Context) {
         }.onFailure { if (it is CancellationException) throw it }
     }
 
+    /** Acompanha a conectividade só para o aviso "Sem conexão"; o Firestore em si segue gravando offline. */
+    private fun observarRede() {
+        runCatching {
+            val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            _rede.value = cm.getNetworkCapabilities(cm.activeNetwork)
+                ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { _rede.value = true }
+                override fun onLost(network: android.net.Network) { _rede.value = false }
+            })
+        }.onFailure { Log.w(TAG, "Sem monitor de rede", it) }
+    }
+
     fun iniciar() {
+        observarRede()
         combine(prefs.storageModeFlow, authUidOuNulo(), prefs.cloudRootUidFlow) { modo, uid, raiz -> Triple(modo, uid, raiz) }
             .distinctUntilChanged()
             .flatMapLatest { (modo, uid, raiz) ->
@@ -85,6 +129,7 @@ class StorageManager(context: Context) {
                     when {
                         modo != StorageMode.FIREBASE -> {
                             _status.value = SyncStatus.Desligado
+                            _envio.value = EnvioEstado()
                         }
                         uid == null -> _status.value = SyncStatus.AguardandoLogin
                         else -> {
@@ -127,13 +172,20 @@ class StorageManager(context: Context) {
         // Trocou de conta na nuvem: o histórico de sincronização do usuário anterior não vale para este.
         if (prefs.lastCloudUid() != uid) {
             db.syncMetaDao().limpar()
+            quarentena.limpar()
             prefs.saveLastCloudUid(uid)
         }
+        // R87: atualização do app = uma nova chance (uma vez por versão) para os registros recusados.
+        quarentena.liberarSeNovaVersao(versaoDoApp())
         var tentativa = 0
         while (true) {
             val firestore = FirebaseFirestore.getInstance()
             val inicio = System.currentTimeMillis()
-            val nova = SyncSession(uid, db, firestore, repository, { _status.value = it }, { EnvioImediato.aoEnviar(appContext) })
+            _envio.value = EnvioEstado(0, _envio.value.confirmadoEm)
+            val nova = SyncSession(
+                uid, db, firestore, repository, { _status.value = it }, { EnvioImediato.aoEnviar(appContext) },
+                quarentena, { n, t -> _envio.value = EnvioEstado(n, t) }
+            )
             sessao = nova
             try {
                 _status.value = SyncStatus.Conectando
@@ -160,7 +212,8 @@ class StorageManager(context: Context) {
             // R85: uma sessão que viveu bem recomeça o recuo do zero (antes, a contagem só crescia e uma queda
             // transitória horas depois já esperava 60 s); erro persistente (ex.: permissão) segue com recuo até 60 s.
             tentativa = if (System.currentTimeMillis() - inicio > PoliticaEnvio.SESSAO_ESTAVEL_MS) 1 else tentativa + 1
-            delay(PoliticaEnvio.recuoMs(tentativa))
+            // "Tentar enviar agora" ([reenviarAgora]) interrompe a espera.
+            withTimeoutOrNull(PoliticaEnvio.recuoMs(tentativa)) { acordar.receive() }
         }
     }
 
@@ -175,6 +228,32 @@ class StorageManager(context: Context) {
     suspend fun baixarTudoDaNuvem() = (sessao ?: error("Sem conexão com a nuvem")).pedir(ModoSync.NUVEM_VENCE)
 
     suspend fun sincronizarAgora() = sessao?.pedir(ModoSync.MESCLAR)
+
+    /** R86 — toque no indicador: tenta reenviar já (corta o recuo se a sessão caiu; senão reconcilia agora). */
+    suspend fun reenviarAgora() {
+        if (_status.value is SyncStatus.Erro) acordar.trySend(Unit)
+        val s = sessao ?: return
+        try {
+            s.pedir(ModoSync.MESCLAR)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Reenvio manual não concluído", e)
+        }
+    }
+
+    /** R87 — "Tentar de novo": devolve os registros da quarentena à fila (os dados locais nunca saíram do lugar). */
+    suspend fun tentarQuarentenaDeNovo() {
+        quarentena.liberarTodos()
+        reenviarAgora()
+    }
+
+    /** R87 — "Ignorar": tira o aviso; os registros seguem parados e preservados no celular. */
+    fun ignorarQuarentena() = quarentena.ignorarTodos()
+
+    private fun versaoDoApp(): String = runCatching {
+        appContext.packageManager.getPackageInfo(appContext.packageName, 0).lastUpdateTime.toString()
+    }.getOrDefault("")
 
     /** R85 — há algo a enviar para a nuvem (sinal barato, em memória). */
     val temPendencias: Boolean get() = sessao?.temPendencias == true
@@ -203,6 +282,7 @@ class StorageManager(context: Context) {
         prefs.saveCloudRootUid("")
         auth.sair()
         db.syncMetaDao().limpar()
+        quarentena.limpar()
         prefs.saveLastCloudUid("")
     }
 
