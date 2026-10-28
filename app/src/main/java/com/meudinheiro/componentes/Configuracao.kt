@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -146,13 +147,20 @@ fun Configuracao(
     val hour by userPrefs.notifHourFlow.collectAsState(initial = 9)
     val minute by userPrefs.notifMinuteFlow.collectAsState(initial = 0)
     val onlyCredit by userPrefs.notifOnlyCreditFlow.collectAsState(initial = false)
+    val antecAtivo by userPrefs.notifAntecAtivoFlow.collectAsState(initial = false) // R91
+    val antecMarcadas by userPrefs.notifAntecMarcadasFlow.collectAsState(initial = com.meudinheiro.domain.LembretesVencimento.PADRAO_MARCADAS)
+    val antecAtrasadas by userPrefs.notifAntecAtrasadasFlow.collectAsState(initial = true)
+    val avisoLimiteDiario by userPrefs.limiteDiarioAvisoFlow.collectAsState(initial = true)
     val biometriaEnabled by userPrefs.biometriaEnabledFlow.collectAsState(initial = true)
+    val biometriaLancar by userPrefs.biometriaLancarFlow.collectAsState(initial = true)
 
     val listaDespesas by despesasVM.despesasFiltradas.collectAsState()
     val mesIndex by despesasVM.mesSelecionado.collectAsState()
     val anoAtual by despesasVM.anoSelecionado.collectAsState()
 
     var exibirAlertaExclusao by remember { mutableStateOf(false) }
+    val modoArmazenamentoAtual by (context.applicationContext as com.meudinheiro.MyApplication).storageManager.modo
+        .collectAsState(initial = com.meudinheiro.storage.StorageMode.LOCAL)
 
     val nomesMeses = remember {
         listOf(
@@ -359,6 +367,13 @@ fun Configuracao(
                                 }
                             }
                         )
+                        ConfiguracaoSwitchItem(
+                            icone = Icons.Default.Fingerprint,
+                            titulo = "Biometria para lançar",
+                            descricao = if (biometriaLancar) "Pede digital/PIN ao lançar no app e no widget" else "Lança sem pedir confirmação",
+                            checked = biometriaLancar,
+                            onCheckedChange = { isChecked -> scope.launch { userPrefs.saveBiometriaLancar(isChecked) } }
+                        )
                     }
                 }
 
@@ -434,6 +449,51 @@ fun Configuracao(
                                 modifier = Modifier.padding(vertical = 12.dp)
                             )
 
+                            // R91 — lembrar com antecedência (contas a pagar + faturas), em uma única notificação por execução.
+                            ConfiguracaoSwitchItem(
+                                icone = Icons.Default.NotificationsActive,
+                                titulo = "Lembrar com antecedência",
+                                descricao = "Avisa contas e faturas de cartão só nos dias que você marcar (horário acima). Desligado: aviso diário de sempre.",
+                                checked = antecAtivo,
+                                onCheckedChange = { v -> scope.launch { userPrefs.saveNotifAntecAtivo(v) } },
+                                padding = PaddingValues(0.dp)
+                            )
+                            if (antecAtivo) {
+                                com.meudinheiro.domain.LembretesVencimento.ANTECEDENCIAS.forEach { dias ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        androidx.compose.material3.Checkbox(
+                                            checked = dias in antecMarcadas,
+                                            onCheckedChange = { marcado ->
+                                                scope.launch { userPrefs.saveNotifAntecMarcadas(if (marcado) antecMarcadas + dias else antecMarcadas - dias) }
+                                            },
+                                            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                                checkedColor = NeonCyan, uncheckedColor = TextWhite.copy(0.5f), checkmarkColor = DeepSpaceBlue
+                                            )
+                                        )
+                                        Text(com.meudinheiro.domain.LembretesVencimento.rotuloAntecedencia(dias), color = TextWhite, fontSize = 14.sp)
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    androidx.compose.material3.Checkbox(
+                                        checked = antecAtrasadas,
+                                        onCheckedChange = { v -> scope.launch { userPrefs.saveNotifAntecAtrasadas(v) } },
+                                        colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                            checkedColor = NeonCyan, uncheckedColor = TextWhite.copy(0.5f), checkmarkColor = DeepSpaceBlue
+                                        )
+                                    )
+                                    Text("Também avisar o que já venceu (1 vez por dia)", color = TextWhite, fontSize = 14.sp)
+                                }
+                                Text(
+                                    "Cada aviso sai uma única vez por item e antecedência. O \"Antecedência (Dias)\" acima só vale com esta opção desligada.",
+                                    color = TextWhite.copy(0.5f), fontSize = 12.sp
+                                )
+                            }
+
+                            HorizontalDivider(
+                                color = TextWhite.copy(0.05f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+
                             ConfiguracaoSwitchItem(
                                 icone = Icons.Default.FilterAlt,
                                 titulo = "Filtro Rígido",
@@ -448,7 +508,43 @@ fun Configuracao(
                                 },
                                 padding = PaddingValues(0.dp)
                             )
+
+                            HorizontalDivider(
+                                color = TextWhite.copy(0.05f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+
+                            ConfiguracaoSwitchItem(
+                                icone = Icons.Default.NotificationsActive,
+                                titulo = "Aviso de limite diário",
+                                descricao = "Avisar quando o gasto de hoje passar do limite seguro (Quanto posso gastar hoje)",
+                                checked = avisoLimiteDiario,
+                                onCheckedChange = { v -> scope.launch { userPrefs.saveLimiteDiarioAviso(v) } },
+                                padding = PaddingValues(0.dp)
+                            )
                         }
+                    }
+                }
+
+                // SEÇÃO: R65 — notificações push (FCM), opt-in
+                item { SectionTitle("NOTIFICAÇÕES PUSH", NeonCyan) }
+                item {
+                    PremiumConfigCard {
+                        PushConfigCard(
+                            userPrefs = userPrefs,
+                            onMensagem = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+                        )
+                    }
+                }
+
+                // SEÇÃO: ONDE OS DADOS SÃO GRAVADOS (celular × Firebase)
+                item { SectionTitle("ARMAZENAMENTO DE DADOS", NeonCyan) }
+                item {
+                    PremiumConfigCard {
+                        ArmazenamentoCard(
+                            storage = (context.applicationContext as com.meudinheiro.MyApplication).storageManager,
+                            onMensagem = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+                        )
                     }
                 }
 
@@ -538,6 +634,14 @@ fun Configuracao(
                     }
                 }
 
+                // SEÇÃO: IMPORTAÇÃO DE EXTRATOS (R63)
+                item { SectionTitle("IMPORTAÇÃO DE EXTRATOS") }
+                item { SecaoImportacaoExtratos(mainRepository, userPrefs) }
+
+                // SEÇÃO: CAPTURA DE NOTIFICAÇÕES DO BANCO (R64) — opt-in, desligada por padrão
+                item { SectionTitle("CAPTURA DE NOTIFICAÇÕES DO BANCO") }
+                item { SecaoCapturaNotificacoes(isPrivate = userPrefs.privateModeFlow.collectAsState(initial = false).value) }
+
                 // SEÇÃO: DESTRUIÇÃO
                 item { SectionTitle("ZONA DE RISCO", NeonRed) }
                 item {
@@ -591,6 +695,7 @@ fun Configuracao(
         }
         if (exibirAlertaExclusao) {
             DialogDestruicaoTotal(
+                nuvemAtiva = modoArmazenamentoAtual == com.meudinheiro.storage.StorageMode.FIREBASE,
                 onCancel = { exibirAlertaExclusao = false },
                 onConfirm = {
                     exibirAlertaExclusao = false
@@ -622,7 +727,7 @@ fun Configuracao(
 // --- SUB-COMPONENTES VISUAIS BLU MACAW ---
 
 @Composable
-private fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
+internal fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
     Text(
         text,
         fontSize = 12.sp,
@@ -634,7 +739,7 @@ private fun SectionTitle(text: String, color: Color = TextWhite.copy(0.5f)) {
 }
 
 @Composable
-private fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
+internal fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -647,7 +752,7 @@ private fun PremiumConfigCard(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun ConfiguracaoSwitchItem(
+internal fun ConfiguracaoSwitchItem(
     icone: androidx.compose.ui.graphics.vector.ImageVector,
     titulo: String,
     descricao: String,
@@ -840,7 +945,7 @@ private fun StepperButton(text: String, onClick: () -> Unit, enabled: Boolean = 
 }
 
 @Composable
-private fun DialogDestruicaoTotal(onCancel: () -> Unit, onConfirm: () -> Unit) {
+private fun DialogDestruicaoTotal(nuvemAtiva: Boolean, onCancel: () -> Unit, onConfirm: () -> Unit) {
     Dialog(onDismissRequest = onCancel) {
         Box(
             modifier = Modifier
@@ -874,7 +979,11 @@ private fun DialogDestruicaoTotal(onCancel: () -> Unit, onConfirm: () -> Unit) {
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Esta ação é irreversível. O banco de dados do Blu Macaw será aniquilado.",
+                    if (nuvemAtiva) {
+                        "Esta ação é irreversível. Com a nuvem (Firebase) ativa, os dados também serão APAGADOS DA NUVEM e do portal web."
+                    } else {
+                        "Esta ação é irreversível. O banco de dados do Blu Macaw será aniquilado."
+                    },
                     color = TextWhite.copy(0.6f),
                     textAlign = TextAlign.Center,
                     fontSize = 14.sp
@@ -949,23 +1058,10 @@ fun GerenciarCategoriasDialog(
 ) {
     var novoNome by remember { mutableStateOf("") }
     // 🚀 NOVO: Guarda qual ícone está selecionado no momento
-    var iconeSelecionado by remember { mutableStateOf("ic_default") }
+    var iconeSelecionado by remember { mutableStateOf("outros") }
 
     val categorias by viewModel.categorias.collectAsState()
 
-    // 🚀 NOVO: Lista de ícones para o usuário escolher
-    val iconesOpcoes = remember {
-        listOf(
-            "ic_default" to Icons.Default.Category,
-            "ic_casa" to Icons.Default.Home,
-            "ic_carro" to Icons.Default.DirectionsCar,
-            "ic_comida" to Icons.Default.Restaurant,
-            "ic_saude" to Icons.Default.LocalHospital,
-            "ic_lazer" to Icons.Default.SportsEsports,
-            "ic_compras" to Icons.Default.ShoppingCart,
-            "ic_estudo" to Icons.Default.School
-        )
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -982,6 +1078,7 @@ fun GerenciarCategoriasDialog(
                     .border(1.dp, TextWhite.copy(0.1f), RoundedCornerShape(24.dp))
             ) {
                 Column(modifier = Modifier
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
                     .padding(24.dp)
                     .fillMaxWidth()) {
                     Text(
@@ -1022,7 +1119,7 @@ fun GerenciarCategoriasDialog(
                                             iconeSelecionado
                                         )
                                         novoNome = ""
-                                        iconeSelecionado = "ic_default" // Reseta a seleção
+                                        iconeSelecionado = "outros" // Reseta a seleção
                                     }
                                 },
                             contentAlignment = Alignment.Center
@@ -1040,47 +1137,16 @@ fun GerenciarCategoriasDialog(
                     Text("Selecione um Ícone:", fontSize = 12.sp, color = TextWhite.copy(0.6f))
                     Spacer(Modifier.height(8.dp))
 
-                    // 🚀 O CARROSSEL DE ÍCONES (LazyRow)
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(iconesOpcoes) { (nomeIcone, vetor) ->
-                            val isSelecionado = iconeSelecionado == nomeIcone
-
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelecionado) NeonCyan.copy(alpha = 0.15f) else TextWhite.copy(
-                                            0.05f
-                                        )
-                                    )
-                                    .border(
-                                        width = if (isSelecionado) 2.dp else 1.dp,
-                                        color = if (isSelecionado) NeonCyan else Color.Transparent,
-                                        shape = CircleShape
-                                    )
-                                    .clickable { iconeSelecionado = nomeIcone },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = vetor,
-                                    contentDescription = nomeIcone,
-                                    tint = if (isSelecionado) NeonCyan else TextWhite.copy(0.5f),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                    }
+                    SeletorIconeCategoria(
+                        selecionado = iconeSelecionado,
+                        onSelecionar = { iconeSelecionado = it }
+                    )
 
                     Spacer(Modifier.height(24.dp))
 
                     // LISTA DAS CATEGORIAS SALVAS
                     LazyColumn(
                         modifier = Modifier
-                            .weight(1f, fill = false)
                             .heightIn(max = 200.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -1096,7 +1162,11 @@ fun GerenciarCategoriasDialog(
                             ) {
                                 // 💡 (Opcional) Aqui você pode fazer o ícone da categoria aparecer na listagem depois,
                                 // buscando na lista de iconesOpcoes usando o cat.icon
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconePic(pic = cat.pic, fallbackRes = com.meudinheiro.R.drawable.sim_chip_2, size = 22.dp)
+                                    Spacer(Modifier.width(10.dp))
                                 Text(cat.title, color = TextWhite, fontWeight = FontWeight.Medium)
+                                }
                                 IconButton(
                                     onClick = { viewModel.excluirCategoria(cat) },
                                     modifier = Modifier.size(24.dp)

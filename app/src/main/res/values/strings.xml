@@ -1,4 +1,31 @@
 <resources>
     <string name="app_name">MeuDinheiro</string>
-    <string name="widget_description">Mostra seu saldo atual de forma rápidal</string>
+    <string name="widget_description">Saldo total, entradas e saídas do mês, próximos vencimentos e atalhos para lançar despesa ou receita e abrir extrato, cartões e metas. Respeita o modo privado.</string>
+    <string name="widget_label_saldo">Saldo total</string>
+    <string name="widget_ocultar">Ocultar valores</string>
+    <string name="widget_mostrar">Mostrar valores</string>
+    <string name="widget_atualizar">Atualizar</string>
+    <string name="widget_novo_lancamento">Novo lançamento</string>
+    <string name="widget_btn_despesa">+ Despesa</string>
+    <string name="widget_btn_receita">+ Receita</string>
+    <string name="widget_entradas_mes">Entradas do mês</string>
+    <string name="widget_saidas_mes">Saídas do mês</string>
+    <string name="widget_entradas_saidas_privado">Entradas e saídas do mês ocultas</string>
+    <string name="widget_proxima">Próxima</string>
+    <string name="widget_proximos_vencimentos">Próximos vencimentos</string>
+    <string name="widget_sem_vencimentos">Nenhuma conta a vencer</string>
+    <string name="widget_atualizado_as">Atualizado às %1$s</string>
+    <string name="widget_acesso_extrato">Extrato</string>
+    <string name="widget_acesso_cartoes">Cartões</string>
+    <string name="widget_acesso_metas">Metas</string>
+    <string name="widget_acesso_app">Abrir app</string>
+    <string name="widget_hoje">Hoje</string>
+    <string name="widget_amanha">Amanhã</string>
+    <string name="widget_erro_dados">Não foi possível ler os dados.</string>
+    <string name="atalho_nova_despesa">Nova despesa</string>
+    <string name="atalho_nova_despesa_longo">Lançar nova despesa</string>
+    <string name="atalho_nova_receita">Nova receita</string>
+    <string name="atalho_nova_receita_longo">Lançar nova receita</string>
+    <string name="atalho_novo_lancamento">Novo lançamento</string>
+    <string name="atalho_novo_lancamento_longo">Novo lançamento (despesa ou receita)</string>
 </resources>

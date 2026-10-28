@@ -33,4 +33,17 @@ interface DespesaFixaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(despesas: List<DespesaFixa>)
+
+    @Query("SELECT * FROM despesas_fixas WHERE id = :id LIMIT 1")
+    suspend fun obterPorId(id: Int): DespesaFixa?
+
+    /** Cartão excluído: as regras passam a debitar direto na conta (ver MainRepository.excluirCartao). */
+    @Query("UPDATE despesas_fixas SET cartaoId = NULL WHERE cartaoId IN (:cartoes)")
+    suspend fun desvincularCartoes(cartoes: List<Int>)
+
+    @Query("DELETE FROM despesas_fixas WHERE conta = :conta")
+    suspend fun excluirDaConta(conta: String)
+
+    @Query("DELETE FROM despesas_fixas WHERE id IN (:ids)")
+    suspend fun excluirPorIds(ids: List<Int>)
 }

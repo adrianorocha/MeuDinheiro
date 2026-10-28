@@ -1,12 +1,16 @@
 package com.meudinheiro.viewModel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.data.Meta
 import com.meudinheiro.repository.MainRepository
+import com.meudinheiro.repository.RegraFinanceiraException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -15,37 +19,38 @@ class MetaViewModel(private val repository: MainRepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val contas = repository.getTodasContas().asLiveData()
 
-    fun salvarMeta(nome: String, objetivo: Double) {
-        viewModelScope.launch(Dispatchers.IO) { // Adicionado Dispatcher explícito
-            repository.salvarMeta(Meta(nome = nome, valorObjetivo = objetivo, valorGuardado = 0.0))
-        }
-    }
+    private val _uiEvent = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val uiEvent = _uiEvent.asSharedFlow()
 
-    fun realizarAporteReal(meta: Meta, contaId: String, valor: Double) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.realizarAporte(meta, contaId, valor)
-        }
-    }
-
-    fun excluirMeta(meta: Meta, contaId: String?) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.excluirMetaComRestituicao(meta, contaId)
-        }
-    }
-
-    fun editarMeta(meta: Meta) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.salvarMeta(meta)
-        }
-    }
-    fun depositarNaMeta(id: Long, valor: Double) {
+    private fun executar(titulo: String, bloco: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.adicionarValorMeta(id, valor)
-                // 🚀 Opcional: Você pode emitir um evento de sucesso aqui para mostrar um Toast
+                bloco()
             } catch (e: Exception) {
-                // Trate o erro se algo der errado no banco
+                val msg = if (e is RegraFinanceiraException) e.message else "Algo deu errado. Tente novamente."
+                if (e !is RegraFinanceiraException) Log.e("MetaVM", titulo, e)
+                _uiEvent.tryEmit("$titulo | $msg | Erro")
             }
         }
+    }
+
+    fun salvarMeta(nome: String, objetivo: Double) = executar("Meta") {
+        repository.salvarMeta(Meta(nome = nome, valorObjetivo = objetivo, valorGuardado = 0.0))
+    }
+
+    /** Tira o valor da conta [contaId] e guarda na meta (R10). */
+    fun realizarAporteReal(meta: Meta, contaId: String, valor: Double) = executar("Aporte") {
+        repository.realizarAporte(meta, contaId, valor)
+    }
+
+    fun excluirMeta(meta: Meta, contaId: String?) = executar("Excluir meta") {
+        repository.excluirMetaComRestituicao(meta, contaId)
+    }
+
+    fun editarMeta(meta: Meta) = executar("Meta") { repository.salvarMeta(meta) }
+
+    /** Depósito rápido: sai da conta [contaId] (antes o dinheiro "aparecia" na meta sem sair de lugar nenhum). */
+    fun depositarNaMeta(id: Long, contaId: String, valor: Double) = executar("Depósito") {
+        repository.depositarNaMeta(id.toInt(), contaId, valor)
     }
 }

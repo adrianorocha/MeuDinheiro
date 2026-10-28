@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MetaDao {
+    @Query("SELECT * FROM metas WHERE id = :id LIMIT 1")
+    suspend fun obterPorId(id: Int): Meta?
+
     @Query("SELECT * FROM metas")
     fun getTodasMetas(): Flow<List<Meta>>
 
@@ -40,6 +43,6 @@ interface MetaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(contas: List<Meta>)
 
-    @Query("UPDATE metas SET valorGuardado = valorGuardado + :valor WHERE id = :id")
-    suspend fun adicionarValorMeta(id: Long, valor: Double)
+    @Query("DELETE FROM metas WHERE id IN (:ids)")
+    suspend fun excluirPorIds(ids: List<Int>)
 }

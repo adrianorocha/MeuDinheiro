@@ -2,4 +2,6 @@
 <paths>
     <cache-path name="meu_extrato" path="extratos/" />
     <cache-path name="my_images" path="images/" />
+    <cache-path name="anexos_cache" path="anexos/" />
+    <files-path name="anexos_local" path="anexos/" />
 </paths>

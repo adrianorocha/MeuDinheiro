@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,19 +59,28 @@ fun DespesasItem(
     isPrivate: Boolean = false,
     onRemover: (DespesasDomain) -> Unit,
     onTogglePago: ((DespesasDomain) -> Unit)? = null,
+    onDuplicar: ((DespesasDomain) -> Unit)? = null,
+    onRepetir: ((DespesasDomain, Int, Int, com.meudinheiro.domain.Analises.UnidadeRepeticao) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
-    nomeCartao: String? = null
+    nomeCartao: String? = null,
+    /** Menu completo de ações (⋮ e toque longo): ver [LancamentoAcoesHost]. Sem ele, mantém o diálogo antigo. */
+    onAcoes: ((DespesasDomain) -> Unit)? = null,
+    /** Pede a confirmação de exclusão (swipe para a esquerda) em vez de excluir direto. */
+    onPedirExclusao: ((DespesasDomain) -> Unit)? = null,
+    /** R67: "por <nome>" discreto, só em contas com membros (nulo = não mostra; contas individuais ficam como antes). */
+    rotuloAutor: String? = null
 ) {
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
+    var showRepetir by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // ==========================================
     // 🔒 TRAVA DE SEGURANÇA DO LASER (Swipe)
     // ==========================================
     val podePagarPorSwipe = onTogglePago != null &&
-            item.tipo == TipoDespesa.DEBITO &&
-            !item.pago
+            !item.pago &&
+            (item.cartaoId == null || item.cartaoId == 0) // compra no cartão é quitada pela fatura
 
     // ==========================================
     // 🚀 O MOTOR LASER-CUT (SWIPE)
@@ -92,8 +102,13 @@ fun DespesasItem(
                 SwipeToDismissBoxValue.EndToStart -> {
                     // 🔴 ARRASTO PARA EXCLUIR (ESQUERDA)
                     Haptics.vibrar(context, "alerta")
-                    onRemover(item)
-                    true // O Laser corta o card
+                    if (onPedirExclusao != null) {
+                        onPedirExclusao(item) // confirmação (parcelado: só esta × todas); o card volta ao lugar
+                        false
+                    } else {
+                        onRemover(item)
+                        true // O Laser corta o card
+                    }
                 }
                 else -> false
             }
@@ -126,7 +141,9 @@ fun DespesasItem(
                 isPrivate = isPrivate,
                 onTogglePago = onTogglePago,
                 onClick = onClick,
-                onLongClick = { showDialog = true }
+                onLongClick = { if (onAcoes != null) onAcoes(item) else showDialog = true },
+                onMais = onAcoes?.let { f -> { f(item) } },
+                rotuloAutor = rotuloAutor
             )
         }
     )
@@ -136,7 +153,9 @@ fun DespesasItem(
     // ==========================================
     if (showDialog) {
         val mensagemAviso = remember(item) {
-            if (item.tipo == TipoDespesa.DEBITO) {
+            if (item.cartaoId != null && item.cartaoId != 0) {
+                "O limite do cartão será recalculado sem esta compra."
+            } else if (item.tipo == TipoDespesa.DEBITO) {
                 if (item.pago) "O valor será restituído ao saldo." else "O saldo não será afetado (não estava pago)."
             } else {
                 if (item.pago) "O valor será deduzido do saldo." else "O saldo não será afetado."
@@ -165,8 +184,20 @@ fun DespesasItem(
                         Text("Ver Comprovante", color = NeonCyan, fontWeight = FontWeight.Bold)
                     }
 
+                    if (item.natureza == com.meudinheiro.domain.Natureza.NORMAL && (onDuplicar != null || onRepetir != null)) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            if (onDuplicar != null) OutlinedButton(
+                                onClick = { showDialog = false; onDuplicar(item) }, modifier = Modifier.weight(1f)
+                            ) { Text("Duplicar", color = NeonCyan) }
+                            if (onRepetir != null) OutlinedButton(
+                                onClick = { showDialog = false; showRepetir = true }, modifier = Modifier.weight(1f)
+                            ) { Text("Repetir…", color = NeonCyan) }
+                        }
+                    }
+
                     Spacer(Modifier.height(16.dp))
-                    Text(mensagemAviso, color = Color.White.copy(0.6f), fontSize = 13.sp)
+                    Text(mensagemAviso + " Ele fica 30 dias na Lixeira, onde pode ser restaurado.", color = Color.White.copy(0.6f), fontSize = 13.sp)
                 }
             },
             confirmButton = {
@@ -178,6 +209,14 @@ fun DespesasItem(
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) { Text("Cancelar", color = Color.White) }
             }
+        )
+    }
+
+    if (showRepetir && onRepetir != null) {
+        RepetirDialog(
+            descricao = item.descricao,
+            onDismiss = { showRepetir = false },
+            onConfirmar = { n, intervalo, unidade -> showRepetir = false; onRepetir(item, n, intervalo, unidade) }
         )
     }
 }
@@ -259,14 +298,12 @@ fun CardItemContent(
     isPrivate: Boolean,
     onTogglePago: ((DespesasDomain) -> Unit)?,
     onClick: (() -> Unit)?,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onMais: (() -> Unit)? = null,
+    rotuloAutor: String? = null
 ) {
     val context = LocalContext.current
     val dataFormatada = remember(item.data) { DateUtils.formatarData(Date(item.data)) }
-    val resId = remember(item.pic) {
-        val id = context.resources.getIdentifier(item.pic, "drawable", context.packageName)
-        if (id != 0) id else R.drawable.ic_launcher_foreground
-    }
 
     // ==========================================
     // 🚀 INTEGRAÇÃO GHOST MODE: ANIMAÇÃO VISUAL
@@ -313,7 +350,7 @@ fun CardItemContent(
                     .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(painter = painterResource(id = resId), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(24.dp))
+                IconePic(pic = item.pic, fallbackRes = R.drawable.ic_launcher_foreground, size = 24.dp)
             }
 
             Spacer(Modifier.width(12.dp))
@@ -327,7 +364,35 @@ fun CardItemContent(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(text = dataFormatada, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                val ehPix = com.meudinheiro.domain.Pix.temTag(item.tags) // R94
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = dataFormatada, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                    if (ehPix) {
+                        Text(
+                            text = "PIX",
+                            modifier = Modifier.padding(start = 6.dp)
+                                .border(0.5.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                            color = NeonCyan.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+                val tagsVisiveis = if (ehPix) com.meudinheiro.domain.Pix.semTag(item.tags) else item.tags // o selo já mostra o PIX
+                if (tagsVisiveis.isNotEmpty()) { // R56
+                    Text(
+                        text = tagsVisiveis.joinToString(" ") { "#$it" },
+                        style = MaterialTheme.typography.labelSmall, color = NeonCyan.copy(alpha = 0.8f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IndicadorAnexos(item.anexos) // R60
+                if (rotuloAutor != null) { // R67
+                    Text(
+                        text = rotuloAutor, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             // ==========================================
@@ -388,6 +453,11 @@ fun CardItemContent(
                     }
                 }
             }
+            if (onMais != null) {
+                IconButton(onClick = onMais, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = "Mais ações", tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                }
+            }
         }
     }
 }
@@ -406,6 +476,8 @@ fun DespesasDomain.toDespesa(): Despesa {
         pago = this.pago,
         mes = cal.get(Calendar.MONTH) + 1,
         ano = cal.get(Calendar.YEAR),
-        cartaoId = this.cartaoId ?: 0
+        cartaoId = this.cartaoId ?: 0,
+        tags = this.tags,
+        anexos = this.anexos
     )
 }

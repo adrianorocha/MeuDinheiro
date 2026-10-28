@@ -1,6 +1,8 @@
 package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
+import com.meudinheiro.domain.Dinheiro
+import com.meudinheiro.domain.Financas
 import androidx.lifecycle.viewModelScope
 import com.meudinheiro.dao.InvestimentoDao
 import com.meudinheiro.data.Investimento
@@ -27,34 +29,37 @@ class InvestimentoViewModel(private val dao: InvestimentoDao) : ViewModel() {
 
     // 3. Soma todos os lucros/prejuízos da lista (O valor em R$ que vai ficar verde ou vermelho)
     val rendimentoTotal = investimentos.map { lista ->
-        lista.sumOf { it.rendimentoReal }
+        Dinheiro.somar(lista.map { it.rendimentoReal })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     // 4. Calcula a porcentagem geral de crescimento da sua carteira inteira
     val porcentagemTotal = investimentos.map { lista ->
-        val totalInvestido = lista.sumOf { it.valorInvestido }
-        val totalAtual = lista.sumOf { it.valorAtual }
-        if (totalInvestido > 0) ((totalAtual - totalInvestido) / totalInvestido) * 100 else 0.0
+        Financas.rentabilidadePercentual(
+            Dinheiro.somar(lista.map { it.valorInvestido }),
+            Dinheiro.somar(lista.map { it.valorAtual })
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     // --- FUNÇÕES DE AÇÃO ---
 
     fun salvarInvestimento(nome: String, tipo: String, valorInvestido: Double, valorAtual: Double) {
+        if (nome.isBlank() || valorInvestido < 0 || valorAtual < 0) return
         viewModelScope.launch {
-            val novoAtivo = Investimento(
-                nome = nome,
-                tipo = tipo,
-                valorInvestido = valorInvestido,
-                valorAtual = valorAtual
+            dao.inserir(
+                Investimento(
+                    nome = nome.trim(),
+                    tipo = tipo,
+                    valorInvestido = Dinheiro.arredondar(valorInvestido),
+                    valorAtual = Dinheiro.arredondar(valorAtual)
+                )
             )
-            dao.inserir(novoAtivo)
         }
     }
 
     // Usado quando o Bitcoin sobe ou as cotas do MXRF11 rendem!
     fun atualizarValorAtivo(investimento: Investimento, novoValorAtual: Double) {
         viewModelScope.launch {
-            dao.atualizar(investimento.copy(valorAtual = novoValorAtual))
+            dao.atualizar(investimento.copy(valorAtual = Dinheiro.arredondar(novoValorAtual.coerceAtLeast(0.0))))
         }
     }
 
@@ -65,7 +70,7 @@ class InvestimentoViewModel(private val dao: InvestimentoDao) : ViewModel() {
     }
 
     val distribuicaoPorTipo = investimentos.map { lista ->
-        val total = lista.sumOf { it.valorAtual }
+        val total = Dinheiro.somar(lista.map { it.valorAtual })
 
         // Se não tiver nada investido, retorna lista vazia para não dar divisão por zero
         if (total <= 0.0) return@map emptyList<Pair<String, Double>>()

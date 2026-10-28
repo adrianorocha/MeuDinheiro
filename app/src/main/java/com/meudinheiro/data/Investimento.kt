@@ -2,6 +2,7 @@ package com.meudinheiro.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.meudinheiro.domain.Financas
 
 @Entity(tableName = "investimentos")
 data class Investimento(
@@ -11,15 +12,11 @@ data class Investimento(
     val valorInvestido: Double, // Quanto dinheiro saiu do seu bolso
     val valorAtual: Double // Quanto o ativo vale no mercado hoje
 ) {
-    // Calcula o lucro ou prejuízo em Reais (R$)
+    /** Lucro/prejuízo em R$ (centavos exatos). */
     val rendimentoReal: Double
-        get() = valorAtual - valorInvestido
+        get() = Financas.rendimento(valorInvestido, valorAtual)
 
-    // Calcula a porcentagem de crescimento ou queda (%)
+    /** Variação percentual sobre o valor investido (0 quando nada foi investido). */
     val rentabilidadePercentual: Double
-        get() = if (valorInvestido > 0) {
-            ((valorAtual - valorInvestido) / valorInvestido) * 100
-        } else {
-            0.0
-        }
+        get() = Financas.rentabilidadePercentual(valorInvestido, valorAtual)
 }

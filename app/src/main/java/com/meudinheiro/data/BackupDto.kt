@@ -1,5 +1,6 @@
 package com.meudinheiro.data
 
+/** Formato do backup (versão 2). Ver docs/CONTRATO_DADOS.md, seção 3. */
 data class BackupDto(
     val despesas: List<Despesa>? = emptyList(),
     val categorias: List<Categoria>? = emptyList(),
@@ -12,7 +13,16 @@ data class BackupDto(
     val transferenciasAgendadas: List<TransferenciaAgendada>? = emptyList(),
     val patrimonio: List<PatrimonioHistorico>? = emptyList(),
     val cartoes: List<Cartao>? = emptyList(),
-    val bancos: List<BancoDomain>? = emptyList(), // Opcional: se quiser salvar os bancos tbm
-
-    val versaoBackup: Int = 1 // Útil para migrações futuras
+    val lixeira: List<Lixeira>? = emptyList(),
+    /** R55 */
+    val regrasCategoria: List<RegraCategoria>? = emptyList(),
+    /** R56 */
+    val projetos: List<Projeto>? = emptyList(),
+    /** R58/R59 — opcionais: backup antigo (sem estas chaves) vale como "sem dívidas/pessoas/acertos". */
+    val dividas: List<Divida>? = emptyList(),
+    val pessoas: List<Pessoa>? = emptyList(),
+    val acertos: List<Acerto>? = emptyList(),
+    /** R57 — documento `configuracoes/geral` (mapa tolerante; ver ConfigGeral.deDoc). */
+    val configuracoes: Map<String, Any?>? = null,
+    val versaoBackup: Int = 2
 )

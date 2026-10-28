@@ -39,7 +39,9 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ScannerNeonOverlay(
     onClose: () -> Unit,
-    onToggleFlash: () -> Unit
+    onToggleFlash: () -> Unit,
+    instrucao: String = "Alinhe o código de barras na linha",
+    alturaJanelaDp: Float = 120f
 ) {
     // Animação do Laser de Leitura
     val infiniteTransition = rememberInfiniteTransition(label = "laser_anim")
@@ -61,7 +63,7 @@ fun ScannerNeonOverlay(
 
             // Tamanho da janela do leitor (Padrão boleto)
             val rectWidth = canvasWidth * 0.85f
-            val rectHeight = 120.dp.toPx()
+            val rectHeight = alturaJanelaDp.dp.toPx()
             val left = (canvasWidth - rectWidth) / 2
             val top = (canvasHeight - rectHeight) / 2
 
@@ -131,11 +133,11 @@ fun ScannerNeonOverlay(
 
         // Texto de instrução
         Text(
-            text = "Alinhe o código de barras na linha",
+            text = instrucao,
             color = Color.White,
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(y = 100.dp),
+                .offset(y = (alturaJanelaDp / 2 + 40f).dp),
             style = MaterialTheme.typography.bodyMedium
         )
     }

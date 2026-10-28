@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
 data class TransacaoModel(
-    val id: Int,
+    val id: Long,
     val descricao: String,
     val valor: Double,
     val bancoNome: String,

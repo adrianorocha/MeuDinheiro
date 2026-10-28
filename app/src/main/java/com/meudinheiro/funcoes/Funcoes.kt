@@ -8,8 +8,13 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.meudinheiro.data.AppDatabase
+import com.meudinheiro.storage.ConfiguracaoLocal
+import com.meudinheiro.storage.StorageMode
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -52,15 +57,136 @@ class UserPreferences(private val context: Context) {
         private val KEY_NOTIF_LAST_DAY =
             longPreferencesKey("notif_last_day") // evita repetir no mesmo dia
         private val KEY_NOTIF_ONLY_PENDING = booleanPreferencesKey("notif_only_pending")
+        // R91 — lembretes com antecedência escolhida (padrão desligado = aviso diário de sempre). Locais: não sincronizam.
+        private val KEY_NOTIF_ANTEC_ATIVO = booleanPreferencesKey("notif_antec_ativo")
+        private val KEY_NOTIF_ANTEC_DIAS = stringPreferencesKey("notif_antec_dias")
+        private val KEY_NOTIF_ANTEC_ATRASADAS = booleanPreferencesKey("notif_antec_atrasadas")
         private val PRIVATE_MODE_KEY = booleanPreferencesKey("private_mode")
+        private val BIOMETRIA_LANCAR = booleanPreferencesKey("biometria_lancar")
 
         private val BIOMETRIA_ENABLED = booleanPreferencesKey("biometria_enabled")
+        private val KEY_STORAGE_MODE = stringPreferencesKey("storage_mode")
+        private val KEY_LAST_CLOUD_UID = stringPreferencesKey("last_cloud_uid")
+        private val KEY_CLOUD_ROOT_UID = stringPreferencesKey("cloud_root_uid")
+        private val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup")
+        private val KEY_ALERTAS_ORCAMENTO = stringSetPreferencesKey("alertas_orcamento")
+        private val KEY_PAINEL_503020 = stringPreferencesKey("painel_503020_config") // R54
+        private val KEY_IR_CONFIG = stringPreferencesKey("ir_config") // R61
+        private val KEY_LIMITE_DIARIO_ATE_RECEITA = booleanPreferencesKey("limite_diario_ate_receita")
+        private val KEY_LIMITE_DIARIO_AVISO = booleanPreferencesKey("limite_diario_aviso")
+        // R65 — push (FCM): interruptor geral (opt-in, padrão desligado) e preferências por tipo
+        private val KEY_PUSH_ENABLED = booleanPreferencesKey("push_enabled")
+        private val KEY_PUSH_VENCIMENTOS = booleanPreferencesKey("push_vencimentos")
+        private val KEY_PUSH_ORCAMENTO = booleanPreferencesKey("push_orcamento")
+        private val KEY_PUSH_RESUMO = booleanPreferencesKey("push_resumo_semanal")
+        private val KEY_PUSH_CONVITES = booleanPreferencesKey("push_convites")
+    }
+
+    // ---- R65: notificações push (FCM). Interruptor geral NASCE DESLIGADO; cada tipo nasce ligado.
+    val pushEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_PUSH_ENABLED] ?: false }
+
+    suspend fun savePushEnabled(v: Boolean) {
+        context.dataStore.edit { it[KEY_PUSH_ENABLED] = v }
+    }
+
+    val pushPrefsFlow: Flow<com.meudinheiro.domain.PushPrefs> = context.dataStore.data.map { p ->
+        com.meudinheiro.domain.PushPrefs(
+            vencimentos = p[KEY_PUSH_VENCIMENTOS] ?: true,
+            orcamento = p[KEY_PUSH_ORCAMENTO] ?: true,
+            resumoSemanal = p[KEY_PUSH_RESUMO] ?: true,
+            convites = p[KEY_PUSH_CONVITES] ?: true
+        )
+    }
+
+    suspend fun savePushPref(tipo: com.meudinheiro.domain.TipoPush, ligado: Boolean) {
+        context.dataStore.edit {
+            val chave = when (tipo) {
+                com.meudinheiro.domain.TipoPush.VENCIMENTOS -> KEY_PUSH_VENCIMENTOS
+                com.meudinheiro.domain.TipoPush.ORCAMENTO -> KEY_PUSH_ORCAMENTO
+                com.meudinheiro.domain.TipoPush.RESUMO_SEMANAL -> KEY_PUSH_RESUMO
+                com.meudinheiro.domain.TipoPush.CONVITE -> KEY_PUSH_CONVITES
+            }
+            it[chave] = ligado
+        }
+    }
+
+
+    // ---- armazenamento de dados (local × Firebase) ----
+    val storageModeFlow: Flow<StorageMode> = context.dataStore.data
+        .map { prefs -> StorageMode.deNome(prefs[KEY_STORAGE_MODE]) }
+
+    suspend fun saveStorageMode(modo: StorageMode) {
+        context.dataStore.edit { it[KEY_STORAGE_MODE] = modo.name }
+    }
+
+    /** R32 — uid cujo dados estão em uso (vazio = os do próprio usuário). */
+    val cloudRootUidFlow: Flow<String> = context.dataStore.data.map { it[KEY_CLOUD_ROOT_UID].orEmpty() }
+
+    suspend fun saveCloudRootUid(uid: String) {
+        context.dataStore.edit { it[KEY_CLOUD_ROOT_UID] = uid }
+    }
+
+    // ---- backup automático (R33; R66: diário; continua LIGADO por padrão como no R33)
+    val autoBackupEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_AUTO_BACKUP] ?: true }
+
+    suspend fun saveAutoBackupEnabled(v: Boolean) {
+        context.dataStore.edit { it[KEY_AUTO_BACKUP] = v }
+    }
+
+    // ---- alertas de orçamento já enviados (R22): chaves `categoria|AAAA-MM|limiar`
+    suspend fun alertasOrcamentoEnviados(): Set<String> = context.dataStore.data.first()[KEY_ALERTAS_ORCAMENTO].orEmpty()
+
+    suspend fun marcarAlertasOrcamento(chaves: Set<String>) {
+        context.dataStore.edit { prefs ->
+            // mantém só os do mês corrente e do anterior para o conjunto não crescer sem limite
+            prefs[KEY_ALERTAS_ORCAMENTO] = (prefs[KEY_ALERTAS_ORCAMENTO].orEmpty() + chaves).toList().takeLast(400).toSet()
+        }
+    }
+
+    // ---- R54: configuração do painel 50-30-20 (metas %, meses da reserva e classificação por categoria).
+    // R57: continua local-first (DataStore); ao alterar, carimba a linha `configuracoes` (Room) e, com a nuvem ligada,
+    // o documento `configuracoes/geral` é sincronizado (o mais novo vence). [carimbar] = false só ao aplicar o que veio da nuvem.
+    val painel503020Flow: Flow<String> = context.dataStore.data.map { it[KEY_PAINEL_503020].orEmpty() }
+
+    suspend fun salvarPainel503020(texto: String, carimbar: Boolean = true) {
+        context.dataStore.edit { it[KEY_PAINEL_503020] = texto }
+        if (carimbar) carimbarConfiguracao()
+    }
+
+    // ---- R61: escolhas do relatório de IR (JSON de `ImpostoRenda.Config.toDoc()`); mesmo esquema do painel (local-first + carimbo).
+    val irConfigFlow: Flow<String> = context.dataStore.data.map { it[KEY_IR_CONFIG].orEmpty() }
+
+    suspend fun salvarIrConfig(texto: String, carimbar: Boolean = true) {
+        context.dataStore.edit { it[KEY_IR_CONFIG] = texto }
+        if (carimbar) carimbarConfiguracao()
+    }
+
+    /** R57 — registra a alteração local (nunca impede o salvamento da preferência em caso de erro no banco). */
+    private suspend fun carimbarConfiguracao() {
+        runCatching { ConfiguracaoLocal(AppDatabase.getInstance(context), this).registrarAlteracao() }
+    }
+
+    suspend fun lastCloudUid(): String = context.dataStore.data.first()[KEY_LAST_CLOUD_UID].orEmpty()
+
+    suspend fun saveLastCloudUid(uid: String) {
+        context.dataStore.edit { it[KEY_LAST_CLOUD_UID] = uid }
+    }
+
+    // ---- senha (nunca em texto puro) ----
+    /** Confere a senha digitada; senhas antigas (texto puro) são aceitas uma vez e já regravadas como hash. */
+    suspend fun verificarSenha(digitada: String): Boolean {
+        val armazenada = context.dataStore.data.first()[KEY_USER_PASS].orEmpty()
+        val ok = SenhaHasher.conferir(digitada, armazenada)
+        if (ok && !SenhaHasher.ehHash(armazenada)) saveUserPass(digitada)
+        return ok
     }
 
     // 2) flows que usam o context da instância
     val biometriaEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[BIOMETRIA_ENABLED] ?: true
     }
+    /** Pede biometria (ou PIN do aparelho) antes de gravar um lançamento — no app e no widget. Padrão: ligado. */
+    val biometriaLancarFlow: Flow<Boolean> = context.dataStore.data.map { it[BIOMETRIA_LANCAR] ?: true }
     val userNameFlow: Flow<String> = context.dataStore.data
         .map { prefs -> prefs[KEY_USER_NAME].orEmpty() }
 
@@ -103,6 +229,23 @@ class UserPreferences(private val context: Context) {
         prefs[KEY_NOTIF_ONLY_PENDING] ?: true
     }
 
+    /** R91 — true = avisa só nas antecedências marcadas; false (padrão) = aviso diário com a janela "Antecedência (Dias)". */
+    val notifAntecAtivoFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIF_ANTEC_ATIVO] ?: false }
+    suspend fun saveNotifAntecAtivo(v: Boolean) { context.dataStore.edit { it[KEY_NOTIF_ANTEC_ATIVO] = v } }
+
+    /** R91 — antecedências marcadas (dias antes; 0 = no dia). Sem valor salvo = [com.meudinheiro.domain.LembretesVencimento.PADRAO_MARCADAS]. */
+    val notifAntecMarcadasFlow: Flow<Set<Int>> = context.dataStore.data.map { p ->
+        p[KEY_NOTIF_ANTEC_DIAS]?.let { com.meudinheiro.domain.LembretesVencimento.lerMarcadas(it) }
+            ?: com.meudinheiro.domain.LembretesVencimento.PADRAO_MARCADAS
+    }
+    suspend fun saveNotifAntecMarcadas(dias: Set<Int>) {
+        context.dataStore.edit { it[KEY_NOTIF_ANTEC_DIAS] = com.meudinheiro.domain.LembretesVencimento.gravarMarcadas(dias) }
+    }
+
+    /** R91 — também avisar (uma vez por dia) o que já venceu e segue em aberto. Padrão ligado. */
+    val notifAntecAtrasadasFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_NOTIF_ANTEC_ATRASADAS] ?: true }
+    suspend fun saveNotifAntecAtrasadas(v: Boolean) { context.dataStore.edit { it[KEY_NOTIF_ANTEC_ATRASADAS] = v } }
+
     suspend fun saveNotifOnlyPending(v: Boolean) {
         context.dataStore.edit { it[KEY_NOTIF_ONLY_PENDING] = v }
     }
@@ -113,6 +256,19 @@ class UserPreferences(private val context: Context) {
 
     suspend fun saveNotifOnlyCredit(v: Boolean) {
         context.dataStore.edit { it[KEY_NOTIF_ONLY_CREDIT] = v }
+    }
+
+    /** R51 — período do limite diário: false = fim do mês (padrão); true = até a próxima receita prevista. */
+    val limiteDiarioAteReceitaFlow = context.dataStore.data.map { it[KEY_LIMITE_DIARIO_ATE_RECEITA] ?: false }
+    suspend fun saveLimiteDiarioAteReceita(v: Boolean, carimbar: Boolean = true) {
+        context.dataStore.edit { it[KEY_LIMITE_DIARIO_ATE_RECEITA] = v }
+        if (carimbar) carimbarConfiguracao()
+    }
+
+    /** R51 — aviso "Hoje você já passou do limite" na ronda diária (padrão ligado; vale só com a ronda ligada). */
+    val limiteDiarioAvisoFlow = context.dataStore.data.map { it[KEY_LIMITE_DIARIO_AVISO] ?: true }
+    suspend fun saveLimiteDiarioAviso(v: Boolean) {
+        context.dataStore.edit { it[KEY_LIMITE_DIARIO_AVISO] = v }
     }
 
     suspend fun saveNotifLastDay(v: Long) {
@@ -133,8 +289,9 @@ class UserPreferences(private val context: Context) {
     }
 
     suspend fun saveUserPass(pass: String) {
+        val armazenar = if (SenhaHasher.ehHash(pass)) pass else SenhaHasher.gerar(pass)
         context.dataStore.edit { prefs ->
-            prefs[KEY_USER_PASS] = pass
+            prefs[KEY_USER_PASS] = armazenar
         }
     }
 
@@ -179,6 +336,10 @@ class UserPreferences(private val context: Context) {
             val current = preferences[PRIVATE_MODE_KEY] ?: false
             preferences[PRIVATE_MODE_KEY] = !current
         }
+    }
+
+    suspend fun saveBiometriaLancar(enabled: Boolean) {
+        context.dataStore.edit { it[BIOMETRIA_LANCAR] = enabled }
     }
 
     suspend fun saveBiometriaEnabled(enabled: Boolean) {

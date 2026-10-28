@@ -54,6 +54,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -98,10 +100,14 @@ import com.meudinheiro.viewModel.OrcamentoViewModelFactory
 import com.meudinheiro.viewModel.TransacaoViewModel
 import com.meudinheiro.viewModel.TransacaoViewModelFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import com.meudinheiro.ui.theme.*
+import com.meudinheiro.domain.Analises
+import com.meudinheiro.domain.Financas
+import kotlinx.coroutines.flow.first
 
 // --- Cores Globais Premium ---
 val PremiumDarkBlue = Color(0xFF0D1B2A)
@@ -138,7 +144,7 @@ fun MainScreen(
     val orcamentoVM: OrcamentoViewModel = viewModel(factory = OrcamentoViewModelFactory(repository))
     val metaVM: MetaViewModel = viewModel(factory = MetaViewModelFactory(repository))
     val investimentoVM: InvestimentoViewModel = viewModel(factory = InvestimentoViewModelFactory(db.investimentoDao()))
-    val transacaoVM: TransacaoViewModel = viewModel(factory = TransacaoViewModelFactory(db.transacaoDao()))
+    val transacaoVM: TransacaoViewModel = viewModel(factory = TransacaoViewModelFactory(db.despesaDao(), db.contaSaldoDao()))
 
     // ==========================================
     // 2. ESTADOS DE PREFERÊNCIAS E USUÁRIO
@@ -176,6 +182,7 @@ fun MainScreen(
     var isMenuOpen by remember { mutableStateOf(false) }
     var showAddContaDialog by remember { mutableStateOf(false) }
     var showExtratoScreen by remember { mutableStateOf(false) }
+    var alvoLancamento by remember { mutableStateOf<AlvoLancamento?>(null) }
     var showAddDespesaDialog by remember { mutableStateOf(false) }
     var showAddOrcamentoDialog by remember { mutableStateOf(false) }
     var showRecorrenciaDialog by remember { mutableStateOf(false) }
@@ -188,6 +195,42 @@ fun MainScreen(
     var showPrevisaoDialog by remember { mutableStateOf(false) }
 
     var showScanner by remember { mutableStateOf(false) }
+    var showFerramentas by remember { mutableStateOf(false) }
+    var showConferencia by remember { mutableStateOf(false) }
+    var showCalendario by remember { mutableStateOf(false) } // R52
+    var showAgendadosLanc by remember { mutableStateOf(false) }
+    var showImportarExtratos by remember { mutableStateOf(false) } // R63
+
+    // R63: extrato compartilhado ou aviso da pasta monitorada abre a revisão (depois do login/biometria).
+    LaunchedEffect(com.meudinheiro.AtalhosApp.importarExtratosPedido) {
+        if (com.meudinheiro.AtalhosApp.importarExtratosPedido) {
+            showImportarExtratos = true
+            com.meudinheiro.AtalhosApp.consumirImportarExtratos()
+        }
+    }
+
+    // R92: atalhos do widget abrem o extrato ou a aba de Cartões / Cofrinhos (metas).
+    LaunchedEffect(com.meudinheiro.AtalhosApp.destinoPedido) {
+        val destino = com.meudinheiro.AtalhosApp.destinoPedido
+        if (destino != null) {
+            val aba = com.meudinheiro.domain.RoteamentoWidget.abaPrincipal(destino)
+            if (aba == null) showExtratoScreen = true else mainTabSelecionada = aba
+            com.meudinheiro.AtalhosApp.consumirDestino()
+        }
+    }
+
+    // R89: toque na notificação de sugestão(ões) abre Ferramentas, que mostra a revisão em lote (e consome o pedido).
+    LaunchedEffect(com.meudinheiro.AtalhosCaptura.sugestoesPedidas) {
+        if (com.meudinheiro.AtalhosCaptura.sugestoesPedidas) showFerramentas = true
+    }
+
+    // Atalho do launcher "Nova despesa": abre direto o formulário de lançamento.
+    LaunchedEffect(com.meudinheiro.AtalhosApp.novaDespesaPedida) {
+        if (com.meudinheiro.AtalhosApp.novaDespesaPedida) {
+            showAddDespesaDialog = true
+            com.meudinheiro.AtalhosApp.consumir()
+        }
+    }
     var valorEscaneado by remember { mutableStateOf<Double?>(null) }
     var codigoEscaneado by remember { mutableStateOf("") }
 
@@ -207,7 +250,51 @@ fun MainScreen(
     val agendados by contaVM.agendamentosFiltrados.collectAsState()
     val listaMetasReal by metaVM.metas.collectAsState(initial = emptyList())
     val historicoPatrimonio by contaVM.historicoPatrimonial.collectAsState(initial = emptyList())
-    val contasAVencer by contaVM.contasAVencer.collectAsState()
+    val previsao by contaVM.previsao.collectAsState()
+    val todasDespesas by repository.todasDespesasFlow.collectAsState(initial = emptyList())
+    // Lançamentos de data futura em aberto (a pagar/receber), de todas as contas; reavalia quando a lista muda.
+    val resumoAgendados = remember(todasDespesas) { com.meudinheiro.domain.Agendados.resumir(todasDespesas, System.currentTimeMillis()) }
+
+
+    // Categorias padrão + as criadas pelo usuário (antes só as padrão apareciam nos formulários).
+    val categoriasCustom by remember { repository.obterCategoriasCustom() }.collectAsState(initial = emptyList())
+    val categoriasDisponiveis = remember(categoriasCustom) {
+        (repository.categorias + categoriasCustom).map { it.title }.distinctBy { it.trim().lowercase() }.sorted()
+    }
+
+    // Chip do cabeçalho: onde os dados estão sendo gravados e o estado da sincronização.
+    val storageManager = remember { (application as com.meudinheiro.MyApplication).storageManager }
+    val modoArmazenamento by storageManager.modo.collectAsState(initial = com.meudinheiro.storage.StorageMode.LOCAL)
+    // R86: indicador discreto no chip do cabeçalho (em modo local não mostra nada de sincronização).
+    val infoSync by storageManager.info.collectAsState()
+    var agoraSync by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var mostrarStatusSync by remember { mutableStateOf(false) }
+    val indicadorSync = remember(infoSync, agoraSync) { com.meudinheiro.storage.IndicadorSync.derivar(infoSync, agoraSync) }
+    val relogioPrecisa = com.meudinheiro.storage.IndicadorSync.dependeDoRelogio(indicadorSync)
+    val ciclo = (context as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+    // Recomposição leve do "há X min": só com a tela visível e só quando o texto depende do relógio.
+    LaunchedEffect(relogioPrecisa, ciclo) {
+        agoraSync = System.currentTimeMillis()
+        if (!relogioPrecisa) return@LaunchedEffect
+        val laco: suspend () -> Unit = {
+            while (true) {
+                delay(com.meudinheiro.storage.IndicadorSync.ATUALIZAR_A_CADA_MS)
+                agoraSync = System.currentTimeMillis()
+            }
+        }
+        if (ciclo != null) ciclo.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { agoraSync = System.currentTimeMillis(); laco() } else laco()
+    }
+    val chipArmazenamento = when {
+        modoArmazenamento != com.meudinheiro.storage.StorageMode.FIREBASE -> "Salvo no celular" to HeaderChipStyle.NEUTRAL
+        indicadorSync != null -> indicadorSync.texto to when (indicadorSync.tom) {
+            com.meudinheiro.storage.TomIndicador.OK -> HeaderChipStyle.SUCCESS
+            com.meudinheiro.storage.TomIndicador.ATIVO -> HeaderChipStyle.PRIMARY
+            com.meudinheiro.storage.TomIndicador.AVISO -> HeaderChipStyle.WARNING
+            com.meudinheiro.storage.TomIndicador.ERRO -> HeaderChipStyle.ERROR
+            com.meudinheiro.storage.TomIndicador.NEUTRO -> HeaderChipStyle.NEUTRAL
+        }
+        else -> "Nuvem: atenção" to HeaderChipStyle.NEUTRAL
+    }
 
     val mesAtual by despVM.mesSelecionado.collectAsState()
     val anoAtual by despVM.anoSelecionado.collectAsState()
@@ -215,6 +302,35 @@ fun MainScreen(
     val saidasMesAnterior by despVM.getDespesaMesAnterior(mesAtual, anoAtual).collectAsState(initial = 0.0)
 
     val orcamentosComProgresso by orcamentoVM.orcamentosComProgresso.collectAsState()
+
+    // R22 — alerta de orçamento (80% / 100%), uma única vez por categoria/mês/limiar.
+    LaunchedEffect(orcamentosComProgresso) {
+        if (orcamentosComProgresso.isEmpty()) return@LaunchedEffect
+        val agora = System.currentTimeMillis()
+        val mesChave = "%04d-%02d".format(Financas.anoDe(agora), Financas.mesDe(agora))
+        val novos = Analises.alertasOrcamentoEscopo(
+            orcamentosComProgresso.map { Analises.ProgressoAlerta(it.categoria, it.porcentagem.toDouble(), it.escopo, it.pessoaId, it.rotuloEscopo) },
+            mesChave, userPrefs.alertasOrcamentoEnviados()
+        )
+        if (novos.isEmpty()) return@LaunchedEffect
+        userPrefs.marcarAlertasOrcamento(novos.flatMap { Analises.chavesParaMarcar(it) }.toSet())
+        val notificar = userPrefs.notifEnabledFlow.first()
+        novos.forEach { a ->
+            val nomeOrc = if (a.rotulo == null) a.categoria else "${a.categoria} (${a.rotulo})"
+            val msg = if (a.limiar == 100) "O orçamento de $nomeOrc foi ultrapassado." else "Você já usou 80% do orçamento de $nomeOrc."
+            snackbarHostState.showSnackbar("Orçamento | $msg | Erro")
+            if (notificar) {
+                com.meudinheiro.notif.Notificacoes.mostrar(
+                    context,
+                    com.meudinheiro.notif.Aviso(
+                        tipo = if (a.limiar == 100) com.meudinheiro.notif.TipoAviso.ORCAMENTO_ESTOURADO else com.meudinheiro.notif.TipoAviso.ORCAMENTO,
+                        titulo = "Orçamento de $nomeOrc", resumo = msg, id = a.chave.hashCode(),
+                        textoPublico = "Aviso de orçamento"
+                    )
+                )
+            }
+        }
+    }
     val listaTransacoes by transacaoVM.ultimasTransacoes.collectAsState()
     val rendimentoTotal by investimentoVM.rendimentoTotal.collectAsState()
 
@@ -282,6 +398,7 @@ fun MainScreen(
         val idParaFiltro = contaSelecionadaId?.trim().orEmpty()
         despVM.setFiltro(filtroAtivo.ordinal)
         despVM.setContaSelecionada(idParaFiltro)
+        transacaoVM.selecionarConta(idParaFiltro)
 
         if (filtroAtivo == FiltroPeriodo.ESTE_MES) {
             val hoje = Calendar.getInstance()
@@ -335,16 +452,29 @@ fun MainScreen(
                         nome = nome,
                         fotoUri = fotoSalva.takeIf { it.isNotBlank() },
                         onProfileClick = { emCadastro = true },
-                        chipText = "Sincronizado",
-                        chipStyle = HeaderChipStyle.SUCCESS,
+                        chipText = chipArmazenamento.first,
+                        chipStyle = chipArmazenamento.second,
+                        onChipClick = if (indicadorSync?.detalhes == true) ({ mostrarStatusSync = true }) else null,
                         showNotifications = true,
                         hasUnreadNotifications = (notifCount > 0),
                         notificationCount = notifCount,
                         onNotificationsClick = onOpenPendencias,
+                        onToolsClick = { showFerramentas = true },
                         receitaTotal = dashboardState.receitaGlobal,
                         despesaTotal = dashboardState.despesaGlobal,
+                        despesaPaga = dashboardState.despesaPagaGlobal,
+                        despesaAPagar = dashboardState.despesaPendenteGlobal,
+                        onConferirSaldos = { showConferencia = true },
                         isPrivateMode = isPrivate,
                         onTogglePrivate = { scope.launch { userPrefs.togglePrivateMode() } }
+                    )
+
+                    // R51 — quanto posso gastar hoje
+                    LimiteDiarioCard(
+                        repository = repository,
+                        userPrefs = userPrefs,
+                        isPrivate = isPrivate,
+                        onAbrirCalendario = { showCalendario = true }
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -428,7 +558,7 @@ fun MainScreen(
                             label = "TabTransition"
                         ) { targetTab ->
                             val dadosGrafico = remember(despesasFiltradas) {
-                                despesasFiltradas.groupBy { it.categoria }.map { (categoria, despesasDaCategoria) ->
+                                despesasFiltradas.filter { it.natureza != com.meudinheiro.domain.Natureza.AJUSTE }.groupBy { it.categoria }.map { (categoria, despesasDaCategoria) ->
                                     PieChartData(
                                         categoria = categoria,
                                         valor = despesasDaCategoria.sumOf { it.valor },
@@ -512,14 +642,18 @@ fun MainScreen(
                                                         getReceitaConta = { id -> contaVM.obterReceitaPorConta(id) },
                                                         getDespesaConta = { id -> contaVM.obterDespesaPorConta(id) }
                                                     )
-                                                    TransacoesRecentesSection(transacoes = listaTransacoes, isPrivate = isPrivate)
+                                                    TransacoesRecentesSection(
+                                                        transacoes = listaTransacoes, isPrivate = isPrivate,
+                                                        onAcoes = { id -> alvoLancamento = AlvoLancamento(id.toLong()) },
+                                                        onVerTudo = { showExtratoScreen = true }
+                                                    )
                                                 }
                                             }
                                         }
 
                                         item {
                                             ActionButtonRow(
-                                                categorias = repository.categorias.map { it.title },
+                                                categorias = categoriasDisponiveis,
                                                 getPicCategoria = { repository.getPicCategoria(it) },
                                                 contaSelecionada = contaSelecionadaId.orEmpty(),
                                                 viewModel = contaVM,
@@ -565,6 +699,10 @@ fun MainScreen(
                                         }
 
                                         item {
+                                            CardLancamentosAgendados(resumo = resumoAgendados, isPrivate = isPrivate, onClick = { showAgendadosLanc = true })
+                                        }
+
+                                        item {
                                             val meses = listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
                                             Row(
                                                 modifier = Modifier
@@ -591,13 +729,23 @@ fun MainScreen(
                                                 item = item,
                                                 isPrivate = isPrivate,
                                                 onRemover = { despesa -> contaVM.removerDespesa(despesa) },
-                                                onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) }
+                                                onTogglePago = { itemClicado -> contaVM.alternarStatusDespesa(itemClicado) },
+                                                onDuplicar = { contaVM.duplicarDespesa(it) },
+                                                onRepetir = { item, n, intervalo, unidade -> contaVM.repetirDespesa(item, n, intervalo, unidade) },
+                                                onAcoes = { alvoLancamento = AlvoLancamento(it.id.toLong()) },
+                                                onPedirExclusao = { alvoLancamento = AlvoLancamento(it.id.toLong(), excluirDireto = true) }
                                             )
                                         }
                                     }
                                 }
 
-                                2 -> CartoesScreen(viewModel = cartaoVM)
+                                2 -> CartoesScreen(
+                                    viewModel = cartaoVM,
+                                    contaViewModel = contaVM,
+                                    categorias = categoriasDisponiveis,
+                                    getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
+                                    historico = todasDespesas
+                                )
                                 3 -> CofrinhosTab(viewModel = metaVM, isPrivate = isPrivate, snackbarHostState = snackbarHostState, userName = nome ?: "Viajante")
                                 4 -> InvestimentosTab(viewModel = investimentoVM, isPrivate = isPrivate)
                                 5 -> SecaoAgendamentosAtivos(viewModel = contaVM)
@@ -655,8 +803,7 @@ fun MainScreen(
         // ==========================================
         if (showPrevisaoDialog) {
             PrevisaoFechamentoDialog(
-                saldoAtual = 0.0,
-                contasAVencer = contasAVencer,
+                previsao = previsao,
                 isPrivate = isPrivate,
                 onDismiss = { showPrevisaoDialog = false }
             )
@@ -734,11 +881,12 @@ fun MainScreen(
             AddDespesaDialog(
                 valorInicial = valorEscaneado ?: 0.0,
                 codigoBarras = if (codigoEscaneado.isNotEmpty()) "Boleto: $codigoEscaneado" else "",
-                categorias = repository.categorias.map { it.title },
+                categorias = categoriasDisponiveis,
                 cartoesDisponiveis = listaCartoes,
                 contaSelecionada = contaSelecionadaId.orEmpty(),
                 getPicCategoria = { nomeCat -> repository.getPicCategoria(nomeCat) },
                 viewModel = contaVM,
+                historico = todasDespesas,
                 cartoesViewModel = cartaoVM,
                 parentScope = parentScope,
                 onDismiss = {
@@ -758,19 +906,20 @@ fun MainScreen(
                 item = orcamento,
                 onDismiss = { orcamentoSelecionado = null },
                 onExcluir = {
-                    orcamentoVM.excluirOrcamento(orcamento.categoria)
+                    orcamentoVM.excluirOrcamento(orcamento.categoria, orcamento.escopo, orcamento.pessoaId)
                     orcamentoSelecionado = null
                 },
                 onEditar = { novoValor ->
-                    orcamentoVM.atualizarOrcamento(orcamento.categoria, novoValor)
+                    orcamentoVM.atualizarOrcamento(orcamento.categoria, novoValor, orcamento.escopo, orcamento.pessoaId)
                 }
             )
         }
 
         if (showAddOrcamentoDialog) {
             AddOrcamentoDialog(
-                categoriasDisponiveis = repository.categorias.map { it.title },
-                onSalvar = { categoria, valor -> orcamentoVM.salvarOrcamento(categoria, valor) },
+                categoriasDisponiveis = categoriasDisponiveis,
+                pessoas = orcamentoVM.pessoas.collectAsState().value,
+                onSalvar = { categoria, valor, escopo, pessoaId -> orcamentoVM.salvarOrcamento(categoria, valor, escopo, pessoaId) },
                 onDismiss = { showAddOrcamentoDialog = false }
             )
         }
@@ -779,7 +928,7 @@ fun MainScreen(
             DepositoRapidoDialog(
                 meta = meta,
                 onConfirmar = { valor ->
-                    metaVM.depositarNaMeta(meta.id.toLong(), valor)
+                    metaVM.depositarNaMeta(meta.id.toLong(), contaSelecionadaId.orEmpty(), valor)
                     corCelebracao = meta.corDestaque
                     mostrarCelebracao = true
                     metaSelecionadaParaDeposito = null
@@ -796,14 +945,56 @@ fun MainScreen(
             )
         }
 
+        if (showConferencia) {
+            ConferenciaSaldosScreen(repository = repository, isPrivate = isPrivate, onBack = { showConferencia = false })
+        }
+
+        if (showAgendadosLanc) {
+            DialogLancamentosAgendados(
+                resumo = resumoAgendados, isPrivate = isPrivate,
+                onAbrir = { showAgendadosLanc = false; alvoLancamento = AlvoLancamento(it.id) },
+                onFechar = { showAgendadosLanc = false }
+            )
+        }
+        if (showCalendario) {
+            CalendarioFinanceiroScreen(repository = repository, isPrivate = isPrivate, onBack = { showCalendario = false })
+        }
+
+        if (showImportarExtratos) {
+            ImportacaoExtratosScreen(repository = repository, isPrivate = isPrivate, onBack = { showImportarExtratos = false })
+        }
+
+        if (mostrarStatusSync) {
+            StatusSyncDialog(storageManager = storageManager, onDismiss = { mostrarStatusSync = false })
+        }
+        if (showFerramentas) {
+            FerramentasScreen(
+                repository = repository,
+                userPrefs = userPrefs,
+                isPrivate = isPrivate,
+                onBack = { showFerramentas = false }
+            )
+        }
+
         if (showExtratoScreen) {
             ExtratoScreen(
                 despesasVM = despVM,
-                categorias = repository.categorias.map { it.title },
+                categorias = categoriasDisponiveis,
                 isPrivate = isPrivate,
-                onBack = { showExtratoScreen = false }
+                onBack = { showExtratoScreen = false },
+                contaViewModel = contaVM,
+                getPicCategoria = { repository.getPicCategoria(it) }
             )
         }
+
+        // Menu de ações dos lançamentos (listas de conta, últimas movimentações): pago, antecipar, duplicar, repetir, editar, excluir.
+        LancamentoAcoesHost(
+            alvo = alvoLancamento,
+            onFechar = { alvoLancamento = null },
+            viewModel = contaVM,
+            categorias = categoriasDisponiveis,
+            getPicCategoria = { repository.getPicCategoria(it) }
+        )
 
         // A Explosão de Partículas Neon fica por cima de absolutamente tudo
         if (mostrarCelebracao) {

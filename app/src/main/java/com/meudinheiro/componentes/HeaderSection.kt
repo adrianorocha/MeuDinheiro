@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.PriorityHigh
@@ -59,7 +60,11 @@ private val BadgeRed = Color(0xFFFF3D00)
 enum class HeaderChipStyle {
     PRIMARY,
     SUCCESS,
-    NEUTRAL
+    NEUTRAL,
+    /** R86 — atenção (sem conexão com pendências, registros em quarentena). */
+    WARNING,
+    /** R86 — erro de envio. */
+    ERROR
 }
 
 @Composable
@@ -70,12 +75,19 @@ fun HeaderSection(
     modifier: Modifier = Modifier,
     chipText: String? = "Sincronizado",
     chipStyle: HeaderChipStyle = HeaderChipStyle.SUCCESS,
+    /** R86 — toque no chip (ex.: detalhes da sincronização); null = chip não clicável. */
+    onChipClick: (() -> Unit)? = null,
     showNotifications: Boolean = true,
     hasUnreadNotifications: Boolean = false,
     notificationCount: Int = 0,
     onNotificationsClick: () -> Unit = {},
+    onToolsClick: (() -> Unit)? = null,
     receitaTotal: Double = 0.0,
     despesaTotal: Double = 0.0,
+    /** Partes de [despesaTotal]: já pago × a pagar (pendentes, parcelas futuras, cartão em aberto). Nulos = sem legenda. */
+    despesaPaga: Double? = null,
+    despesaAPagar: Double? = null,
+    onConferirSaldos: (() -> Unit)? = null,
     isPrivateMode: Boolean = false,
     onTogglePrivate: () -> Unit = {}
 ) {
@@ -122,7 +134,7 @@ fun HeaderSection(
 
                     if (!chipText.isNullOrBlank()) {
                         Spacer(Modifier.height(2.dp))
-                        PremiumChip(text = chipText, style = chipStyle)
+                        PremiumChip(text = chipText, style = chipStyle, onClick = onChipClick)
                     }
                 }
 
@@ -147,6 +159,23 @@ fun HeaderSection(
                     }
 
                     Spacer(Modifier.width(8.dp))
+
+                    if (onToolsClick != null) {
+                        PremiumIconButton(
+                            contentDescription = "Ferramentas",
+                            showBadge = false,
+                            badgeCount = 0,
+                            onClick = onToolsClick
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Rounded.Apps,
+                                contentDescription = null,
+                                tint = TextWhite,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
 
                     if (showNotifications) {
                         PremiumIconButton(
@@ -177,7 +206,9 @@ fun HeaderSection(
 
             // --- Resumo Global ---
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (onConferirSaldos != null) Modifier.clickable(onClick = onConferirSaldos) else Modifier),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 MiniSummaryItem(
@@ -199,7 +230,10 @@ fun HeaderSection(
                     valorTexto = formatarMoedaBR(despesaTotal, isPrivateMode),
                     color = Color(0xFFEF5350),
                     iconUp = false,
-                    isAlert = orcamentoNegativo && !isPrivateMode
+                    isAlert = orcamentoNegativo && !isPrivateMode,
+                    legenda = if (despesaPaga != null && despesaAPagar != null)
+                        "pagas ${formatarMoedaBR(despesaPaga, isPrivateMode)} · a pagar ${formatarMoedaBR(despesaAPagar, isPrivateMode)}"
+                    else null
                 )
             }
         }
@@ -212,7 +246,8 @@ private fun MiniSummaryItem(
     valorTexto: String, // Recebe a String formatada
     color: Color,
     iconUp: Boolean,
-    isAlert: Boolean = false
+    isAlert: Boolean = false,
+    legenda: String? = null
 ) {
     val finalColor = if (isAlert) Color(0xFFFF5252) else color
     val backgroundColor =
@@ -246,22 +281,34 @@ private fun MiniSummaryItem(
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                 color = if (isAlert) finalColor else TextWhite
             )
+            if (legenda != null) {
+                Text(
+                    text = legenda,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    color = TextWhite.copy(alpha = 0.55f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun PremiumChip(text: String, style: HeaderChipStyle, modifier: Modifier = Modifier) {
+private fun PremiumChip(text: String, style: HeaderChipStyle, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val shape = RoundedCornerShape(6.dp)
     val (bg, txtColor) = when (style) {
         HeaderChipStyle.SUCCESS -> Color(0xFF00C853).copy(alpha = 0.2f) to Color(0xFF69F0AE)
-        else -> Color.White.copy(alpha = 0.1f) to TextWhite
+        HeaderChipStyle.PRIMARY -> Color(0xFF00B8D4).copy(alpha = 0.18f) to Color(0xFF84FFFF)
+        HeaderChipStyle.WARNING -> Color(0xFFFF9100).copy(alpha = 0.2f) to Color(0xFFFFCC80)
+        HeaderChipStyle.ERROR -> Color(0xFFFF3D00).copy(alpha = 0.22f) to Color(0xFFFF9E80)
+        HeaderChipStyle.NEUTRAL -> Color.White.copy(alpha = 0.1f) to TextWhite
     }
 
     Surface(
         color = bg,
         shape = shape,
-        modifier = modifier
+        modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
     ) {
         Text(
             text = text,

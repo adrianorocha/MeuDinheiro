@@ -1,0 +1,22 @@
+{
+  "name": "meudinheiro-functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "R65 - Cloud Functions de notificações push do MeuDinheiro (exigem o plano Blaze).",
+  "main": "lib/index.js",
+  "engines": { "node": "20" },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

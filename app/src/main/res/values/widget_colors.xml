@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- R92: cores do widget de saldo (tema claro). Texto/ícones com contraste AA sobre o cartão. -->
+<resources>
+    <color name="widget_surface">#FFF8FAFA</color>
+    <color name="widget_stroke">#FFDCE3E5</color>
+    <color name="widget_tile">#FFEAF1F1</color>
+    <color name="widget_text">#FF191C1E</color>
+    <color name="widget_text_sec">#FF4A5459</color>
+    <color name="widget_accent">#FF00695C</color>
+    <color name="widget_positive">#FF00695C</color>
+    <color name="widget_negative">#FFB3261E</color>
+    <color name="widget_chip_pos_bg">#FFDDF3EC</color>
+    <color name="widget_chip_neg_bg">#FFFBE4E1</color>
+    <color name="widget_btn_rec_bg">#FF00695C</color>
+    <color name="widget_btn_rec_fg">#FFFFFFFF</color>
+    <color name="widget_btn_desp_bg">#FFB3261E</color>
+    <color name="widget_btn_desp_fg">#FFFFFFFF</color>
+</resources>

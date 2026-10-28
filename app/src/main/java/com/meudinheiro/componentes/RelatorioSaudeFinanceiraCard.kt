@@ -62,14 +62,11 @@ fun RelatorioSaudeFinanceiraCard(
 ) {
     // --- LÓGICA E MATEMÁTICA ---
     // 1. Variação de Gastos (Mês atual vs Passado)
-    val variacaoGastos = if (despesaAnterior > 0) {
-        ((despesaAtual - despesaAnterior) / despesaAnterior) * 100
-    } else {
-        0.0
-    }
+    val saude = com.meudinheiro.domain.Financas.saudeFinanceira(receitaAtual, despesaAtual, despesaAnterior)
+    val variacaoGastos = saude.variacaoGastos
 
     // 2. Nível de Consumo da Receita (Burn Rate)
-    val consumoReceita = if (receitaAtual > 0) (despesaAtual / receitaAtual).toFloat() else 0f
+    val consumoReceita = saude.consumoReceita.toFloat()
 
     // Animação da barra de progresso
     var startAnimation by remember { mutableStateOf(false) }
