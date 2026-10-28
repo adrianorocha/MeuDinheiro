@@ -314,10 +314,9 @@ fun AvisoPixDuplicado(
     lancamentos: List<Despesa>,
     modifier: Modifier = Modifier
 ) {
-    if (valorCentavos == null || valorCentavos <= 0) return
     val achados = remember(valorCentavos, entrada, dataMs, conta, descricao, lancamentos) {
         Pix.possiveisDuplicados(
-            Pix.Candidato(valorCentavos, entrada, dataMs, conta, Pix.contraparteDaDescricao(descricao)),
+            Pix.Candidato(valorCentavos ?: 0L, entrada, dataMs, conta, Pix.contraparteDaDescricao(descricao), Pix.idDaDescricao(descricao)),
             lancamentos.filter { it.natureza == Natureza.NORMAL && (it.cartaoId == null || it.cartaoId == 0) }
                 .map { Pix.Existente(com.meudinheiro.domain.Dinheiro.centavos(it.valor), it.tipo == TipoDespesa.CREDITO, it.dataMs, it.conta, it.descricao, it.tags) }
         )

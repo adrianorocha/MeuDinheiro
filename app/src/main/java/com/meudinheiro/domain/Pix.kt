@@ -20,7 +20,7 @@ import java.util.TimeZone
  */
 object Pix {
     const val TAG = "PIX"
-    const val MAX_DESCRICAO = 60
+    const val MAX_DESCRICAO = 120
     private const val MAX_NOME = 40
     private const val DIA_MS = 86_400_000L
 
@@ -190,7 +190,7 @@ object Pix {
         "\\s+(?:cpf|cnpj|chave|ag[eê]ncia|ag\\.|conta|institui[cç][aã]o|banco|ispb|valor|r\\$|em\\s+\\d|[àa]s\\s+\\d)\\b|\\s[-–|•;]\\s|[|•;]|R\\$|\\*{2,}|\\d",
         RegexOption.IGNORE_CASE
     )
-    private val CAUDA = Regex("\\s+(?:de|da|do|no valor|o valor|valor|em|para|a|ao|pix)$", RegexOption.IGNORE_CASE)
+    private val CAUDA = Regex("\\s+(?:de|da|do|no|na|no valor|o valor|valor|em|para|a|ao|pix)$", RegexOption.IGNORE_CASE)
 
     /**
      * Nome de beneficiário/pagador pronto para a descrição: sem rótulos ("Nome:"), sem CPF/CNPJ/mascaras, espaços
@@ -207,19 +207,40 @@ object Pix {
         if (t.count { it.isLetter() } < 2) return null
         if (t.none { it.isLowerCase() }) {
             t = t.lowercase().split(' ').filterNot { it.isEmpty() }.mapIndexed { i, p ->
-                if (i > 0 && p in PARTICULAS) p else p.split('-').joinToString("-") { s -> s.replaceFirstChar { c -> c.uppercaseChar() } }
+                if (i > 0 && p in PARTICULAS) p else p.split('-').joinToString("-") { s -> s.split('\'').joinToString("'") { x -> x.replaceFirstChar { c -> c.uppercaseChar() } } }
             }.joinToString(" ")
         }
         return t.take(MAX_NOME).trim()
     }
 
-    /** Descrição na convenção: "Pix para X" (enviado) / "Pix de X" (recebido); sem nome, "Pix enviado" / "Pix recebido". */
-    fun descricao(direcao: Direcao, contraparte: String?): String {
+    /**
+     * Últimos 8 caracteres alfanuméricos do identificador (E2E ou txid); nulo se curto demais (< 8). Mesma regra do
+     * portal (R93), que guarda só este sufixo na descrição.
+     */
+    fun idCurto(id: String?): String? {
+        val limpo = id.orEmpty().filter { it.isLetterOrDigit() }
+        return if (limpo.length >= 8) limpo.takeLast(8) else null
+    }
+
+    private val REGEX_ID_DESCRICAO = Regex("\\s*\\(ID ([A-Za-z0-9]{6,12})\\)\\s*$")
+
+    /** Sufixo "(ID xxxxxxxx)" de uma descrição na convenção; nulo se não houver. */
+    fun idDaDescricao(descricao: String): String? = REGEX_ID_DESCRICAO.find(descricao)?.groupValues?.get(1)
+
+    private fun semId(descricao: String): String = descricao.replace(REGEX_ID_DESCRICAO, "").trim()
+
+    /**
+     * Descrição na convenção compartilhada com o portal (R93): "Pix para X" (enviado) / "Pix de X" (recebido); sem nome,
+     * "Pix enviado" / "Pix recebido". Com identificador ([id] = E2E ou txid) termina em " (ID xxxxxxxx)" (8 últimos
+     * caracteres; o ID completo nunca é gravado).
+     */
+    fun descricao(direcao: Direcao, contraparte: String?, id: String? = null): String {
         val nome = normalizarContraparte(contraparte)
-        return when (direcao) {
+        val base = when (direcao) {
             Direcao.ENVIADO -> if (nome == null) "Pix enviado" else "Pix para $nome"
             Direcao.RECEBIDO -> if (nome == null) "Pix recebido" else "Pix de $nome"
-        }.take(MAX_DESCRICAO)
+        }
+        return base + (idCurto(id)?.let { " (ID $it)" } ?: "")
     }
 
     // ------------------------------------------------------------------ E2E e comprovante
@@ -311,8 +332,14 @@ object Pix {
         }
     }
 
+    private val DATA_ISO = Regex("(\\d{4})-(\\d{2})-(\\d{2})(?:[T\\s]{1,3}(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?")
+
     private fun dataDoComprovante(texto: String, tz: TimeZone): Long? {
         val f = dobrar(texto)
+        DATA_ISO.find(f)?.let { m ->
+            val g = m.groupValues
+            montarData(g[3].toInt(), g[2].toInt(), g[1].toInt(), g[4].toIntOrNull(), g[5].toIntOrNull(), g[6].toIntOrNull(), tz)?.let { return it }
+        }
         DATA_NUM.find(f)?.let { m ->
             val g = m.groupValues
             montarData(g[1].toInt(), g[2].toInt(), g[3].toInt(), g[4].toIntOrNull(), g[5].toIntOrNull(), g[6].toIntOrNull(), tz)?.let { return it }
@@ -387,10 +414,8 @@ object Pix {
         return null
     }
 
-    private val FRASE_PIX = Regex(
-        "(?:pix|enviou|enviado|enviada|pagou|paguei|pago|recebeu|recebido|recebida|transferiu|transferencia)[^\\n:]*?\\b(para|de)\\s+(\\S[^\\n]*)",
-        RegexOption.IGNORE_CASE
-    )
+    private val GATILHO_FRASE = Regex("\\b(pix|enviou|enviado|enviada|pagou|paguei|pago|recebeu|recebido|recebida|transferiu|transferencia)\\b")
+    private val PREPOSICAO = Regex("\\b(para|de)\\s+", RegexOption.IGNORE_CASE)
 
     /**
      * Interpreta o texto colado de um comprovante/aviso de Pix (parser tolerante por regex: rótulos "Valor", "Destino"/"Origem",
@@ -420,11 +445,13 @@ object Pix {
         }
         if (contra == null) { // frase corrida: "Pix enviado para Maria", "Você recebeu um Pix de João"
             for (l in linhas) {
-                val m = FRASE_PIX.find(l) ?: continue
-                val prep = dobrar(m.groupValues[1])
-                val nome = normalizarContraparte(m.groupValues[2]) ?: continue
-                val d = if (prep == "para") Direcao.ENVIADO else Direcao.RECEBIDO
-                if (direcao == null || direcao == d) { direcao = d; contra = nome; break }
+                if (!GATILHO_FRASE.containsMatchIn(dobrar(l))) continue
+                for (m in PREPOSICAO.findAll(l)) {
+                    val nome = normalizarContraparte(l.substring(m.range.last + 1)) ?: continue
+                    val d = if (dobrar(m.groupValues[1]) == "para") Direcao.ENVIADO else Direcao.RECEBIDO
+                    if (direcao == null || direcao == d) { direcao = d; contra = nome; break }
+                }
+                if (contra != null) break
             }
         }
         val data = dataDoComprovante(texto, tz) ?: e2e?.let { dataDoE2e(it, tz) }
@@ -472,7 +499,7 @@ object Pix {
         val contra = if (direcao == Direcao.ENVIADO) brCode.beneficiario else null
         return RascunhoPix(
             direcao = direcao,
-            descricao = descricao(direcao, contra),
+            descricao = descricao(direcao, contra, brCode.txid),
             valorCentavos = brCode.valorCentavos,
             dataMs = null,
             tags = listOf(TAG),
@@ -491,7 +518,7 @@ object Pix {
         val dir = c.direcao ?: direcaoForm
         return RascunhoPix(
             direcao = direcaoForm,
-            descricao = descricao(dir, c.contraparte),
+            descricao = descricao(dir, c.contraparte, c.e2e),
             valorCentavos = c.valorCentavos,
             dataMs = c.dataMs,
             tags = listOf(TAG),
@@ -507,7 +534,7 @@ object Pix {
     /** Rascunho a partir dos campos de uma sugestão de notificação (R64/R89). */
     fun rascunhoPix(direcao: Direcao, contraparte: String?, valorCentavos: Long?, dataMs: Long?, e2e: String? = null): RascunhoPix =
         RascunhoPix(
-            direcao = direcao, descricao = descricao(direcao, contraparte), valorCentavos = valorCentavos, dataMs = dataMs,
+            direcao = direcao, descricao = descricao(direcao, contraparte, e2e), valorCentavos = valorCentavos, dataMs = dataMs,
             tags = listOf(TAG),
             resumo = ResumoPix(normalizarContraparte(contraparte), null, null, e2e, null, null, null, "Notificação do banco"),
             conflitoDirecao = false, direcaoLida = direcao
@@ -515,7 +542,7 @@ object Pix {
 
     /** Contraparte contida numa descrição na convenção ("Pix para X" / "Pix de X"); nulo em "Pix enviado/recebido" ou texto livre. */
     fun contraparteDaDescricao(descricao: String): String? =
-        Regex("^\\s*pix\\s+(?:para|de)\\s+(.+)$", RegexOption.IGNORE_CASE).find(descricao)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+        Regex("^\\s*pix\\s+(?:para|de)\\s+(.+)$", RegexOption.IGNORE_CASE).find(semId(descricao))?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
 
     // ------------------------------------------------------------------ pessoa (só sugestão)
 
@@ -536,7 +563,11 @@ object Pix {
 
     // ------------------------------------------------------------------ duplicidade
 
-    data class Candidato(val valorCentavos: Long, val entrada: Boolean, val dataMs: Long, val conta: String, val contraparte: String?)
+    data class Candidato(
+        val valorCentavos: Long, val entrada: Boolean, val dataMs: Long, val conta: String, val contraparte: String?,
+        /** Sufixo "(ID xxxxxxxx)" do lançamento em edição (ver [idDaDescricao]); mesmo ID na mesma conta já basta para avisar. */
+        val idCurto: String? = null
+    )
     data class Existente(
         val valorCentavos: Long, val entrada: Boolean, val dataMs: Long, val conta: String,
         val descricao: String, val tags: List<String>
@@ -546,7 +577,7 @@ object Pix {
 
     private val PALAVRAS_GENERICAS = setOf("pix", "para", "enviado", "recebido", "pagamento", "transferencia")
 
-    private fun tokensNome(s: String): Set<String> = Texto.tokens(s) - PALAVRAS_GENERICAS
+    private fun tokensNome(s: String): Set<String> = Texto.tokens(semId(s)) - PALAVRAS_GENERICAS
 
     /**
      * Lançamentos existentes que provavelmente são o mesmo Pix: mesma conta, mesmo sentido, mesmo valor, data ±1 dia e
@@ -554,12 +585,14 @@ object Pix {
      * comprovante do mesmo Pix). Só avisa; nunca bloqueia nem apaga.
      */
     fun possiveisDuplicados(c: Candidato, existentes: List<Existente>, tz: TimeZone = TimeZone.getDefault()): List<Existente> {
-        if (c.valorCentavos <= 0) return emptyList()
         val d0 = dia(c.dataMs, tz)
         val conta = c.conta.trim().lowercase()
         val nomeC = c.contraparte?.let { tokensNome(it) }.orEmpty()
         return existentes.filter { e ->
-            e.valorCentavos == c.valorCentavos && e.entrada == c.entrada && e.conta.trim().lowercase() == conta &&
+            if (e.conta.trim().lowercase() != conta) return@filter false
+            // Mesmo "(ID xxxxxxxx)" na mesma conta: é o mesmo Pix, mesmo com valor/data diferentes (igual ao portal).
+            if (c.idCurto != null && idDaDescricao(e.descricao).equals(c.idCurto, ignoreCase = true)) return@filter true
+            c.valorCentavos > 0 && e.valorCentavos == c.valorCentavos && e.entrada == c.entrada &&
                 Math.abs(dia(e.dataMs, tz) - d0) <= 1 &&
                 (nomeC.isEmpty() || temTag(e.tags) || tokensNome(e.descricao).any { it in nomeC })
         }

@@ -354,10 +354,11 @@ object NotificacaoBancaria {
 
     /** Descrição que vai para o lançamento (a que o usuário veria no extrato). */
     fun tituloLancamento(g: SugestaoGuardada): String = when (g.tipo) {
-        Tipo.PIX_RECEBIDO -> if (g.descricao == "Pix recebido") g.descricao else "Pix de ${g.descricao}"
-        Tipo.PIX_ENVIADO -> if (g.descricao == "Pix enviado") g.descricao else "Pix para ${g.descricao}"
-        else -> g.descricao
-    }.take(MAX_DESC)
+        // R94/R93: convenção compartilhada com o portal (inclui " (ID xxxxxxxx)" quando a notificação traz o E2E).
+        Tipo.PIX_RECEBIDO -> Pix.descricao(Pix.Direcao.RECEBIDO, g.descricao.takeIf { it != "Pix recebido" }, g.e2e)
+        Tipo.PIX_ENVIADO -> Pix.descricao(Pix.Direcao.ENVIADO, g.descricao.takeIf { it != "Pix enviado" }, g.e2e)
+        else -> g.descricao.take(MAX_DESC)
+    }
 
     /** Texto da notificação: "Lançar R$ 89,90 em PADARIA X?". */
     fun pergunta(g: SugestaoGuardada): String =

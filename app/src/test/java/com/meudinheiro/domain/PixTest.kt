@@ -85,7 +85,8 @@ class PixTest {
         assertEquals(Pix.MotivoBrCode.CRC_INVALIDO, motivo(Pix.lerBrCode(FULANO.dropLast(4) + "0000")))
         // trocar o valor do beneficiário depois de gerado o CRC
         assertEquals(Pix.MotivoBrCode.CRC_INVALIDO, motivo(Pix.lerBrCode(FULANO.replace("FULANO", "BELTRANO".take(6)))))
-        assertEquals(Pix.MotivoBrCode.CRC_INVALIDO, motivo(Pix.lerBrCode(FULANO.dropLast(4)))) // sem CRC
+        assertEquals(Pix.MotivoBrCode.FORMATO_INVALIDO, motivo(Pix.lerBrCode(FULANO.dropLast(4)))) // CRC cortado
+        assertEquals(Pix.MotivoBrCode.CRC_INVALIDO, motivo(Pix.lerBrCode(FULANO.dropLast(8)))) // sem o campo 63
         // CRC em minúsculas é aceito
         assertTrue(Pix.lerBrCode(FULANO.dropLast(4) + "a5e2") is Pix.ResultadoBrCode.Ok)
     }
@@ -173,13 +174,13 @@ class PixTest {
             Origem
             Nome: Adriano Rocha
             ID da transação
-            E18236120202503151732s0123456789ab
+            E18236120202503151732s0123456789
             """.trimIndent()
         )
         assertEquals(Direcao.ENVIADO, c.direcao)
         assertEquals(123_456L, c.valorCentavos)
         assertEquals("Maria da Silva", c.contraparte)
-        assertEquals("E18236120202503151732s0123456789ab", c.e2e)
+        assertEquals("E18236120202503151732s0123456789", c.e2e)
         val cal = Calendar.getInstance(tz).apply { timeInMillis = c.dataMs!! }
         assertEquals(2025, cal.get(Calendar.YEAR)); assertEquals(2, cal.get(Calendar.MONTH)); assertEquals(15, cal.get(Calendar.DAY_OF_MONTH))
         assertEquals(14, cal.get(Calendar.HOUR_OF_DAY))
@@ -239,14 +240,14 @@ class PixTest {
     }
 
     @Test fun e2e() {
-        assertEquals("E18236120202503151732s0123456789ab", Pix.extrairE2e("ID: E18236120202503151732s0123456789ab."))
+        assertEquals("E18236120202503151732s0123456789", Pix.extrairE2e("ID: E18236120202503151732s0123456789."))
         assertNull(Pix.extrairE2e("EXEMPLO12345678"))
-        assertNull(Pix.extrairE2e("XE18236120202503151732s0123456789ab")) // colado em outro texto
+        assertNull(Pix.extrairE2e("XE18236120202503151732s0123456789")) // colado em outro texto
         assertNull(Pix.extrairE2e(null))
-        val ms = Pix.dataDoE2e("E18236120202503151732s0123456789ab", tz)!!
+        val ms = Pix.dataDoE2e("E18236120202503151732s0123456789", tz)!!
         val cal = Calendar.getInstance(tz).apply { timeInMillis = ms }
         assertEquals(15, cal.get(Calendar.DAY_OF_MONTH))
-        assertEquals("E18236120…89ab", Pix.e2eResumido("E18236120202503151732s0123456789ab"))
+        assertEquals("E18236120…6789", Pix.e2eResumido("E18236120202503151732s0123456789"))
     }
 
     // ------------------------------------------------------------------ rascunho, tags, pessoa
@@ -280,9 +281,9 @@ class PixTest {
         assertFalse(ok.conflitoDirecao)
         assertEquals("Pix de João Pereira", ok.descricao)
         // sem direção no texto vale a do formulário
-        val s = Pix.rascunhoPix(comp("Valor: R$ 9,00 E18236120202503151732s0123456789ab"), Direcao.ENVIADO)
+        val s = Pix.rascunhoPix(comp("Valor: R$ 9,00 E18236120202503151732s0123456789"), Direcao.ENVIADO)
         assertFalse(s.conflitoDirecao)
-        assertEquals("Pix enviado", s.descricao)
+        assertEquals("Pix enviado (ID 23456789)", s.descricao)
     }
 
     @Test fun tagPix() {
@@ -349,11 +350,11 @@ class PixTest {
     private fun notif(titulo: String?, texto: String?) = NotificacaoBancaria.interpretar("com.nu.production", titulo, texto, 0L)
 
     @Test fun notificacaoPixEnviadoComE2e() {
-        val s = notif("Pix enviado", "Você enviou R$ 45,00 para MARIA DA SILVA. ID: E18236120202503151732s0123456789ab")!!
+        val s = notif("Pix enviado", "Você enviou R$ 45,00 para MARIA DA SILVA. ID: E18236120202503151732s0123456789")!!
         assertEquals(NotificacaoBancaria.Tipo.PIX_ENVIADO, s.tipo)
         assertEquals(4500L, s.valorCentavos)
         assertEquals("Maria da Silva", s.descricao)
-        assertEquals("E18236120202503151732s0123456789ab", s.e2e)
+        assertEquals("E18236120202503151732s0123456789", s.e2e)
         assertTrue(s.ehPix)
         assertFalse(s.entrada)
     }
@@ -379,7 +380,7 @@ class PixTest {
     @Test fun mesmaE2eEhDuplicadaMesmoForaDaJanela() {
         val g = NotificacaoBancaria.SugestaoGuardada(
             id = "1", tipo = NotificacaoBancaria.Tipo.PIX_ENVIADO, valorCentavos = 4500, descricao = "Maria",
-            pacote = "com.nu.production", horarioMs = 0, criadaEm = 0, e2e = "E18236120202503151732s0123456789ab"
+            pacote = "com.nu.production", horarioMs = 0, criadaEm = 0, e2e = "E18236120202503151732s0123456789"
         )
         val nova = NotificacaoBancaria.Sugestao(
             NotificacaoBancaria.Tipo.PIX_ENVIADO, 4500, "MARIA DA SILVA", null, NotificacaoBancaria.Confianca.ALTA, e2e = g.e2e
@@ -398,5 +399,50 @@ class PixTest {
         assertEquals("Pix de Ana", d.descricao)
         val compra = g.copy(tipo = NotificacaoBancaria.Tipo.COMPRA_DEBITO, entrada = false)
         assertTrue(RevisaoLote.montar(compra, RevisaoLote.Edicao("", "Mercado", RevisaoLote.Destino(conta = "123")), "pic").tags.isEmpty())
+    }
+
+    // ------------------------------------------------------------------ ID curto (convenção do portal, R93)
+
+    @Test fun descricaoComIdCurto() {
+        assertEquals("8", Pix.idCurto("E18236120202503151732s0123456789")!!.length.toString())
+        assertEquals("23456789", Pix.idCurto("E18236120202503151732s0123456789"))
+        assertNull(Pix.idCurto("ABC123"))
+        assertNull(Pix.idCurto(null))
+        assertEquals("Pix para Maria Silva (ID 23456789)", Pix.descricao(Direcao.ENVIADO, "MARIA SILVA", "E18236120202503151732s0123456789"))
+        assertEquals("Pix recebido (ID 23456789)", Pix.descricao(Direcao.RECEBIDO, null, "E18236120202503151732s0123456789"))
+        assertEquals("23456789", Pix.idDaDescricao("Pix para Maria (ID 23456789)"))
+        assertNull(Pix.idDaDescricao("Pix para Maria"))
+        assertEquals("Maria Silva", Pix.contraparteDaDescricao("Pix para Maria Silva (ID 23456789)"))
+        assertTrue(Pix.descricao(Direcao.ENVIADO, "X".repeat(100) + "Y", "E18236120202503151732s0123456789").length <= Pix.MAX_DESCRICAO)
+        val r = Pix.rascunhoPix(comp("Pix enviado\nValor: R$ 9,00\nPara: Ana Paula\nE18236120202503151732s0123456789"), Direcao.ENVIADO)
+        assertEquals("Pix para Ana Paula (ID 23456789)", r.descricao)
+    }
+
+    @Test fun duplicidadePeloMesmoIdBastaNaMesmaConta() {
+        val c = Pix.Candidato(1000, false, ms(15), "123", "Maria", "23456789")
+        val outroValorEData = ex(5000, 28, "Pix para Maria (ID 23456789)")
+        assertEquals(1, Pix.possiveisDuplicados(c, listOf(outroValorEData), tz).size)
+        assertTrue(Pix.possiveisDuplicados(c, listOf(ex(5000, 28, "Pix para Maria (ID 23456789)", conta = "999")), tz).isEmpty())
+        assertTrue(Pix.possiveisDuplicados(c, listOf(ex(5000, 28, "Pix para Maria (ID 99999999)")), tz).isEmpty())
+        // o ID não polui a comparação de nomes
+        val semNomeEmComum = ex(1000, 15, "Mercado (ID abcdef12)")
+        assertTrue(Pix.possiveisDuplicados(Pix.Candidato(1000, false, ms(15), "123", "Abcdef Souza"), listOf(semNomeEmComum), tz).isEmpty())
+    }
+
+    @Test fun comprovanteComDataIso() {
+        val c = comp("Pix recebido R$ 3,00 em 2025-03-15 10:20:30 de Pedro Alves")
+        val cal = Calendar.getInstance(tz).apply { timeInMillis = c.dataMs!! }
+        assertEquals(15, cal.get(Calendar.DAY_OF_MONTH)); assertEquals(10, cal.get(Calendar.HOUR_OF_DAY))
+    }
+
+    @Test fun tituloDaSugestaoSegueConvencaoComId() {
+        val base = NotificacaoBancaria.SugestaoGuardada(
+            id = "1", tipo = NotificacaoBancaria.Tipo.PIX_ENVIADO, valorCentavos = 100, descricao = "Maria da Silva",
+            pacote = "p", horarioMs = 0, criadaEm = 0
+        )
+        assertEquals("Pix para Maria da Silva", NotificacaoBancaria.tituloLancamento(base))
+        assertEquals("Pix para Maria da Silva (ID 23456789)", NotificacaoBancaria.tituloLancamento(base.copy(e2e = "E18236120202503151732s0123456789")))
+        assertEquals("Pix enviado (ID 23456789)", NotificacaoBancaria.tituloLancamento(base.copy(descricao = "Pix enviado", e2e = "E18236120202503151732s0123456789")))
+        assertEquals("Pix de Ana", NotificacaoBancaria.tituloLancamento(base.copy(tipo = NotificacaoBancaria.Tipo.PIX_RECEBIDO, descricao = "Ana")))
     }
 }
