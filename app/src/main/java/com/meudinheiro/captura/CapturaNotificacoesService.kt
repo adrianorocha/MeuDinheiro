@@ -93,7 +93,7 @@ class CapturaNotificacoesService : NotificationListenerService() {
         val g = SugestaoGuardada(
             id = UUID.randomUUID().toString(), tipo = s.tipo, valorCentavos = s.valorCentavos, descricao = s.descricao,
             finalCartao = s.finalCartao, confianca = s.confianca, entrada = s.entrada, pacote = pacote,
-            horarioMs = horario, criadaEm = agora, cartaoId = destino?.cartaoId, conta = destino?.conta
+            horarioMs = horario, criadaEm = agora, cartaoId = destino?.cartaoId, conta = destino?.conta, e2e = s.e2e
         )
         SugestoesStore.adicionar(ctx, g, agora)
         NotificadorSugestoes.mostrar(ctx, g)

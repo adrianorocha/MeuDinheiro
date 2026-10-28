@@ -137,6 +137,7 @@ fun ActionButtonRow(
     var codigoEscaneado by remember { mutableStateOf("") }
 
     val cartoes by cartoesViewModel.cartoes.collectAsState()
+    val lancamentosParaPix by cartoesViewModel.todasDespesas.collectAsState() // R94: só para avisar duplicidade de Pix
 
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -233,6 +234,7 @@ fun ActionButtonRow(
             getPicCategoria = getPicCategoria,
             viewModel = viewModel,
             parentScope = parentScope,
+            lancamentos = lancamentosParaPix,
             onDismiss = { exibirReceita = false }
         )
     }
@@ -489,10 +491,12 @@ private fun ReceitaDialog(
     getPicCategoria: (String) -> String,
     viewModel: ContaSaldoViewModel,
     parentScope: CoroutineScope,
+    lancamentos: List<Despesa> = emptyList(),
     onDismiss: () -> Unit
 ) {
     val ctx = LocalContext.current
     val exigirBio by remember { com.meudinheiro.funcoes.UserPreferences(ctx).biometriaLancarFlow }.collectAsState(initial = true)
+    var tagsPix by remember { mutableStateOf(listOf<String>()) } // R94: só a tag PIX (receita não tem campo de tags)
     var descricao by rememberSaveable { mutableStateOf("") }
     var valor by rememberSaveable { mutableStateOf("") }
     var categoria by remember { mutableStateOf(com.meudinheiro.domain.NovaReceita.categoriaInicial(categorias)) }
@@ -523,6 +527,32 @@ private fun ReceitaDialog(
         PremiumDialogCard(modifier = Modifier.verticalScroll(rememberScrollState())) {
             Text("Nova Receita", style = MaterialTheme.typography.titleLarge, color = TextColor, fontWeight = FontWeight.Bold)
             Text("Para: $contaSelecionada", color = NeonGreen)
+
+            // R94: Pix recebido (copia e cola / QR / comprovante). Só preenche; o usuário confere e confirma.
+            SecaoPix(
+                direcao = com.meudinheiro.domain.Pix.Direcao.RECEBIDO,
+                tags = tagsPix,
+                onTagsChange = { tagsPix = it },
+                descricaoAtual = descricao,
+                valorAtualCentavos = com.meudinheiro.domain.NovaReceita.parseValor(valor)?.let { com.meudinheiro.domain.Dinheiro.centavos(it) },
+                onAplicar = { r ->
+                    r.valorCentavos?.let { valor = "%d,%02d".format(it / 100, it % 100) }
+                    descricao = r.descricao.take(80)
+                    r.dataMs?.let { ms ->
+                        dataMillis.value = ms
+                        if (!recebidoManual) jaRecebido = com.meudinheiro.domain.NovaReceita.pagoInicial(ms, System.currentTimeMillis())
+                    }
+                    tagsPix = com.meudinheiro.domain.Pix.comTag(tagsPix)
+                },
+                pessoas = pessoas.map { com.meudinheiro.domain.Pix.PessoaRef(it.id, it.nome) },
+                onVincularPessoa = { p -> pessoaOrigemId = p.id }
+            )
+            if (com.meudinheiro.domain.Pix.temTag(tagsPix)) {
+                AvisoPixDuplicado(
+                    valorCentavos = com.meudinheiro.domain.NovaReceita.parseValor(valor)?.let { com.meudinheiro.domain.Dinheiro.centavos(it) },
+                    entrada = true, dataMs = dataMillis.value, conta = contaSelecionada, descricao = descricao, lancamentos = lancamentos
+                )
+            }
 
             PremiumTextField(
                 value = descricao,
@@ -656,7 +686,7 @@ private fun ReceitaDialog(
                                 mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                                 ano = Calendar.getInstance().get(Calendar.YEAR),
                                 tags = com.meudinheiro.domain.NovaReceita.tagsComOrigem(
-                                    emptyList(), pessoas.firstOrNull { it.id == pessoaOrigemId }?.nome
+                                    tagsPix, pessoas.firstOrNull { it.id == pessoaOrigemId }?.nome
                                 )
                             )
                             val novosAnexos = anexosForm.novos.toList()
@@ -900,6 +930,12 @@ fun AddDespesaDialog(
         )
     } else null
 
+    // R94: Pix só em lançamento único EM CONTA; ao trocar para cartão/parcelado/fixo, a tag PIX sai.
+    val pixPermitido = formaPagamento == "CONTA" && frequencia == Frequencia.UNICA
+    LaunchedEffect(pixPermitido) {
+        if (!pixPermitido && com.meudinheiro.domain.Pix.temTag(tags)) tags = com.meudinheiro.domain.Pix.semTag(tags)
+    }
+
     // Débito sai direto da conta: não parcela.
     LaunchedEffect(compraNoDebito) {
         if (compraNoDebito && frequencia == Frequencia.PARCELADA) frequencia = Frequencia.UNICA
@@ -1138,6 +1174,38 @@ fun AddDespesaDialog(
                                 }
                             }
 
+                            // R94: Pix enviado/pago (copia e cola / QR / comprovante). Só preenche; confirma ao salvar.
+                            if (pixPermitido) {
+                                val valorBrl = if (moedaSelecionada == "BRL") valorTexto.toLongOrNull() else null
+                                SecaoPix(
+                                    direcao = com.meudinheiro.domain.Pix.Direcao.ENVIADO,
+                                    tags = tags,
+                                    onTagsChange = { tags = it },
+                                    descricaoAtual = descricao,
+                                    valorAtualCentavos = valorBrl,
+                                    onAplicar = { r ->
+                                        r.valorCentavos?.let { valorTexto = it.toString(); moedaSelecionada = "BRL"; cotacaoTexto = "1.00"; erros = erros - "valor" }
+                                        descricao = r.descricao; erros = erros - "desc"
+                                        r.dataMs?.let { dataMillis.value = it }
+                                        tags = com.meudinheiro.domain.Pix.comTag(tags)
+                                        // R55/R89: regra explícita > categoria aprendida > histórico; nunca troca uma categoria escolhida à mão.
+                                        if (!categoriaManual) {
+                                            val memoria = runCatching { com.meudinheiro.captura.CategoriasAprendidas.memoria(currentContext) }.getOrDefault(emptyMap())
+                                            com.meudinheiro.domain.CategoriaAprendida.escolher(
+                                                descricao = r.resumo.contraparte ?: r.descricao, titulo = r.descricao, conta = contaAtual,
+                                                regras = regras, memoria = memoria, historico = comprasDosCartoes, categoriasValidas = categorias
+                                            ).categoria?.let { categoriaSelecionada = it; erros = erros - "cat" }
+                                        }
+                                    }
+                                )
+                                if (com.meudinheiro.domain.Pix.temTag(tags)) {
+                                    AvisoPixDuplicado(
+                                        valorCentavos = valorBrl, entrada = false, dataMs = dataMillis.value ?: System.currentTimeMillis(),
+                                        conta = contaAtual, descricao = descricao, lancamentos = comprasDosCartoes
+                                    )
+                                }
+                            }
+
                             ValueSection(
                                 moeda = moedaSelecionada,
                                 valor = valorTexto,
@@ -1239,7 +1307,7 @@ fun AddDespesaDialog(
                                             mes = Calendar.getInstance().get(Calendar.MONTH) + 1,
                                             ano = Calendar.getInstance().get(Calendar.YEAR),
                                             cartaoId = idDoCartaoParaSalvar,
-                                            tags = tags
+                                            tags = if (pixPermitido) tags else com.meudinheiro.domain.Pix.semTag(tags) // R94
                                         )
 
                                         autenticarParaLancar(currentContext, exigirBio, "Confirmar lançamento", "Autentique para lançar esta despesa") {

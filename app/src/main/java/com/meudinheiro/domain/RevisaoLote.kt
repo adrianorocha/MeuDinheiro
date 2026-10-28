@@ -45,7 +45,8 @@ object RevisaoLote {
             tipo = if (g.entrada) TipoDespesa.CREDITO else TipoDespesa.DEBITO,
             conta = if (e.destino.cartaoId != null) "" else e.destino.conta.orEmpty(),
             cartaoId = e.destino.cartaoId,
-            agora = g.horarioMs
+            agora = g.horarioMs,
+            tags = if (g.comoSugestao().ehPix) Pix.comTag(emptyList()) else emptyList() // R94: Pix vira lançamento com a tag PIX
         )
 
     /** Modalidade só importa em cartão múltiplo: compra no débito da notificação = débito; senão crédito. */

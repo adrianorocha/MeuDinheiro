@@ -22,6 +22,13 @@ object AtalhosApp {
 
     fun pedirImportarExtratos() { importarExtratosPedido = true }
     fun consumirImportarExtratos() { importarExtratosPedido = false }
+
+    /** R92 — destino pedido pelos atalhos do widget (Extrato, Cartões, Metas); consumido pela tela principal. */
+    var destinoPedido by mutableStateOf<com.meudinheiro.domain.DestinoApp?>(null)
+        private set
+
+    fun pedirDestino(d: com.meudinheiro.domain.DestinoApp) { destinoPedido = d }
+    fun consumirDestino() { destinoPedido = null }
 }
 
 /** R64 — abrir a fila "Sugestões de lançamento" (toque na notificação de uma sugestão). */

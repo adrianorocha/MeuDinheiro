@@ -32,7 +32,9 @@ object LancamentoRapido {
         tipo: TipoDespesa,
         conta: String,
         cartaoId: Int?,
-        agora: Long
+        agora: Long,
+        /** R94: tags opcionais (ex.: "PIX" nas sugestões de Pix). Normalizadas pelas regras R56. */
+        tags: List<String> = emptyList()
     ): Despesa {
         val v = Dinheiro.arredondar(valor)
         return Despesa(
@@ -46,7 +48,8 @@ object LancamentoRapido {
             mes = Financas.mesDe(agora),
             ano = Financas.anoDe(agora),
             cartaoId = cartaoId,
-            pago = cartaoId == null
+            pago = cartaoId == null,
+            tags = Tags.normalizar(tags)
         )
     }
 

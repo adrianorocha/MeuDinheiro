@@ -23,3 +23,14 @@ class RefreshAction : ActionCallback {
         SaldoWidget().updateAll(context)
     }
 }
+
+/**
+ * R92 — botão "olho" do widget: alterna o modo privado do app (a mesma preferência `UserPreferences.togglePrivateMode`;
+ * nenhum formato novo) e redesenha. O app e o widget refletem o mesmo valor.
+ */
+class AlternarPrivacidadeAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        runCatching { com.meudinheiro.funcoes.UserPreferences(context).togglePrivateMode() }
+        SaldoWidget().updateAll(context)
+    }
+}

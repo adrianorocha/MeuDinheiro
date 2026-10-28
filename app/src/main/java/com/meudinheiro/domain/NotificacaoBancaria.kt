@@ -27,8 +27,13 @@ object NotificacaoBancaria {
         val descricao: String,
         val finalCartao: String? = null,
         val confianca: Confianca,
-        val entrada: Boolean = false
-    )
+        val entrada: Boolean = false,
+        /** R94 — ID fim a fim do Pix (E + 31 alfanuméricos) quando a notificação traz; só para dedupe/exibição (não vai ao lançamento). */
+        val e2e: String? = null
+    ) {
+        /** R94 — Pix enviado/recebido (o lançamento ganha a tag PIX). */
+        val ehPix: Boolean get() = tipo == Tipo.PIX_ENVIADO || tipo == Tipo.PIX_RECEBIDO
+    }
 
     // ------------------------------------------------------------------ pacotes permitidos
 
@@ -171,19 +176,25 @@ object NotificacaoBancaria {
             return re.find(antes)?.groupValues?.get(1)?.let { limparDescricao(it) }
         }
 
+        fun antesDoVerbo(trecho: String, verbos: String): String? =
+            Regex("^(.+?)\\s+(?:$verbos)\\b", RegexOption.IGNORE_CASE).find(trecho.trim())?.groupValues?.get(1)?.let { limparDescricao(it) }
+
         val recebeu = Regex("""\b(recebeu|recebido|recebida|recebemos|entrou|te enviou|enviou para voce|depositou)\b""").containsMatchIn(f)
         val enviou = Regex("""\b(enviado|enviada|enviou|voce enviou|transferiu|pagamento pix|pix pago|pagou|paguei|pago)\b""").containsMatchIn(f) &&
             !Regex("""\b(te enviou|enviou para voce)\b""").containsMatchIn(f)
 
-        // PIX
+        // PIX (R94: contraparte, valor e ID E2E; o lançamento recebe a tag PIX e a descrição "Pix para/de <nome>")
         if (f.contains("pix")) {
             if (recebeu == enviou) return null // nenhum ou os dois sentidos
+            val e2e = Pix.extrairE2e(bruto)
             return if (recebeu) {
-                val nome = depoisDe("de") ?: antesDe("de")
-                Sugestao(Tipo.PIX_RECEBIDO, valor, nome ?: "Pix recebido", final, if (nome != null) Confianca.ALTA else Confianca.MEDIA, entrada = true)
+                val nome = depoisDe("de") ?: antesDe("de") ?: antesDoVerbo(antes, "te enviou|enviou para voce|enviou um pix|fez um pix")
+                val limpo = nome?.let { Pix.normalizarContraparte(it) }
+                Sugestao(Tipo.PIX_RECEBIDO, valor, limpo ?: "Pix recebido", final, if (limpo != null) Confianca.ALTA else Confianca.MEDIA, entrada = true, e2e = e2e)
             } else {
                 val nome = depoisDe("para", "a", "ao") ?: antesDe("para")
-                Sugestao(Tipo.PIX_ENVIADO, valor, nome ?: "Pix enviado", final, if (nome != null) Confianca.ALTA else Confianca.MEDIA)
+                val limpo = nome?.let { Pix.normalizarContraparte(it) }
+                Sugestao(Tipo.PIX_ENVIADO, valor, limpo ?: "Pix enviado", final, if (limpo != null) Confianca.ALTA else Confianca.MEDIA, e2e = e2e)
             }
         }
         // SAQUE
@@ -263,6 +274,7 @@ object NotificacaoBancaria {
     /** Mesma sugestão (valor + descrição + tipo) dentro de [JANELA_DUPLICADA_MS] de outra já registrada. */
     fun duplicadaRecente(nova: Sugestao, horarioMs: Long, registradas: List<SugestaoGuardada>): Boolean =
         registradas.any { r ->
+            (nova.e2e != null && r.e2e == nova.e2e) || // R94: mesmo Pix (mesmo ID E2E), mesmo fora da janela
             r.valorCentavos == nova.valorCentavos && r.tipo == nova.tipo &&
                 normalizarDescricao(r.descricao) == normalizarDescricao(nova.descricao) &&
                 kotlin.math.abs(r.horarioMs - horarioMs) <= JANELA_DUPLICADA_MS
@@ -333,9 +345,11 @@ object NotificacaoBancaria {
         val estado: Estado = Estado.PENDENTE,
         /** Destino resolvido na captura (cartão pelo final, conta pelo banco); nulo = a tela de lançamento pergunta. */
         val cartaoId: Int? = null,
-        val conta: String? = null
+        val conta: String? = null,
+        /** R94 — ID E2E do Pix (opcional; JSON antigo sem o campo = nulo). */
+        val e2e: String? = null
     ) {
-        fun comoSugestao() = Sugestao(tipo, valorCentavos, descricao, finalCartao, confianca, entrada)
+        fun comoSugestao() = Sugestao(tipo, valorCentavos, descricao, finalCartao, confianca, entrada, e2e)
     }
 
     /** Descrição que vai para o lançamento (a que o usuário veria no extrato). */

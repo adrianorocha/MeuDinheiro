@@ -364,10 +364,24 @@ fun CardItemContent(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(text = dataFormatada, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
-                if (item.tags.isNotEmpty()) { // R56
+                val ehPix = com.meudinheiro.domain.Pix.temTag(item.tags) // R94
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = dataFormatada, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                    if (ehPix) {
+                        Text(
+                            text = "PIX",
+                            modifier = Modifier.padding(start = 6.dp)
+                                .border(0.5.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                            color = NeonCyan.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+                val tagsVisiveis = if (ehPix) com.meudinheiro.domain.Pix.semTag(item.tags) else item.tags // o selo já mostra o PIX
+                if (tagsVisiveis.isNotEmpty()) { // R56
                     Text(
-                        text = item.tags.joinToString(" ") { "#$it" },
+                        text = tagsVisiveis.joinToString(" ") { "#$it" },
                         style = MaterialTheme.typography.labelSmall, color = NeonCyan.copy(alpha = 0.8f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )

@@ -243,11 +243,16 @@ private fun PainelRapido(receitaInicial: Boolean, atalho: AtalhoExtra?, onFechar
             onNegado = { salvando = false; if (atalho != null && !atalho.revisar) onFechar() else erro = "Autenticação necessária para lançar." }
         ) { escopo.launch {
             val agora = System.currentTimeMillis()
+            // R94: sugestão de Pix (notificação) vira lançamento com a tag PIX (só em conta; nunca em cartão).
+            val ehPix = origem is Origem.DeConta && atalho?.sugestaoId != null && withContext(Dispatchers.IO) {
+                runCatching { com.meudinheiro.captura.SugestoesStore.obter(context, atalho.sugestaoId)?.comoSugestao()?.ehPix == true }.getOrDefault(false)
+            }
             val lanc = LancamentoRapido.montar(
                 valor, descricao, catNome, pic, tipo,
                 conta = (origem as? Origem.DeConta)?.conta?.conta ?: "",
                 cartaoId = (origem as? Origem.DeCartao)?.cartao?.id,
-                agora = agora
+                agora = agora,
+                tags = if (ehPix) com.meudinheiro.domain.Pix.comTag(emptyList()) else emptyList()
             )
             val resultado = withContext(Dispatchers.IO) { runCatching { MainRepository(context).registrarLancamento(lanc, if (origem is Origem.DeCartao) modalidade else null) } }
             if (resultado.isFailure) {

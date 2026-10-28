@@ -19,7 +19,10 @@ import { sugerirCategoria } from "@/lib/finance/analises";
 import { normalizar } from "@/lib/finance/texto";
 import { CATEGORIA_CASHBACK, ehCashbackDoCartao, MAX_PARCELAS, modalidadeDaCompra, type Modalidade } from "@/lib/finance/operations";
 import { Button } from "@/components/ui/Button";
-import { round2 } from "@/lib/finance/money";
+import { round2, toCents } from "@/lib/finance/money";
+import { acharDuplicataPix, TAG_PIX, type RascunhoPix } from "@/lib/finance/pix";
+import { chaveTag, normalizarTags } from "@/lib/finance/tags";
+import { PixLeitor } from "./PixLeitor";
 import type { Despesa, Tipo } from "@/lib/finance/types";
 import { deInputData, paraInputData, parseValorBR, valorParaCampo } from "@/lib/format";
 import { useDataset } from "@/lib/hooks";
@@ -104,11 +107,15 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
   const [pendentes, setPendentes] = useState<Pendente[]>([]);
   const [removidos, setRemovidos] = useState<string[]>([]);
   const [manterVinculo, setManterVinculo] = useState(true);
+  // R93 - lançamento via Pix: a marca é a tag PIX; o aviso de duplicata exige uma confirmação (segundo toque em Salvar).
+  const [dupOkId, setDupOkId] = useState<number | null>(null);
+  const [dataInicialPadrao] = useState<number | null>(() => (!editar && !predefinicao?.data ? Date.now() : null));
   const [salvoId, setSalvoId] = useState<number | null>(editar?.id ?? null);
   const [enviandoAnexos, setEnviandoAnexos] = useState(false);
   const existentes = normalizarAnexos(ds.despesas.find((d) => d.id === (salvoId ?? -1))?.anexos);
 
   const noCartao = entrada === "cartao";
+  const pixMarcado = tags.some((t) => chaveTag(t) === "pix");
   const tipoAtual: Tipo = entrada === "receita" || (noCartao && estorno) ? "CREDITO" : "DEBITO";
   const contaRegra = noCartao ? ds.contas.find((c) => c.id === ds.cartoes.find((x) => x.id === Number(cartaoId))?.contaId)?.conta : conta;
   const regra = useMemo(
@@ -137,6 +144,27 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
     const { usado } = saldoDoCartao(c, ds.cartoes, ds.despesas);
     return usado + valor > c.limiteProprio ? `Esta compra ultrapassa o limite próprio de ${c.nome} (R$ ${c.limiteProprio.toFixed(2).replace(".", ",")}).` : null;
   })();
+
+  // R93 - possível duplicata de Pix (mesma conta, tipo, valor, data +-1 dia e descrição/ID parecidos); só avisa.
+  const duplicata = useMemo(() => {
+    if (!pixMarcado || noCartao || (!editar && modo !== "unica") || estrangeira) return null;
+    const valorCentavos = toCents(parseValorBR(valorTxt));
+    const ts = deInputData(data);
+    if (!(valorCentavos > 0) || Number.isNaN(ts) || !descricao.trim()) return null;
+    return acharDuplicataPix(ds.despesas, { conta, tipo: tipoAtual, valorCentavos, data: ts, descricao, ignorarId: editar?.id });
+  }, [pixMarcado, noCartao, editar, modo, estrangeira, valorTxt, data, descricao, ds.despesas, conta, tipoAtual]);
+
+  function aplicarPix(r: RascunhoPix) {
+    setDescricao(r.descricao);
+    setMoeda("BRL");
+    if (r.valorCentavos !== undefined) setValorTxt((r.valorCentavos / 100).toFixed(2).replace(".", ","));
+    if (r.data !== undefined) {
+      setData(paraInputData(r.data));
+      if (!editar && !pagoManual) setPago(r.data <= fimDoDiaHoje());
+    }
+    setEntrada(r.tipo === "CREDITO" ? "receita" : "despesa");
+    setTags((t) => normalizarTags([TAG_PIX, ...t]));
+  }
 
   /** Envia os anexos do lançamento já salvo. O lançamento nunca se perde: se algo falhar, o formulário fica aberto com "Tentar de novo". */
   async function concluirAnexos(id: number, seguinte: () => void) {
@@ -183,6 +211,10 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
     if (!categoriaEf.trim()) return setErro("Informe a categoria.");
     if (cashback && noDebito) return setErro("Cashback só vale em compra no crédito: ele abate a fatura.");
     const tipo: Tipo = tipoAtual;
+    if (duplicata && dupOkId !== duplicata.id) {
+      setDupOkId(duplicata.id);
+      return setErro(`Possível duplicata: já existe "${duplicata.descricao}" nesta conta, com o mesmo valor e data próxima. Toque em Salvar de novo para confirmar.`);
+    }
     const picCategoria = picDaCategoria(categoriaEf, ds.categorias) ?? "";
     const moedaOriginal = moeda;
 
@@ -301,7 +333,10 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
           valor={entrada}
           onChange={(v) => {
             setEntrada(v);
-            if (v === "cartao") setPago(false);
+            if (v === "cartao") {
+              setPago(false);
+              setTags((t) => t.filter((x) => chaveTag(x) !== "pix")); // Pix é de conta, não de cartão
+            }
             else if (editar && entrada === "cartao") setPago(deInputData(data) <= Date.now());
             if (v === "cartao" && modo === "fixa") setModo("unica");
           }}
@@ -418,6 +453,31 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
           ))}
         </Select>
       )}
+      {!noCartao && modo !== "fixa" && (!editar || editar.natureza === "NORMAL") && (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            aria-pressed={pixMarcado}
+            onClick={() => setTags((t) => (pixMarcado ? t.filter((x) => chaveTag(x) !== "pix") : normalizarTags([TAG_PIX, ...t])))}
+            className={`self-start rounded-full border px-3 py-1 text-xs font-medium ${pixMarcado ? "border-primary bg-primary text-primary-fg" : "border-line bg-surface text-fg"}`}
+          >
+            Pix{pixMarcado ? " (marcado)" : ""}
+          </button>
+          {pixMarcado && (
+            <PixLeitor
+              direcaoPadrao={entrada === "receita" ? "RECEBIDO" : "ENVIADO"}
+              atual={{
+                descricao,
+                valorCentavos: estrangeira ? null : toCents(parseValorBR(valorTxt)) || null,
+                data: Number.isNaN(deInputData(data)) ? null : deInputData(data),
+                dataPadrao: dataInicialPadrao,
+              }}
+              pessoas={ds.pessoas}
+              onAplicar={aplicarPix}
+            />
+          )}
+        </div>
+      )}
       {multiplo && (
         <Segmentado<Modalidade>
           rotulo="Modalidade da compra"
@@ -436,6 +496,7 @@ function Formulario({ onFechar, editar, predefinicao }: Props) {
           <Checkbox rotulo={`Manter o vínculo com o cartão ${vinculoDebito.nome}`} checked={manterVinculo} onChange={(e) => setManterVinculo(e.target.checked)} />
         </div>
       )}
+      {duplicata && <p className="text-xs text-warn" role="status">Possível duplicata: já existe &quot;{duplicata.descricao}&quot; nesta conta com o mesmo valor e data próxima.</p>}
       {avisoLimiteProprio && <p className="text-xs text-warn" role="status">{avisoLimiteProprio}</p>}
       {!noCartao && modo === "unica" && (
         <div>

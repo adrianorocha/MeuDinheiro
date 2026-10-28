@@ -45,6 +45,8 @@ data class WidgetResumo(
     val proximaConta: ContaWidget? = null,
     val orcamento: OrcamentoWidget? = null,
     val atalhos: List<AtalhoWidget> = emptyList(),
+    /** R92: próximos vencimentos (atrasadas primeiro), no máximo [MAX_PROXIMAS]. */
+    val proximas: List<ContaWidget> = emptyList(),
 ) {
     /** Resultado do mês (receitas realizadas − despesas). */
     val resultadoMes: Double get() = Dinheiro.reais(Dinheiro.centavos(receitasMes) - Dinheiro.centavos(despesasMes))
@@ -52,6 +54,7 @@ data class WidgetResumo(
     companion object {
         const val MAX_METAS = 3
         const val MAX_ATALHOS = 2
+        const val MAX_PROXIMAS = 3
         private const val DIAS_ATALHO = 90
         private const val DIA_MS = 86_400_000L
 
@@ -99,6 +102,7 @@ data class WidgetResumo(
                 proximaConta = emAberto.firstOrNull()?.let { ContaWidget(it.descricao, it.data, it.valor, it.data.time < hoje) },
                 orcamento = orcamentoMaisCritico(orcamentos, historico, inicioMes, fimMes, acertos),
                 atalhos = atalhos(historico, agora),
+                proximas = WidgetVencimentos.selecionar(emAberto.map { ContaWidget(it.descricao, it.data, it.valor, it.data.time < hoje) }, MAX_PROXIMAS),
             )
         }
 

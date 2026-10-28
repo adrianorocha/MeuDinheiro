@@ -118,6 +118,10 @@ class MainActivity : AppCompatActivity() {
         if (intent?.action == AtalhosApp.ACAO_NOVA_DESPESA) {
             AtalhosApp.pedirNovaDespesa()
             intent.action = null // não reabre ao girar a tela
+        } else if (com.meudinheiro.domain.DestinoApp.daAcao(intent?.action) != null) {
+            // R92: atalhos do widget (Extrato / Cartões / Metas)
+            AtalhosApp.pedirDestino(com.meudinheiro.domain.DestinoApp.daAcao(intent?.action)!!)
+            intent.action = null
         } else if (intent?.action == AtalhosApp.ACAO_IMPORTAR_EXTRATOS) {
             AtalhosApp.pedirImportarExtratos() // R63: a revisão abre na tela principal, depois do login/biometria
             intent.action = null

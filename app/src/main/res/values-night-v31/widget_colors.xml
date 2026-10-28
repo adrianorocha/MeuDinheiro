@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_surface">@android:color/system_neutral1_900</color>
+    <color name="widget_stroke">@android:color/system_neutral1_700</color>
+    <color name="widget_tile">@android:color/system_neutral2_800</color>
+</resources>

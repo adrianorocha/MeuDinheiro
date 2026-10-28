@@ -22,6 +22,7 @@ import { AntecipacaoModal } from "./AntecipacaoModal";
 import { AnexosModal } from "./AnexosModal";
 import { ComprovanteModal } from "./ComprovanteModal";
 import { normalizarAnexos } from "@/lib/finance/anexos";
+import { chaveTag } from "@/lib/finance/tags";
 import { LancamentoModal } from "./LancamentoModal";
 
 const ROTULO_NATUREZA: Partial<Record<Despesa["natureza"], string>> = {
@@ -144,7 +145,13 @@ export function ListaLancamentos({ itens, semOrigem }: Props) {
                   {!d.pago && <Badge tom={atrasada ? "neg" : "warn"}>{atrasada ? "Atrasada" : "Pendente"}</Badge>}
                   {ds.acertos.some((a) => a.despesaId === d.id && a.grupoRateio) && <Badge tom="primary">Dividido</Badge>}
                   {(d.tags ?? []).map((t) => (
-                    <Badge key={t}>#{t}</Badge>
+                    chaveTag(t) === "pix" ? (
+                      <span key={t} title="Lançamento via Pix" aria-label="Lançamento via Pix">
+                        <Badge tom="primary">PIX</Badge>
+                      </span>
+                    ) : (
+                      <Badge key={t}>#{t}</Badge>
+                    )
                   ))}
                 </div>
               </div>
