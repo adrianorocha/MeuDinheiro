@@ -105,7 +105,19 @@ class SyncSession(
         return chaves.size
     }
 
-    private fun publicarEnvio() = aoMudarEnvio(contarPendentes(), confirmadoEm)
+    private var ultimoLogPendencias = ""
+
+    private fun publicarEnvio() {
+        aoMudarEnvio(contarPendentes(), confirmadoEm)
+        // Diagnóstico (só coleção/id, sem valores): quais documentos mantêm o "Enviando N…" e por quê.
+        val enviados = ultimoEnviado.keys.sorted()
+        val comEscritaPendente = pendentes.flatMap { (col, ids) -> ids.map { "$col/$it" } }.sorted()
+        val texto = "enviadoSemConfirmar=${enviados.take(25)} escritaPendente=${comEscritaPendente.take(25)}"
+        if ((enviados.isNotEmpty() || comEscritaPendente.isNotEmpty()) && texto != ultimoLogPendencias) {
+            ultimoLogPendencias = texto
+            Log.i(TAG, "Pendências: $texto")
+        }
+    }
 
     /**
      * R85 — há algo a enviar/confirmar? (mudança local ainda não reconciliada, envio não carimbado ou escrita
@@ -145,7 +157,9 @@ class SyncSession(
                     if (erro != null) {
                         eventos.trySend(Evento.Falha(erro))
                     } else if (snap != null) {
-                        val mudancas = snap.documentChanges.map { dc ->
+                        // INCLUDE: a confirmação do servidor de uma escrita sem mudar o conteúdo é só mudança de metadados
+                        // (hasPendingWrites true → false); `documentChanges` puro a ignora e o documento ficava "pendente" para sempre.
+                        val mudancas = snap.getDocumentChanges(MetadataChanges.INCLUDE).map { dc ->
                             Mudanca(
                                 id = dc.document.id,
                                 removido = dc.type == DocumentChange.Type.REMOVED,
