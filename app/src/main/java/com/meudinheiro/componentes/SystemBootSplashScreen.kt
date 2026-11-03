@@ -45,13 +45,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.R
+import com.meudinheiro.funcoes.DiagnosticoInicial
 import com.meudinheiro.funcoes.Haptics
+import com.meudinheiro.funcoes.UserPreferences
 import kotlinx.coroutines.delay
-import kotlin.random.Random
 
 // --- CORES DO BOOT VIP ---
 private val BootBg = Color(0xFF04070D) // Preto abissal
 private val TerminalGreen = Color(0xFF69F0AE)
+private val TerminalAlert = Color(0xFFFFB74D)
 private val NeonCyan = Color(0xFF00E5FF)
 private val GridColor = Color(0xFF00E5FF).copy(alpha = 0.05f)
 
@@ -59,22 +61,10 @@ private val GridColor = Color(0xFF00E5FF).copy(alpha = 0.05f)
 fun SystemBootSplashScreen(onBootComplete: () -> Unit) {
     val context = LocalContext.current
 
-    // O Terminal Hacker (Ainda mais detalhado)
-    val bootSequence = listOf(
-        "BLU_MACAW_OS v3.1.4 [INICIALIZANDO KERNEL]",
-        "VERIFICANDO MEMÓRIA.................. [OK]",
-        "MONTANDO COFRE CRIPTOGRAFADO......... [OK]",
-        "CARREGANDO MÓDULOS FINANCEIROS....... [OK]",
-        "INICIANDO PROTOCOLO PARALLAX......... [ATIVO]",
-        "CONECTANDO AO GRID CENTRAL........... [ESTABELECIDO]",
-        "AUTENTICANDO MAINFRAME............... [ACESSO LIBERADO]",
-        "CALIBRANDO MOTORES HÁPTICOS.......... [PRONTO]",
-        "INTEGRIDADE DO SISTEMA: 100%",
-        "OVERRIDE DE SEGURANÇA: EXECUTADO",
-        "GRID POWER: ATIVADO ⚡"
-    )
+    val userPrefs = remember { UserPreferences(context) }
 
-    val visibleLines = remember { mutableStateListOf<String>() }
+    // Cada linha vem de uma checagem real (ver DiagnosticoInicial); [aviso] pinta a linha de laranja.
+    val visibleLines = remember { mutableStateListOf<DiagnosticoInicial.Linha>() }
     var showCursor by remember { mutableStateOf(true) }
     var showLogo by remember { mutableStateOf(false) }
     var glitchAlpha by remember { mutableStateOf(1f) }
@@ -106,21 +96,14 @@ fun SystemBootSplashScreen(onBootComplete: () -> Unit) {
     LaunchedEffect(Unit) {
         delay(400) // Pausa dramática inicial para a tela preta
 
-        // Imprime as linhas
-        for (line in bootSequence) {
-            visibleLines.add(line)
-            Haptics.vibrar(context, "movimento") // Estalo tático rápido
-
-            // Ritmo dinâmico de leitura
-            val pauseTime = when {
-                line.contains("..........") -> Random.nextLong(150, 350)
-                line.contains("100%") -> 600L
-                else -> 200L
-            }
-            delay(pauseTime)
+        // Executa as checagens e imprime cada resultado assim que fica pronto (pausa curta só para dar para ler).
+        val avisos = DiagnosticoInicial.executar(context, userPrefs) { linha ->
+            visibleLines.add(linha)
+            Haptics.vibrar(context, if (linha.aviso) "impacto" else "movimento")
+            delay(120)
         }
 
-        delay(300)
+        delay(if (avisos > 0) 900L else 300L)
 
         // ⚡ EFEITO GLITCH NO LOGO ANTES DE LIGAR
         showLogo = true
@@ -184,8 +167,8 @@ fun SystemBootSplashScreen(onBootComplete: () -> Unit) {
         ) {
             visibleLines.forEach { line ->
                 Text(
-                    text = "> $line",
-                    color = TerminalGreen.copy(alpha = 0.9f),
+                    text = "> ${line.texto}",
+                    color = (if (line.aviso) TerminalAlert else TerminalGreen).copy(alpha = 0.9f),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
