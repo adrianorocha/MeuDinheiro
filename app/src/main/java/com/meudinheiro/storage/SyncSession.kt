@@ -306,6 +306,11 @@ class SyncSession(
                     colecaoConfirmada = confirmada,
                     modo = modo
                 )
+                // Celular e nuvem iguais e sem escrita pendente = envio confirmado, haja ou não histórico a gravar
+                // (antes o documento ficava eternamente em "Enviando N…" se o histórico já coincidisse).
+                if (id !in pend && hashesLocais[id] != null && hashesLocais[id] == hashesNuvem[id]) {
+                    ultimoEnviado.remove("${col.nome}/$id")
+                }
                 if (quarentena.bloqueia(col.nome, id) &&
                     acao != Reconciliador.Acao.CARIMBAR && acao != Reconciliador.Acao.ESQUECER
                 ) {
@@ -413,11 +418,7 @@ class SyncSession(
             .joinToString("") { "%02x".format(it) }.take(32)
     }
 
-    private fun canonizar(v: Any?): String = when (v) {
-        null -> "∅"
-        is Number -> BigDecimal(v.toString()).stripTrailingZeros().toPlainString()
-        else -> v.toString()
-    }
+    private fun canonizar(v: Any?): String = canonizarValor(v)
 
     companion object {
         private const val TAG = "SyncSession"
@@ -441,4 +442,17 @@ class SyncSession(
             else -> e.message ?: "Falha na sincronização."
         }
     }
+}
+
+/**
+ * Forma canônica de um valor de documento para o hash de sincronização. Mapas são ordenados por chave (o Firestore devolve
+ * os campos de um mapa em ordem arbitrária: sem isso, `anexos` nunca teria o mesmo hash dos dois lados e o documento seria
+ * reenviado para sempre, mantendo "Enviando N…" no cabeçalho). Listas mantêm a ordem; números não dependem de Int/Long/Double.
+ */
+internal fun canonizarValor(v: Any?): String = when (v) {
+    null -> "∅"
+    is Number -> BigDecimal(v.toString()).stripTrailingZeros().toPlainString()
+    is Map<*, *> -> v.entries.sortedBy { it.key.toString() }.joinToString(",", "{", "}") { "${it.key}:${canonizarValor(it.value)}" }
+    is Iterable<*> -> v.joinToString(",", "[", "]") { canonizarValor(it) }
+    else -> v.toString()
 }
