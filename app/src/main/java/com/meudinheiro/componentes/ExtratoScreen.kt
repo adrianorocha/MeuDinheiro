@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meudinheiro.funcoes.formatarMoedaBR
+import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.viewModel.DespesasViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,17 +50,38 @@ fun ExtratoScreen(
     despesasVM: DespesasViewModel,
     categorias: List<String>,
     isPrivate: Boolean,
-    onBack: () -> Unit // Este parâmetro será usado no botão
+    onBack: () -> Unit, // Este parâmetro será usado no botão
+    /** Com o ViewModel de contas, cada item ganha o menu de ações (editar, excluir, duplicar, repetir, antecipar…). */
+    contaViewModel: ContaSaldoViewModel? = null,
+    getPicCategoria: (String) -> String = { "" }
 ) {
+    var alvo by remember { mutableStateOf<AlvoLancamento?>(null) }
     val despesas by despesasVM.despesasFiltradas.collectAsState()
     val mesAtual by despesasVM.mesSelecionado.collectAsState()
     val anoAtual by despesasVM.anoSelecionado.collectAsState()
 
     var categoriaFiltro by remember { mutableStateOf<String?>(null) }
 
-    val listaFiltrada = remember(despesas, categoriaFiltro) {
-        if (categoriaFiltro == null) despesas
-        else despesas.filter { it.categoria == categoriaFiltro }
+    // R67: conta compartilhada — "por <nome>" e filtro "Quem lançou" / "Minhas × Conjunta" só quando há membros.
+    val storage = (androidx.compose.ui.platform.LocalContext.current.applicationContext as? com.meudinheiro.MyApplication)?.storageManager
+    val papelAtual by remember(storage) { storage?.papel ?: kotlinx.coroutines.flow.MutableStateFlow(com.meudinheiro.domain.Papel.DONO) }.collectAsState()
+    // R67: LEITOR só consulta (sem menu de ações); as regras do servidor barram de qualquer forma.
+    val contaViewModel = contaViewModel.takeIf { com.meudinheiro.domain.Permissoes.podeExecutar(papelAtual, com.meudinheiro.domain.Acao.LANCAMENTO_EDITAR) }
+    val temMembros by remember(storage) { storage?.temMembros ?: kotlinx.coroutines.flow.MutableStateFlow(false) }.collectAsState()
+    val meuUid = storage?.auth?.let { runCatching { it.uidAtual }.getOrNull() }
+    var quem by remember { mutableStateOf<com.meudinheiro.domain.QuemLancou.Selecao>(com.meudinheiro.domain.QuemLancou.Selecao.Todos) }
+    val outrosAutores = remember(despesas, meuUid) {
+        com.meudinheiro.domain.QuemLancou.autoresDistintos(despesas, meuUid, { it.autorUid }, { it.autor })
+    }
+
+    // R56: filtro por tag (chave normalizada); sem tag selecionada, a lista é exatamente a de antes.
+    var tagFiltro by remember { mutableStateOf<String?>(null) }
+    val tagsDoMes = remember(despesas) { com.meudinheiro.domain.Tags.usadasDeListas(despesas.map { it.tags }) }
+    val listaFiltrada = remember(despesas, categoriaFiltro, tagFiltro, quem, temMembros) {
+        despesas
+            .let { l -> if (temMembros) com.meudinheiro.domain.QuemLancou.filtrar(l, quem, meuUid) { it.autorUid } else l }
+            .let { l -> if (categoriaFiltro == null) l else l.filter { it.categoria == categoriaFiltro } }
+            .let { l -> tagFiltro?.let { t -> l.filter { com.meudinheiro.domain.Tags.tem(it.tags, t) } } ?: l }
     }
 
     // Cálculo do saldo do período filtrado
@@ -130,6 +152,53 @@ fun ExtratoScreen(
                 }
             }
 
+            if (temMembros) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = quem == com.meudinheiro.domain.QuemLancou.Selecao.Todos,
+                            onClick = { quem = com.meudinheiro.domain.QuemLancou.Selecao.Todos },
+                            label = { Text("Conjunta") }, colors = chipColors()
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = quem == com.meudinheiro.domain.QuemLancou.Selecao.Eu,
+                            onClick = { quem = com.meudinheiro.domain.QuemLancou.Selecao.Eu },
+                            label = { Text("Minhas despesas") }, colors = chipColors()
+                        )
+                    }
+                    items(outrosAutores) { a ->
+                        FilterChip(
+                            selected = (quem as? com.meudinheiro.domain.QuemLancou.Selecao.Membro)?.uid == a.uid,
+                            onClick = { quem = com.meudinheiro.domain.QuemLancou.Selecao.Membro(a.uid) },
+                            label = { Text(a.nome) }, colors = chipColors()
+                        )
+                    }
+                }
+            }
+
+            if (tagsDoMes.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(tagsDoMes) { t ->
+                        FilterChip(
+                            selected = tagFiltro == t.chave,
+                            onClick = { tagFiltro = if (tagFiltro == t.chave) null else t.chave },
+                            label = { Text("#${t.rotulo}") },
+                            colors = chipColors()
+                        )
+                    }
+                }
+            }
+
             // Card de Resumo do Filtro
             Card(
                 modifier = Modifier
@@ -144,7 +213,8 @@ fun ExtratoScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         val labelTexto =
-                            if (categoriaFiltro == null) "Saldo Total do Mês" else "Total em $categoriaFiltro"
+                            if (categoriaFiltro == null && tagFiltro == null) "Saldo Total do Mês"
+                            else "Total em " + listOfNotNull(categoriaFiltro, tagFiltro?.let { "#$it" }).joinToString(" · ")
                         Text(labelTexto, fontSize = 12.sp, color = TextWhite.copy(0.6f))
                         Text(
                             text = formatarMoedaBR(totalMes, isPrivate),
@@ -170,13 +240,23 @@ fun ExtratoScreen(
                         DespesasItem(
                             item = item,
                             isPrivate = isPrivate,
-                            onRemover = { /* Ação de remover */ },
-                            onTogglePago = { /* Ação de pagar */ }
+                            onRemover = { contaViewModel?.removerDespesa(it) },
+                            onTogglePago = contaViewModel?.let { vm -> { d -> vm.alternarStatusDespesa(d) } },
+                            onAcoes = contaViewModel?.let { { d -> alvo = AlvoLancamento(d.id.toLong()) } },
+                            onPedirExclusao = contaViewModel?.let { { d -> alvo = AlvoLancamento(d.id.toLong(), excluirDireto = true) } },
+                            rotuloAutor = com.meudinheiro.domain.QuemLancou.rotuloAutor(item.autor, temMembros)
                         )
                     }
                 }
             }
         }
+    }
+
+    if (contaViewModel != null) {
+        LancamentoAcoesHost(
+            alvo = alvo, onFechar = { alvo = null }, viewModel = contaViewModel,
+            categorias = categorias, getPicCategoria = getPicCategoria
+        )
     }
 }
 

@@ -4,7 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Transaction
+import androidx.room.Upsert
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.ContaSaldoDomain
 import com.meudinheiro.data.TransferenciaAgendada
@@ -13,125 +13,97 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ContaSaldoDao {
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun inserirContaSaldo(contaSaldo: ContaSaldo)
+    // @Upsert (e não REPLACE): REPLACE apaga a linha antes de reinserir e o ON DELETE CASCADE
+    // dos cartões vinculados destruiria todos os cartões da conta a cada edição.
+    @Upsert
+    suspend fun inserirContaSaldo(contaSaldo: ContaSaldo): Long
 
     @Query("SELECT * FROM contasaldo ORDER BY banco DESC")
     fun obterContaSaldo(): Flow<List<ContaSaldoDomain>>
 
-    @Query("SELECT saldo FROM contasaldo WHERE conta = :conta LIMIT 1")
-    suspend fun obterSaldoPorConta(conta: String): Double?
-
-    @Query("DELETE FROM contasaldo WHERE id = :id")
-    suspend fun excluirConta(id: Int)
-
-    @Query("UPDATE contasaldo SET saldo = :novoSaldo WHERE conta = :conta")
-    suspend fun atualizarSaldo(conta: String, novoSaldo: Double)
+    @Query("SELECT * FROM contasaldo")
+    fun getTodasContas(): Flow<List<ContaSaldo>>
 
     @Query("SELECT * FROM contasaldo")
     suspend fun obterTodasStatic(): List<ContaSaldo>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun inserirLista(contas: List<ContaSaldo>)
+    @Query("SELECT * FROM contasaldo WHERE id = :id LIMIT 1")
+    suspend fun obterPorId(id: Int): ContaSaldo?
 
-    @Query("UPDATE contasaldo SET saldo = saldo - :valor WHERE conta = :contaId")
-    suspend fun subtrairSaldo(contaId: String, valor: Double)
+    @Query("SELECT * FROM contasaldo WHERE TRIM(conta) = TRIM(:conta) LIMIT 1")
+    suspend fun obterPorNumero(conta: String): ContaSaldo?
 
-    @Query("SELECT * FROM contasaldo")
-    fun getTodasContas(): Flow<List<ContaSaldo>>
+    @Query("SELECT saldo FROM contasaldo WHERE conta = :conta LIMIT 1")
+    suspend fun obterSaldoPorConta(conta: String): Double?
 
-    @Query("DELETE FROM contasaldo")
-    suspend fun limparTudo()
+    /** Cache do saldo derivado do extrato (R3). Nunca usar para "mexer" no saldo diretamente. */
+    @Query("UPDATE contasaldo SET saldo = :novoSaldo WHERE conta = :conta")
+    suspend fun atualizarSaldo(conta: String, novoSaldo: Double)
+
+    @Query("DELETE FROM contasaldo WHERE id = :id")
+    suspend fun excluirConta(id: Int)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(contas: List<ContaSaldo>)
 
-    @Transaction // ESSENCIAL: Ou faz tudo, ou não faz nada!
-    suspend fun transferir(origem: String, destino: String, valor: Double): Boolean {
-        val linhasDebito = debitar(origem, valor)
-        val linhasCredito = creditar(destino, valor)
+    @Query("DELETE FROM contasaldo")
+    suspend fun limparTudo()
 
-        // A última linha DEVE ser a lógica que resulta em true/false
-        return (linhasDebito > 0 && linhasCredito > 0)
-    }
-    @Query("UPDATE contasaldo SET saldo = COALESCE(saldo, 0.0) - :valor WHERE TRIM(conta) = TRIM(:contaId)")
-    suspend fun debitar(contaId: String, valor: Double): Int
-    @Query("UPDATE contasaldo SET saldo = COALESCE(saldo, 0.0) + :valor WHERE TRIM(conta) = TRIM(:contaId)")
-    suspend fun creditar(contaId: String, valor: Double): Int
-    // Retorna a lista reativa de agendamentos futuros
-    @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 ORDER BY dataAgendada ASC")
-    fun obterAgendamentosPendentesFlow(): Flow<List<TransferenciaAgendada>>
-
-    // Deleta um agendamento caso o usuário cancele
-    @Query("DELETE FROM transferencias_agendadas WHERE id = :id")
-    suspend fun excluirAgendamento(id: Int)
-
-    // Insere o agendamento no banco
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada): Long
-
-    @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 AND dataAgendada <= :hoje")
-    suspend fun obterAgendamentosPendentesSync(hoje: Long): List<TransferenciaAgendada>
-
-    // Aproveite e garanta que você tem esta aqui também para o Worker marcar como feito:
-    @Query("UPDATE transferencias_agendadas SET executada = 1 WHERE id = :id")
-    suspend fun marcarAgendamentoComoExecutado(id: Int)
-
-    @Transaction
-    suspend fun limparTodasAsTabelas() {
-        apagarAgendamentos()
-        apagarContas()
-        apagarCategorias()
-        apagarDespesas()
-        apagarMetas()
-        apagarCartoes()
-        apagarOrcamentos()
-        apagarTransferenciasAgendadas()
-        apagarInvestimentos()
-        apagarPatrimonioHistorico()
-        apagarTransacoes()
-        // Adicione outras tabelas se houver
-    }
-
-    @Query("DELETE FROM transferencias_agendadas")
-    suspend fun apagarAgendamentos()
-
-    @Query("DELETE FROM contasaldo") // Use o nome exato da sua tabela de contas
-    suspend fun apagarContas()
-
-    @Query("DELETE FROM categorias")
-    suspend fun apagarCategorias()
-
-    @Query("DELETE FROM despesas")
-    suspend fun apagarDespesas()
-
-    @Query("DELETE FROM metas")
-    suspend fun apagarMetas()
-
-    @Query("DELETE FROM cartoes")
-    suspend fun apagarCartoes()
-
-    @Query("DELETE FROM orcamentos")
-    suspend fun apagarOrcamentos()
-
-    @Query("DELETE FROM transferencias_agendadas")
-    suspend fun apagarTransferenciasAgendadas()
-
-    @Query("DELETE FROM investimentos")
-    suspend fun apagarInvestimentos()
-
-    @Query("DELETE FROM patrimonio_historico")
-    suspend fun apagarPatrimonioHistorico()
-
-    @Query("DELETE FROM transacoes")
-    suspend fun apagarTransacoes()
+    // ------------------------------------------------------ transferências agendadas
 
     @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 ORDER BY dataAgendada ASC")
     fun obterAgendamentosAtivos(): Flow<List<TransferenciaAgendada>>
 
-    @Query("SELECT SUM(valor) FROM transferencias_agendadas WHERE executada = 0") // Adapte o nome da tabela/coluna se necessário
-    suspend fun somarContasPendentes(): Double?
+    @Query("SELECT * FROM transferencias_agendadas")
+    suspend fun obterAgendamentosStatic(): List<TransferenciaAgendada>
 
-    @Query("UPDATE contasaldo SET saldo = saldo - :valor WHERE id = :id")
-    suspend fun subtrairSaldo(id: Int, valor: Double)
+    @Query("SELECT * FROM transferencias_agendadas WHERE id = :id LIMIT 1")
+    suspend fun obterAgendamento(id: Int): TransferenciaAgendada?
+
+    @Query("DELETE FROM transferencias_agendadas WHERE id = :id")
+    suspend fun excluirAgendamento(id: Int)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirAgendamento(agendamento: TransferenciaAgendada): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserirAgendamentos(agendamentos: List<TransferenciaAgendada>)
+
+    @Query("SELECT * FROM transferencias_agendadas WHERE executada = 0 AND dataAgendada <= :hoje")
+    suspend fun obterAgendamentosPendentesSync(hoje: Long): List<TransferenciaAgendada>
+
+    @Query("UPDATE transferencias_agendadas SET executada = 1 WHERE id = :id")
+    suspend fun marcarAgendamentoComoExecutado(id: Int)
+
+    @Query("DELETE FROM transferencias_agendadas WHERE contaOrigem = :conta OR contaDestino = :conta")
+    suspend fun excluirAgendamentosDaConta(conta: String)
+
+    @Query("DELETE FROM transferencias_agendadas")
+    suspend fun apagarAgendamentos()
+
+    // ----------------------------------------------------------- limpeza total
+
+    @Query("DELETE FROM cartoes") suspend fun apagarCartoes()
+    @Query("DELETE FROM despesas") suspend fun apagarDespesas()
+    @Query("DELETE FROM despesas_fixas") suspend fun apagarDespesasFixas()
+    @Query("DELETE FROM categorias") suspend fun apagarCategorias()
+    @Query("DELETE FROM metas") suspend fun apagarMetas()
+    @Query("DELETE FROM orcamentos") suspend fun apagarOrcamentos()
+    @Query("DELETE FROM investimentos") suspend fun apagarInvestimentos()
+    @Query("DELETE FROM patrimonio_historico") suspend fun apagarPatrimonioHistorico()
+    @Query("DELETE FROM transacoes") suspend fun apagarTransacoes()
+    @Query("DELETE FROM contasaldo") suspend fun apagarContas()
+
+    // ---- sincronização (Firestore) ----
+    @Upsert
+    suspend fun upsertContas(contas: List<ContaSaldo>)
+
+    @Query("DELETE FROM contasaldo WHERE id IN (:ids)")
+    suspend fun excluirContasPorIds(ids: List<Int>)
+
+    @Upsert
+    suspend fun upsertAgendamentos(agendamentos: List<TransferenciaAgendada>)
+
+    @Query("DELETE FROM transferencias_agendadas WHERE id IN (:ids)")
+    suspend fun excluirAgendamentosPorIds(ids: List<Int>)
 }

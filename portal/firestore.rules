@@ -1,0 +1,290 @@
+rules_version = '2';
+
+// =====================================================================================================================
+// Meu Dinheiro - Firestore Security Rules (R32 conta compartilhada + R67 papéis e convites por código)
+//
+// Modelo (ver docs/CONTRATO_DADOS.md, R67):
+//   users/{dono}/<colecao>/{id}        dados financeiros do DONO (uid do dono = raiz).
+//   users/{dono}/membros/{uid}         quem tem acesso: { papel: LEITOR|EDITOR|ADMIN, entrouEm, nome, email?, convite? }.
+//                                      Documento sem `papel` (R32, anterior ao R67) = EDITOR.
+//   users/{uid}/dispositivos/{id}      tokens de push do PRÓPRIO usuário (NUNCA visíveis a membros).
+//   convites/{codigo}                  convite por código (8 caracteres), uso único, validade de 7 dias.
+//   perfis/{email}[/convites/{dono}]   descoberta por e-mail (R32).
+//
+// Papéis: DONO (uid == dono; ADMIN implícito) > ADMIN > EDITOR > LEITOR. Negar por padrão: tudo que não está
+// explicitamente liberado abaixo é negado (inclusive coleções novas, para quem não é ADMIN/dono).
+// Importante: em Firestore as regras `allow` de blocos que casam o mesmo caminho se SOMAM (OU). Por isso a regra
+// ampla de dados exclui `membros` e `dispositivos`, que têm blocos próprios.
+// Limites do Firestore: até 10 acessos get/exists por requisição (20 em batch); os repetidos do mesmo documento contam uma vez.
+// =====================================================================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------------------------------------- auxiliares
+    function logado() {
+      return request.auth != null;
+    }
+
+    function emailDoUsuario() {
+      return request.auth.token.email.lower();
+    }
+
+    function docMembro(dono, uid) {
+      return /databases/$(database)/documents/users/$(dono)/membros/$(uid);
+    }
+
+    function docConvite(codigo) {
+      return /databases/$(database)/documents/convites/$(codigo);
+    }
+
+    // Papel de quem faz a requisição na conta de `dono`: 'DONO' | 'ADMIN' | 'EDITOR' | 'LEITOR' | 'NENHUM'.
+    // Membro sem campo `papel` (R32) = EDITOR. Valor desconhecido não casa com nenhuma lista abaixo (= sem acesso).
+    function papelDe(dono) {
+      return !logado() ? 'NENHUM'
+        : request.auth.uid == dono ? 'DONO'
+        : exists(docMembro(dono, request.auth.uid)) ? get(docMembro(dono, request.auth.uid)).data.get('papel', 'EDITOR')
+        : 'NENHUM';
+    }
+
+    function ehAdmin(dono) {
+      return papelDe(dono) in ['DONO', 'ADMIN'];
+    }
+
+    function podeEditar(dono) {
+      return papelDe(dono) in ['DONO', 'ADMIN', 'EDITOR'];
+    }
+
+    function podeLer(dono) {
+      return papelDe(dono) in ['DONO', 'ADMIN', 'EDITOR', 'LEITOR'];
+    }
+
+    // Código de convite: exatamente 8 caracteres do alfabeto sem ambiguidade (sem 0, O, 1, I, L).
+    function codigoValido(codigo) {
+      return codigo is string && codigo.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$');
+    }
+
+    // ------------------------------------------------------------------------------- coleções de dados (por papel)
+    // Subcoleções com bloco próprio (não entram na regra ampla).
+    function reservada(colecao) {
+      return colecao in ['membros', 'dispositivos'];
+    }
+
+    // EDITOR cria/edita: lançamentos e entidades de rotina. (Contas, cartões, orçamentos, metas, investimentos e
+    // configurações = só ADMIN/dono; veja derivadoDeEditor para os campos-cache que o lançamento atualiza.)
+    function colecaoDeRotina(colecao) {
+      return colecao in ['despesas', 'despesasFixas', 'transferenciasAgendadas', 'categorias', 'regrasCategoria',
+                         'projetos', 'dividas', 'pessoas', 'acertos', 'patrimonio', 'transacoes', 'lixeira',
+                         'sinais']; // R86: 'sinais/portal' = "gravei dados" (dispara o push silencioso que acorda o app)
+    }
+
+    // EDITOR só exclui lançamentos (que vão para a lixeira); excluir definitivamente / esvaziar lixeira e excluir
+    // qualquer outra entidade = ADMIN/dono.
+    function editorPodeExcluir(colecao) {
+      return colecao in ['despesas'];
+    }
+
+    function soCampos(campos) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
+    }
+
+    // Todo lançamento salvo muda saldo/limite/meta: o app e o portal regravam esses caches. O EDITOR pode alterar SÓ eles.
+    function derivadoDeEditor(colecao) {
+      return (colecao == 'contas' && soCampos(['saldo', 'atualizadoEm']))
+        || (colecao == 'cartoes' && soCampos(['limiteDisponivel', 'atualizadoEm']))
+        || (colecao == 'metas' && soCampos(['valorGuardado', 'atualizadoEm']));
+    }
+
+    // Autoria: o EDITOR não pode forjar `autorUid` de outra pessoa ao criar, nem trocá-lo ao editar. (Dono/ADMIN: sem restrição.)
+    function autorCriacaoOk(dono, colecao) {
+      return colecao != 'despesas'
+        || papelDe(dono) != 'EDITOR'
+        || !('autorUid' in request.resource.data)
+        || request.resource.data.autorUid == request.auth.uid;
+    }
+
+    function autorInalterado(colecao) {
+      return colecao != 'despesas'
+        || request.resource.data.get('autorUid', null) == resource.data.get('autorUid', null);
+    }
+
+    // ------------------------------------------------------------------------------------- tokens de push (próprio)
+    // users/{uid}/dispositivos/{id}: só o próprio usuário. O dono dos dados NÃO é membro de si mesmo e membros não leem.
+    // R65: validação de campos na escrita (o token é só uma string; prefs é um mapa de booleanos). Apagar (logout) é sempre permitido ao dono.
+    function dispositivoValido() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(["token", "plataforma", "modelo", "appVersao", "prefs", "raizUid", "atualizadoEm"])
+        && d.keys().hasAll(["token", "plataforma", "atualizadoEm"])
+        && d.token is string && d.token.size() >= 20 && d.token.size() <= 4096
+        && d.plataforma in ["android", "web"]
+        && (!("modelo" in d) || (d.modelo is string && d.modelo.size() <= 120))
+        && (!("appVersao" in d) || (d.appVersao is string && d.appVersao.size() <= 40))
+        && (!("raizUid" in d) || (d.raizUid is string && d.raizUid.size() <= 128))
+        && (!("prefs" in d) || (d.prefs is map
+              && d.prefs.keys().hasOnly(["vencimentos", "orcamento", "resumoSemanal", "convites"])
+              && d.prefs.get("vencimentos", true) is bool && d.prefs.get("orcamento", true) is bool
+              && d.prefs.get("resumoSemanal", true) is bool && d.prefs.get("convites", true) is bool))
+        && d.atualizadoEm is timestamp;
+    }
+
+    match /users/{uid}/dispositivos/{id} {
+      allow read, delete: if logado() && request.auth.uid == uid;
+      allow create, update: if logado() && request.auth.uid == uid && dispositivoValido();
+    }
+
+    // ------------------------------------------------------------------------------------------------- membros
+    match /users/{dono}/membros/{membroUid} {
+      // Leem: o dono, qualquer membro da conta (precisa dos nomes para "Quem lançou") e o próprio uid (descobrir que não é membro).
+      allow get: if logado() && (request.auth.uid == membroUid || podeLer(dono));
+      allow list: if logado() && podeLer(dono);
+
+      // Criar:
+      //  (a) dono/ADMIN adiciona alguém (convite por e-mail do R32). ADMIN só concede LEITOR/EDITOR; só o dono concede ADMIN.
+      //  (b) o próprio CONVIDADO entra com um código: o papel é SEMPRE o do convite (ele não escolhe), o convite está
+      //      válido (não usado, não expirado) e é marcado como usado NO MESMO batch (getAfter confere as duas escritas).
+      //  O dono nunca entra como membro da própria conta.
+      allow create: if logado() && membroUid != dono && (
+        // (a)
+        (ehAdmin(dono)
+          && request.auth.uid != membroUid
+          && request.resource.data.keys().hasOnly(['uid', 'email', 'nome', 'papel', 'criadoEm', 'entrouEm', 'convite'])
+          && request.resource.data.get('uid', membroUid) == membroUid
+          && request.resource.data.get('papel', 'EDITOR') in (papelDe(dono) == 'DONO' ? ['LEITOR', 'EDITOR', 'ADMIN'] : ['LEITOR', 'EDITOR']))
+        ||
+        // (b)
+        (request.auth.uid == membroUid
+          && entraPorConvite(dono, membroUid))
+      );
+
+      // Alterar papel: só o campo `papel`; ninguém altera o próprio papel (nem se promove). ADMIN só mexe em LEITOR/EDITOR.
+      allow update: if logado()
+        && request.auth.uid != membroUid
+        && soCampos(['papel'])
+        && request.resource.data.papel in ['LEITOR', 'EDITOR', 'ADMIN']
+        && (request.auth.uid == dono
+            || (papelDe(dono) == 'ADMIN'
+                && resource.data.get('papel', 'EDITOR') in ['LEITOR', 'EDITOR']
+                && request.resource.data.papel in ['LEITOR', 'EDITOR']));
+
+      // Remover: o dono; o ADMIN (só LEITOR/EDITOR); ou o próprio membro (sair da conta compartilhada).
+      allow delete: if logado() && (
+        request.auth.uid == membroUid
+        || request.auth.uid == dono
+        || (papelDe(dono) == 'ADMIN' && resource.data.get('papel', 'EDITOR') in ['LEITOR', 'EDITOR'])
+      );
+    }
+
+    // Validação da entrada por código (usada só na criação de membros).
+    function entraPorConvite(dono, membroUid) {
+      let d = request.resource.data;
+      let cod = d.get('convite', '');
+      return codigoValido(cod)
+        && d.keys().hasOnly(['uid', 'email', 'nome', 'papel', 'criadoEm', 'entrouEm', 'convite'])
+        && d.get('uid', membroUid) == membroUid
+        && d.get('email', emailDoUsuario()) == emailDoUsuario()
+        && d.get('nome', '') is string && d.get('nome', '').size() <= 80
+        // convite ANTES da escrita: da conta certa, não usado, não expirado; e o papel gravado é o do convite
+        && exists(docConvite(cod))
+        && get(docConvite(cod)).data.donoUid == dono
+        && get(docConvite(cod)).data.usado == false
+        && get(docConvite(cod)).data.expiraEm > request.time.toMillis()
+        && d.get('papel', '') == get(docConvite(cod)).data.papel
+        // convite DEPOIS da escrita (mesmo batch): marcado como usado por este uid
+        && getAfter(docConvite(cod)).data.usado == true
+        && getAfter(docConvite(cod)).data.usadoPor == request.auth.uid;
+    }
+
+    // --------------------------------------------------------------------------------------- dados do dono (por papel)
+    match /users/{dono}/{colecao}/{documento=**} {
+      allow read: if logado() && !reservada(colecao) && podeLer(dono);
+
+      allow create: if logado() && !reservada(colecao) && (
+        ehAdmin(dono)
+        || (podeEditar(dono) && colecaoDeRotina(colecao) && autorCriacaoOk(dono, colecao))
+      );
+
+      allow update: if logado() && !reservada(colecao) && (
+        ehAdmin(dono)
+        || (podeEditar(dono) && ((colecaoDeRotina(colecao) && autorInalterado(colecao)) || derivadoDeEditor(colecao)))
+      );
+
+      allow delete: if logado() && !reservada(colecao) && (
+        ehAdmin(dono)
+        || (podeEditar(dono) && editorPodeExcluir(colecao))
+      );
+    }
+
+    // ------------------------------------------------------------------------------------- convites por código (R67)
+    // convites/{codigo} = { donoUid, papel, criadoEm, expiraEm, usado:false, criadoPor, donoEmail?, donoNome? } (+ usadoPor, usadoEm ao usar).
+    match /convites/{codigo} {
+      // Qualquer usuário autenticado que CONHEÇA o código lê (precisa disso para mostrar "de quem é a conta" antes de confirmar).
+      allow get: if logado();
+
+      // Listar: só o dono, e só os próprios convites (a consulta precisa filtrar por donoUid == uid). Ninguém enumera convites alheios.
+      allow list: if logado() && resource.data.donoUid == request.auth.uid;
+
+      // Criar: dono (qualquer papel) ou ADMIN do dono (só LEITOR/EDITOR); código no formato válido; uso único;
+      // validade de no máximo 7 dias (+1 h de tolerância de relógio do aparelho).
+      allow create: if logado()
+        && codigoValido(codigo)
+        && request.resource.data.keys().hasOnly(['donoUid', 'papel', 'criadoEm', 'expiraEm', 'usado', 'criadoPor', 'donoEmail', 'donoNome'])
+        && request.resource.data.keys().hasAll(['donoUid', 'papel', 'criadoEm', 'expiraEm', 'usado', 'criadoPor'])
+        && request.resource.data.donoUid is string
+        && request.resource.data.usado == false
+        && request.resource.data.criadoPor == request.auth.uid
+        && request.resource.data.criadoEm is number
+        && request.resource.data.expiraEm is number
+        && request.resource.data.expiraEm > request.time.toMillis()
+        && request.resource.data.expiraEm <= request.time.toMillis() + 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000
+        && request.resource.data.get('donoEmail', '') is string && request.resource.data.get('donoEmail', '').size() <= 120
+        && request.resource.data.get('donoNome', '') is string && request.resource.data.get('donoNome', '').size() <= 80
+        && ((request.auth.uid == request.resource.data.donoUid
+              && request.resource.data.papel in ['LEITOR', 'EDITOR', 'ADMIN'])
+            || (papelDe(request.resource.data.donoUid) == 'ADMIN'
+              && request.resource.data.papel in ['LEITOR', 'EDITOR']));
+
+      // Usar (único update permitido): SOMENTE o convidado, ao entrar. Exige que, no mesmo batch, o documento de membro
+      // dele seja criado (não existia antes) com o papel do convite. O dono não usa o próprio convite. Nada além de
+      // usado/usadoPor/usadoEm muda (papel, donoUid, expiraEm ficam intactos).
+      allow update: if logado()
+        && resource.data.usado == false
+        && resource.data.expiraEm > request.time.toMillis()
+        && resource.data.donoUid != request.auth.uid
+        && soCampos(['usado', 'usadoPor', 'usadoEm'])
+        && request.resource.data.usado == true
+        && request.resource.data.usadoPor == request.auth.uid
+        && !exists(docMembro(resource.data.donoUid, request.auth.uid))
+        && existsAfter(docMembro(resource.data.donoUid, request.auth.uid))
+        && getAfter(docMembro(resource.data.donoUid, request.auth.uid)).data.convite == codigo
+        && getAfter(docMembro(resource.data.donoUid, request.auth.uid)).data.papel == resource.data.papel;
+
+      // Revogar: dono ou ADMIN apagam convite AINDA NÃO usado. Convite usado fica como registro.
+      allow delete: if logado()
+        && resource.data.usado == false
+        && (resource.data.donoUid == request.auth.uid || papelDe(resource.data.donoUid) == 'ADMIN');
+    }
+
+    // --------------------------------------------------------------------------- descoberta por e-mail (R32, inalterado)
+    // Cada um grava o próprio perfil (e-mail -> uid). Qualquer usuário logado lê (necessário para convidar por e-mail).
+    match /perfis/{email} {
+      allow read: if logado();
+      allow create, update: if logado()
+        && email == emailDoUsuario()
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if false;
+
+      // Convites por e-mail criados pelo dono; o convidado e o dono leem/removem.
+      match /convites/{donoUid} {
+        allow read: if logado() && (emailDoUsuario() == email || request.auth.uid == donoUid);
+        allow create, update: if logado()
+          && request.auth.uid == donoUid
+          && request.resource.data.donoUid == request.auth.uid;
+        allow delete: if logado() && (request.auth.uid == donoUid || emailDoUsuario() == email);
+      }
+    }
+
+    // Negar por padrão: tudo o mais.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

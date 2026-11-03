@@ -28,25 +28,28 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.meudinheiro.domain.Financas
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.meudinheiro.funcoes.formatarMoedaBR
 
 @Composable
 fun PrevisaoFechamentoDialog(
-    saldoAtual: Double,
-    contasAVencer: Double,
+    previsao: Financas.Previsao?,
     isPrivate: Boolean,
     onDismiss: () -> Unit
 ) {
-    val saldoFinalPrevisto = saldoAtual - contasAVencer
-    val margemSeguranca = if (saldoAtual > 0) (saldoFinalPrevisto / saldoAtual).toFloat() else 0f
+    // R15 (docs/CONTRATO_DADOS.md): saldo real das contas + receitas a receber − contas e faturas a pagar.
+    val saldoAtual = previsao?.saldoAtual ?: 0.0
+    val receitasPrevistas = previsao?.receitasPrevistas ?: 0.0
+    val contasAPagar = previsao?.contasAPagar ?: 0.0
+    val saldoFinalPrevisto = previsao?.saldoLivrePrevisto ?: 0.0
+    val margemSeguranca = (previsao?.margem ?: 0.0).toFloat()
 
-    // Motor de Cores Inteligente
-    val (alertColor, statusTexto) = when {
-        margemSeguranca > 0.4f -> Color(0xFF69F0AE) to "Mês Seguro" // Verde Neon
-        margemSeguranca > 0.05f -> Color(0xFFFFB74D) to "Atenção ao Caixa" // Laranja Neon
-        else -> Color(0xFFFF5252) to "Alerta de Risco!" // Vermelho Neon
+    val (alertColor, statusTexto) = when (previsao?.status ?: Financas.StatusMes.RISCO) {
+        Financas.StatusMes.SEGURO -> Color(0xFF69F0AE) to Financas.StatusMes.SEGURO.rotulo
+        Financas.StatusMes.ATENCAO -> Color(0xFFFFB74D) to Financas.StatusMes.ATENCAO.rotulo
+        Financas.StatusMes.RISCO -> Color(0xFFFF5252) to Financas.StatusMes.RISCO.rotulo
     }
             Dialog(onDismissRequest = onDismiss) {
                 Card(
@@ -94,13 +97,25 @@ fun PrevisaoFechamentoDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            Text("A Receber", color = Color.White.copy(0.5f), fontSize = 13.sp)
                             Text(
-                                "Contas Pendentes",
+                                "+ ${formatarMoedaBR(receitasPrevistas, isPrivate)}",
+                                color = Color(0xFF69F0AE),
+                                fontSize = 13.sp
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Contas e Faturas a Pagar",
                                 color = Color.White.copy(0.5f),
                                 fontSize = 13.sp
                             )
                             Text(
-                                "- ${formatarMoedaBR(contasAVencer, isPrivate)}",
+                                "- ${formatarMoedaBR(contasAPagar, isPrivate)}",
                                 color = Color(0xFFFF5252),
                                 fontSize = 13.sp
                             )

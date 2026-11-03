@@ -22,6 +22,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,12 +44,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.CreditCardOff
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Receipt
@@ -56,6 +60,7 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -77,6 +82,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -96,10 +102,14 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meudinheiro.data.CartaoComConta
 import com.meudinheiro.data.Despesa
+import com.meudinheiro.domain.CartoesUi
+import com.meudinheiro.domain.Financas
+import com.meudinheiro.viewModel.ContaSaldoViewModel
 import com.meudinheiro.funcoes.formatarMoedaBR
 import com.meudinheiro.funcoes.Haptics // Nosso motor de vibração
 import com.meudinheiro.viewModel.CartoesViewModel
 import com.meudinheiro.viewModel.CartoesViewModelFactory
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
 import kotlin.math.absoluteValue
@@ -117,27 +127,93 @@ data class EstadoFatura(
     val jaPaga: Boolean,
     val mesNome: String,
     val diaFechamento: Int,
-    val dataReferencia: Date
+    val dataReferencia: Date,
+    /** Compras do grupo ainda não chegaram (troca de cartão em andamento): não mostrar "vazio" nem dados do anterior. */
+    val carregando: Boolean = false,
+    /** R42: compras no débito (saem direto da conta) do mês da fatura; fora de total/em aberto/limite/pagamento. */
+    val debitos: List<Despesa> = emptyList(),
+    val outras: Financas.OutrasFaturas = Financas.OutrasFaturas(0.0, null)
 )
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CartoesScreen(
-    viewModel: CartoesViewModel = viewModel(factory = CartoesViewModelFactory(LocalContext.current))
+    viewModel: CartoesViewModel = viewModel(factory = CartoesViewModelFactory(LocalContext.current)),
+    /** Para o botão "Nova compra" (diálogo de despesa). Sem [contaViewModel] o botão não aparece. */
+    contaViewModel: ContaSaldoViewModel? = null,
+    categorias: List<String> = emptyList(),
+    getPicCategoria: (String) -> String = { "" },
+    historico: List<Despesa> = emptyList()
 ) {
     val context = LocalContext.current
+    val todasDespesas by viewModel.todasDespesas.collectAsState()
+    var showNovaCompra by remember { mutableStateOf(false) }
+    var alvoLancamento by remember { mutableStateOf<AlvoLancamento?>(null) }
+    var avisoExclusao by remember { mutableStateOf<String?>(null) }
+    var virtualParaExcluir by remember { mutableStateOf<CartaoComConta?>(null) }
+    // Depois de salvar: (id editado | null, ids que já existiam) -> foca no cartão salvo/criado.
+    var focoAposSalvar by remember { mutableStateOf<Pair<Int?, List<CartaoComConta>>?>(null) }
     val listaCartoes by viewModel.cartoes.collectAsState()
     val listaContas by viewModel.contasDisponiveis.collectAsState()
-    val despesasDoCartaoAtual by viewModel.despesasDoCartao.collectAsState()
+    val comprasEmitidas by viewModel.comprasDoCartao.collectAsState()
     var showResumoFatura by remember { mutableStateOf(false) }
 
     var processandoPagamento by remember { mutableStateOf(false) }
     var exibirConfirmacao by remember { mutableStateOf(false) }
+    var abrirJaPaga by remember { mutableStateOf(false) }
+    val exigirBioPagamento by remember { com.meudinheiro.funcoes.UserPreferences(context).biometriaLancarFlow }.collectAsState(initial = true)
     var showBottomSheet by remember { mutableStateOf(false) }
+    var cartaoEmEdicao by remember { mutableStateOf<CartaoComConta?>(null) }
 
     val pagerState = rememberPagerState(pageCount = { listaCartoes.size })
     val paginaAtual by remember { derivedStateOf { pagerState.currentPage } }
     var mesFaturaOffset by remember(paginaAtual) { mutableIntStateOf(0) }
+    val escopo = rememberCoroutineScope()
+
+    // Só usa a lista emitida se for do grupo do cartão focado: ao deslizar, a emissão do cartão anterior
+    // (ou vazia) nunca é exibida como se fosse a do novo.
+    val comprasDoFoco = comprasEmitidas.takeIf { it.principalId != null && it.principalId == listaCartoes.getOrNull(paginaAtual)?.idDoGrupo }
+    val despesasDoCartaoAtual = comprasDoFoco?.credito ?: emptyList()
+    val debitosDoGrupo = comprasDoFoco?.debito ?: emptyList()
+
+    fun solicitarExclusao(c: CartaoComConta) {
+        if (c.ehVirtual) {
+            val msg = CartoesUi.bloqueioExclusaoVirtual(c.id, c.nomeCartao, todasDespesas)
+            if (msg != null) avisoExclusao = msg else virtualParaExcluir = c
+        } else {
+            val ids = listaCartoes.filter { it.idDoGrupo == c.id }.map { it.id }.toSet()
+            val abertas = todasDespesas.count { it.cartaoId in ids && !it.pago }
+            if (abertas > 0) {
+                avisoExclusao = "O cartão \"${c.nomeCartao}\" (ou um virtual dele) tem $abertas compra(s) em aberto. Pague as faturas antes de excluí-lo."
+            } else viewModel.removerCartao(c)
+        }
+    }
+
+    // Filtro por cartão do grupo: virtual focado => já filtrado nele; físico => "Todos".
+    val cartaoFocadoAgora = listaCartoes.getOrNull(paginaAtual)
+    val grupoFocado = remember(listaCartoes, cartaoFocadoAgora?.idDoGrupo) {
+        listaCartoes.filter { it.idDoGrupo == cartaoFocadoAgora?.idDoGrupo }.sortedBy { it.ehVirtual }
+    }
+    var filtroBruto by remember(cartaoFocadoAgora?.id) { mutableStateOf(CartoesUi.filtroInicial(cartaoFocadoAgora)) }
+    val filtro = CartoesUi.filtroValido(filtroBruto, grupoFocado)
+
+    // Após salvar, leva o carrossel ao cartão salvo (novo: o id que não existia antes).
+    LaunchedEffect(listaCartoes, focoAposSalvar) {
+        val pendente = focoAposSalvar ?: return@LaunchedEffect
+        if (listaCartoes == pendente.second) return@LaunchedEffect // o salvamento ainda não chegou à lista
+        val idsAntes = pendente.second.map { it.id }.toSet()
+        val alvo = pendente.first ?: listaCartoes.firstOrNull { it.id !in idsAntes }?.id
+        val idx = listaCartoes.indexOfFirst { it.id == alvo }
+        focoAposSalvar = null
+        if (idx >= 0) pagerState.animateScrollToPage(idx)
+    }
+    // Se o salvamento falhar (a lista nunca muda), não deixa o foco pendente para uma alteração futura.
+    LaunchedEffect(focoAposSalvar) {
+        if (focoAposSalvar != null) {
+            kotlinx.coroutines.delay(5000)
+            focoAposSalvar = null
+        }
+    }
 
     var visivel by remember { mutableStateOf(false) }
 
@@ -159,30 +235,29 @@ fun CartoesScreen(
 
     LaunchedEffect(Unit) { visivel = true }
 
-    val faturaInfo by remember(despesasDoCartaoAtual, mesFaturaOffset, paginaAtual, listaCartoes) {
+    val faturaInfo by remember(comprasDoFoco, mesFaturaOffset, paginaAtual, listaCartoes) {
         derivedStateOf {
             val cartao = listaCartoes.getOrNull(paginaAtual)
             if (cartao == null) null else {
-                val diaF = if (cartao.diaVencimento > 7) cartao.diaVencimento - 7 else 25
-                val cal = Calendar.getInstance().apply { add(Calendar.MONTH, mesFaturaOffset) }
-                val mAlvo = cal.get(Calendar.MONTH)
-                val aAlvo = cal.get(Calendar.YEAR)
-
-                val filtradas = despesasDoCartaoAtual.filter { d ->
-                    val (m, a) = calcularFaturaDaDespesa(d.data, diaF)
-                    m == mAlvo && a == aAlvo
-                }.sortedByDescending { it.data }
-
-                val pendentes = filtradas.filter { !it.pago }
-
+                // R6: usa o fechamento REAL do cartão (antes era "vencimento − 7", ignorando o cadastro).
+                val aberta = Financas.faturaDaCompra(System.currentTimeMillis(), cartao.diaFechamento, cartao.fechamentoMelhorDia)
+                val ref = aberta.deslocar(mesFaturaOffset)
+                // R18: fatura única do grupo (físico + virtuais).
+                val idsGrupo = listaCartoes.filter { it.idDoGrupo == cartao.idDoGrupo }.map { it.id }.toSet()
+                val resumo = Financas.resumoFatura(
+                    idsGrupo, cartao.diaFechamento, cartao.diaVencimento, despesasDoCartaoAtual, ref, cartao.fechamentoMelhorDia
+                )
                 EstadoFatura(
-                    lista = filtradas,
-                    total = filtradas.sumOf { it.valor },
-                    totalPendente = pendentes.sumOf { it.valor },
-                    jaPaga = filtradas.isNotEmpty() && pendentes.isEmpty(),
-                    mesNome = mesesNomes[mAlvo],
-                    diaFechamento = diaF,
-                    dataReferencia = cal.time
+                    lista = resumo.itens,
+                    total = resumo.total,
+                    totalPendente = resumo.pendente,
+                    jaPaga = resumo.paga,
+                    mesNome = mesesNomes[ref.mes - 1],
+                    diaFechamento = Financas.diaDeFechamento(cartao.diaFechamento, ref),
+                    dataReferencia = Date(Financas.inicioDoMes(ref.mes, ref.ano)),
+                    carregando = comprasDoFoco == null,
+                    debitos = Financas.debitosDaFatura(debitosDoGrupo, ref),
+                    outras = Financas.outrasFaturasEmAberto(idsGrupo, cartao.diaFechamento, despesasDoCartaoAtual, ref, cartao.fechamentoMelhorDia)
                 )
             }
         }
@@ -248,7 +323,12 @@ fun CartoesScreen(
                             val cartao = listaCartoes[page]
                             val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
 
-                            Box(modifier = Modifier.graphicsLayer {
+                            Box(modifier = Modifier.clickable {
+                                // Tocar num cartão vizinho o traz para o foco (a lista é recalculada para ele).
+                                if (page != pagerState.currentPage) {
+                                    escopo.launch { pagerState.animateScrollToPage(page) }
+                                }
+                            }.graphicsLayer {
                                 val scale = 1f - (pageOffset.absoluteValue * 0.15f).coerceIn(0f, 1f)
                                 scaleX = scale; scaleY = scale
                                 alpha = 1f - (pageOffset.absoluteValue * 0.5f).coerceIn(0f, 1f)
@@ -256,7 +336,13 @@ fun CartoesScreen(
                                 rotationY = pageOffset * 25f
                             }) {
                                 // 🚀 O NOVO CARTÃO PARALLAX SENSORIZADO
-                                CartaoFisicoHolografico(cartao)
+                                CartaoFisicoHolografico(
+                                    cartao,
+                                    nomePrincipal = cartao.cartaoPrincipalId?.let { pid ->
+                                        listaCartoes.firstOrNull { it.id == pid }?.nomeCartao ?: "(cartão físico não encontrado)"
+                                    },
+                                    nVirtuais = listaCartoes.count { it.cartaoPrincipalId == cartao.id }
+                                )
                             }
                         }
                     }
@@ -270,11 +356,23 @@ fun CartoesScreen(
                                 cartao = cartaoFocado,
                                 onDelete = {
                                     Haptics.vibrar(context, "alerta")
-                                    viewModel.removerCartao(cartaoFocado)
+                                    solicitarExclusao(cartaoFocado)
+                                },
+                                onEditar = {
+                                    Haptics.vibrar(context, "clique")
+                                    cartaoEmEdicao = cartaoFocado
                                 },
                                 onPagar = {
-                                    if (!fatura.jaPaga) {
+                                    if (!fatura.jaPaga && !fatura.carregando) {
                                         Haptics.vibrar(context, "clique")
+                                        abrirJaPaga = false
+                                        exibirConfirmacao = true
+                                    }
+                                },
+                                onJaPaga = {
+                                    if (!fatura.jaPaga && !fatura.carregando) {
+                                        Haptics.vibrar(context, "clique")
+                                        abrirJaPaga = true
                                         exibirConfirmacao = true
                                     }
                                 },
@@ -284,6 +382,37 @@ fun CartoesScreen(
                                 },
                                 faturaPaga = fatura.jaPaga || processandoPagamento
                             )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            if (!fatura.carregando) PainelLimiteCompartilhado(
+                                cartaoFocado, listaCartoes, despesasDoCartaoAtual,
+                                onSelecionar = { alvo ->
+                                    val idx = listaCartoes.indexOfFirst { it.id == alvo.id }
+                                    if (idx >= 0 && idx != pagerState.currentPage) {
+                                        Haptics.vibrar(context, "clique")
+                                        escopo.launch { pagerState.animateScrollToPage(idx) }
+                                    }
+                                },
+                                onEditar = { alvo -> Haptics.vibrar(context, "clique"); cartaoEmEdicao = alvo },
+                                onExcluir = { alvo -> Haptics.vibrar(context, "alerta"); solicitarExclusao(alvo) }
+                            )
+                        }
+
+                        if (contaViewModel != null && categorias.isNotEmpty()) {
+                            item {
+                                val alvoCompra = grupoFocado.firstOrNull { it.id == filtro } ?: cartaoFocado
+                                Button(
+                                    onClick = { Haptics.vibrar(context, "clique"); showNovaCompra = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = DeepSpaceBlue),
+                                    modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 12.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Nova compra no ${alvoCompra.nomeCartao}", fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
                         }
 
                         item {
@@ -304,18 +433,89 @@ fun CartoesScreen(
                             )
                         }
 
-                        if (fatura.lista.isEmpty()) {
+                        val creditoVisivel = CartoesUi.filtrarCredito(fatura.lista, filtro)
+                        val debitosVisiveis = CartoesUi.filtrarDebitos(fatura.debitos, filtro)
+
+                        if (!fatura.carregando && grupoFocado.size > 1) {
+                            item {
+                                FiltroCartoesChips(
+                                    grupo = grupoFocado, filtro = filtro,
+                                    onFiltro = { Haptics.vibrar(context, "clique"); filtroBruto = it }
+                                )
+                                if (filtro != null && fatura.lista.isNotEmpty()) {
+                                    Text(
+                                        "Mostrando ${creditoVisivel.size} de ${fatura.lista.size} · subtotal ${formatarMoedaBR(CartoesUi.subtotal(creditoVisivel), false)} (a fatura continua única: ${formatarMoedaBR(fatura.total, false)})",
+                                        color = Color.White.copy(0.5f), fontSize = 11.sp,
+                                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (fatura.carregando) {
+                            item {
+                                Box(Modifier.fillMaxWidth().padding(top = 20.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = NeonCyan, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                }
+                            }
+                        } else if (fatura.lista.isNotEmpty() && creditoVisivel.isEmpty()) {
                             item {
                                 Text(
-                                    "Nenhuma despesa nesta fatura", color = Color.White.copy(0.3f),
-                                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-                                    textAlign = TextAlign.Center, fontSize = 14.sp
+                                    "Nenhuma compra deste cartão nesta fatura", color = Color.White.copy(0.3f),
+                                    textAlign = TextAlign.Center, fontSize = 14.sp,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp, start = 24.dp, end = 24.dp)
+                                )
+                            }
+                        } else if (fatura.lista.isEmpty()) {
+                            item {
+                                EstadoFaturaVazia(
+                                    outras = fatura.outras,
+                                    onIr = {
+                                        fatura.outras.proxima?.let { alvo ->
+                                            val aberta = Financas.faturaDaCompra(System.currentTimeMillis(), cartaoFocado.diaFechamento, cartaoFocado.fechamentoMelhorDia)
+                                            mesFaturaOffset = (alvo.ano * 12 + alvo.mes) - (aberta.ano * 12 + aberta.mes)
+                                        }
+                                    }
                                 )
                             }
                         } else {
-                            items(fatura.lista, key = { it.id }) { despesa ->
+                            items(creditoVisivel, key = { it.id }) { despesa ->
                                 Box(modifier = Modifier.padding(horizontal = 24.dp)) {
-                                    ItemExtratoNeon(despesa = despesa, cartao = cartaoFocado!!)
+                                    ItemExtratoNeon(
+                                        despesa = despesa,
+                                        cartao = CartoesUi.cartaoDaCompra(despesa, listaCartoes) ?: cartaoFocado,
+                                        mostrarOrigem = grupoFocado.size > 1,
+                                        onAcoes = contaViewModel?.let { { alvoLancamento = AlvoLancamento(despesa.id) } }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (!fatura.carregando && debitosVisiveis.isNotEmpty()) {
+                            item {
+                                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.AccountBalance, null, tint = NeonPurple, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "Compras no débito (saem direto da conta)", color = Color.White.copy(0.7f),
+                                            fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                    Text(
+                                        "Não entram no total da fatura, no limite nem no pagamento.",
+                                        color = Color.White.copy(0.4f), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            }
+                            items(debitosVisiveis, key = { "debito-${it.id}" }) { despesa ->
+                                Box(modifier = Modifier.padding(horizontal = 24.dp)) {
+                                    ItemExtratoNeon(
+                                        despesa = despesa,
+                                        cartao = CartoesUi.cartaoDaCompra(despesa, listaCartoes) ?: cartaoFocado,
+                                        mostrarOrigem = grupoFocado.size > 1,
+                                        onAcoes = contaViewModel?.let { { alvoLancamento = AlvoLancamento(despesa.id) } }
+                                    )
                                 }
                             }
                         }
@@ -326,36 +526,118 @@ fun CartoesScreen(
             // DIALOG E BOTTOM SHEETS (Mantidos intactos)
             if (exibirConfirmacao && faturaInfo != null) {
                 val fatura = faturaInfo!!
-                AlertDialog(
-                    onDismissRequest = { exibirConfirmacao = false },
-                    containerColor = DeepSpaceBlue,
-                    title = { Text("Confirmar Pagamento", color = Color.White) },
-                    text = {
-                        Text(
-                            "Pagar fatura de ${fatura.mesNome} no valor de ${formatarMoedaBR(fatura.totalPendente, false)}?",
-                            color = Color.White.copy(0.8f)
-                        )
-                    },
-                    confirmButton = {
-                        Button(
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                            onClick = {
+                val focado = listaCartoes.getOrNull(paginaAtual)
+                val principalSheet = focado?.let { f -> listaCartoes.firstOrNull { it.id == f.idDoGrupo } }
+                if (focado != null && principalSheet != null) {
+                    val idsGrupoSheet = listaCartoes.filter { it.idDoGrupo == focado.idDoGrupo }.map { it.id }.toSet()
+                    PagarFaturaSheet(
+                        principal = principalSheet,
+                        idsDoGrupo = idsGrupoSheet,
+                        despesasDoGrupo = despesasDoCartaoAtual,
+                        saldoConta = listaContas.firstOrNull { it.id == principalSheet.contaId }?.saldo,
+                        faturaInicial = Financas.FaturaRef(
+                            Financas.mesDe(fatura.dataReferencia.time), Financas.anoDe(fatura.dataReferencia.time)
+                        ),
+                        onDismiss = { exibirConfirmacao = false },
+                        jaPagaInicial = abrirJaPaga,
+                        onMarcarComoPaga = { ids, valor ->
+                            autenticarParaLancar(
+                                context, exigirBioPagamento, "Confirmar baixa",
+                                "Autentique para marcar ${formatarMoedaBR(valor, false)} como pago (sem debitar)"
+                            ) {
                                 exibirConfirmacao = false
-                                processandoPagamento = true
-                                viewModel.pagarFatura(listaCartoes[paginaAtual], fatura.totalPendente, fatura.dataReferencia)
+                                viewModel.marcarItensComoPagos(focado, ids, valor)
                                 Haptics.vibrar(context, "sucesso")
                             }
-                        ) { Text("Confirmar", color = DeepSpaceBlue, fontWeight = FontWeight.Bold) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { exibirConfirmacao = false }) { Text("Cancelar", color = Color.White.copy(0.6f)) }
-                    }
-                )
+                        },
+                        onPagar = { ids, valor ->
+                            autenticarParaLancar(
+                                context, exigirBioPagamento, "Confirmar pagamento",
+                                "Autentique para pagar ${formatarMoedaBR(valor, false)} da fatura"
+                            ) {
+                                exibirConfirmacao = false
+                                processandoPagamento = true
+                                viewModel.pagarItens(focado, ids)
+                                Haptics.vibrar(context, "sucesso")
+                            }
+                        }
+                    )
+                }
             }
 
             if (showBottomSheet) {
-                FormularioCartaoBottomSheet(listaContas, { showBottomSheet = false }) { novo ->
+                FormularioCartaoBottomSheet(
+                    contasDisponiveis = listaContas,
+                    todosCartoes = listaCartoes,
+                    onDismiss = { showBottomSheet = false }
+                ) { novo ->
+                    focoAposSalvar = null to listaCartoes
                     viewModel.salvarCartao(novo)
+                }
+            }
+            if (showNovaCompra && contaViewModel != null) {
+                val focoCompra = listaCartoes.getOrNull(paginaAtual)
+                val alvoCompra = grupoFocado.firstOrNull { it.id == filtro } ?: focoCompra
+                if (alvoCompra != null) {
+                    AddDespesaDialog(
+                        categorias = categorias,
+                        contaSelecionada = alvoCompra.numeroConta,
+                        cartoesDisponiveis = listaCartoes,
+                        getPicCategoria = getPicCategoria,
+                        viewModel = contaViewModel,
+                        cartoesViewModel = viewModel,
+                        parentScope = escopo,
+                        onDismiss = { showNovaCompra = false },
+                        historico = historico,
+                        formaPagamentoInicial = "CARTAO",
+                        cartaoInicialId = alvoCompra.id
+                    )
+                }
+            }
+            // Menu de ações das compras da fatura e da seção de débitos (editar, excluir, duplicar, repetir…).
+            if (contaViewModel != null) {
+                LancamentoAcoesHost(
+                    alvo = alvoLancamento, onFechar = { alvoLancamento = null }, viewModel = contaViewModel,
+                    categorias = categorias, getPicCategoria = getPicCategoria
+                )
+            }
+            avisoExclusao?.let { msg ->
+                AlertDialog(
+                    onDismissRequest = { avisoExclusao = null },
+                    confirmButton = { TextButton(onClick = { avisoExclusao = null }) { Text("Entendi", color = NeonCyan) } },
+                    title = { Text("Não é possível excluir", color = Color.White) },
+                    text = { Text(msg, color = Color.White.copy(0.8f)) },
+                    containerColor = DeepSpaceBlue
+                )
+            }
+            virtualParaExcluir?.let { v ->
+                AlertDialog(
+                    onDismissRequest = { virtualParaExcluir = null },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.removerCartao(v); virtualParaExcluir = null }) {
+                            Text("Excluir", color = Color(0xFFFF5252))
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = { virtualParaExcluir = null }) { Text("Cancelar", color = Color.White.copy(0.7f)) } },
+                    title = { Text("Excluir cartão virtual?", color = Color.White) },
+                    text = {
+                        Text(
+                            "\"${v.nomeCartao}\" •••• ${v.finalCartao} será removido. O histórico de compras passa para o cartão físico.",
+                            color = Color.White.copy(0.8f)
+                        )
+                    },
+                    containerColor = DeepSpaceBlue
+                )
+            }
+            cartaoEmEdicao?.let { editando ->
+                FormularioCartaoBottomSheet(
+                    contasDisponiveis = listaContas,
+                    todosCartoes = listaCartoes,
+                    cartaoEdicao = editando,
+                    onDismiss = { cartaoEmEdicao = null }
+                ) { alterado ->
+                    focoAposSalvar = editando.id to listaCartoes
+                    viewModel.salvarCartao(alterado)
                 }
             }
             if (showResumoFatura && faturaInfo != null) {
@@ -372,7 +654,7 @@ fun CartoesScreen(
 // 🚀 O CARTÃO HOLOGRÁFICO (SENSORIZADO)
 // ============================================================================
 @Composable
-fun CartaoFisicoHolografico(cartao: CartaoComConta) {
+fun CartaoFisicoHolografico(cartao: CartaoComConta, nomePrincipal: String? = null, nVirtuais: Int = 0) {
     val context = LocalContext.current
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
 
@@ -465,7 +747,17 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp
                             )
-                            Text(cartao.tipo, color = corBorda, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text(if (cartao.ehVirtual) "VIRTUAL · ${cartao.tipo}" else cartao.tipo, color = corBorda, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            val comLimite = Financas.tipoDeCartao(cartao.tipo) != "DEBITO" && cartao.limiteTotal > 0.0
+                            val dispGrupo = if (comLimite) " · disponível do grupo ${formatarMoedaBR(cartao.limiteDisponivel, false)}" else ""
+                            if (cartao.ehVirtual && nomePrincipal != null) {
+                                Text("Compartilha o saldo de $nomePrincipal$dispGrupo", color = Color.White.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                            } else if (!cartao.ehVirtual && nVirtuais > 0) {
+                                Text(
+                                    (if (nVirtuais == 1) "1 virtual compartilha este saldo" else "$nVirtuais virtuais compartilham este saldo") + dispGrupo,
+                                    color = Color.White.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace
+                                )
+                            }
                         }
                         Text("🏦 ${cartao.nomeConta}", color = Color.White.copy(0.5f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     }
@@ -474,7 +766,7 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Rounded.Memory, null, tint = Color(0xFFFFD700).copy(alpha = 0.8f), modifier = Modifier.size(32.dp))
 
-                        if (cartao.tipo == "CRÉDITO" && cartao.limiteTotal > 0.0) {
+                        if (Financas.tipoDeCartao(cartao.tipo) != "DEBITO" && cartao.limiteTotal > 0.0) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                                 Text("LIMITE", color = Color.White.copy(0.5f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
@@ -513,6 +805,29 @@ fun CartaoFisicoHolografico(cartao: CartaoComConta) {
     }
 }
 
+@Composable
+private fun EstadoFaturaVazia(outras: Financas.OutrasFaturas, onIr: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 20.dp, start = 24.dp, end = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (outras.emAberto > 0.0 && outras.proxima != null) {
+            Text(
+                "Nenhuma compra nesta fatura. Há ${formatarMoedaBR(outras.emAberto, false)} em aberto em outras faturas",
+                color = Color.White.copy(0.6f), textAlign = TextAlign.Center, fontSize = 14.sp
+            )
+            TextButton(onClick = onIr) {
+                Text("Ir para a fatura ${"%02d/%d".format(outras.proxima.mes, outras.proxima.ano)}", color = NeonCyan)
+            }
+        } else {
+            Text(
+                "Nenhuma despesa nesta fatura", color = Color.White.copy(0.3f),
+                textAlign = TextAlign.Center, fontSize = 14.sp
+            )
+        }
+    }
+}
+
 // ============================================================================
 // COMPONENTES AUXILIARES (Mantidos)
 // ============================================================================
@@ -534,7 +849,7 @@ fun SelectorDeMes(mesNome: String, total: Double, diaFechamento: Int, mesOffset:
 }
 
 @Composable
-fun AcoesCartao(cartao: CartaoComConta, onDelete: () -> Unit, onPagar: () -> Unit, onFatura: () -> Unit, faturaPaga: Boolean) {
+fun AcoesCartao(cartao: CartaoComConta, onDelete: () -> Unit, onEditar: () -> Unit = {}, onPagar: () -> Unit, onFatura: () -> Unit, faturaPaga: Boolean, onJaPaga: (() -> Unit)? = null) {
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         BotaoAcaoRapida(Icons.Rounded.Receipt, "FATURA", NeonCyan, onClick = onFatura)
         BotaoAcaoRapida(
@@ -542,6 +857,8 @@ fun AcoesCartao(cartao: CartaoComConta, onDelete: () -> Unit, onPagar: () -> Uni
             if (faturaPaga) "PAGA" else "PAGAR",
             if (faturaPaga) Color.Gray else Color.White,
             { if (!faturaPaga) onPagar() })
+        if (onJaPaga != null && !faturaPaga) BotaoAcaoRapida(Icons.Rounded.CheckCircle, "JÁ PAGA", Color(0xFF69F0AE), onClick = onJaPaga)
+        BotaoAcaoRapida(Icons.Rounded.Edit, "EDITAR", NeonPurple, onClick = onEditar)
         BotaoAcaoRapida(Icons.Rounded.DeleteSweep, "EXCLUIR", Color(0xFFFF5252), onClick = onDelete)
     }
 }
@@ -572,22 +889,6 @@ fun EstadoVazioCartoes() {
         Text("SISTEMA OFFLINE", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         Text("Adicione seus cartões para habilitar o monitoramento holográfico de faturas.", color = Color.White.copy(0.5f), fontSize = 12.sp, textAlign = TextAlign.Center, fontFamily = FontFamily.Monospace)
     }
-}
-
-fun calcularFaturaDaDespesa(dataCompra: Date, diaFechamento: Int?): Pair<Int, Int> {
-    val cal = Calendar.getInstance().apply { time = dataCompra }
-    val dia = cal.get(Calendar.DAY_OF_MONTH)
-    var mes = cal.get(Calendar.MONTH)
-    var ano = cal.get(Calendar.YEAR)
-
-    if (dia > diaFechamento!!) {
-        mes += 1
-        if (mes > 11) {
-            mes = 0
-            ano += 1
-        }
-    }
-    return Pair(mes, ano)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -640,4 +941,180 @@ fun ResumoFaturaBottomSheet(fatura: EstadoFatura, cartao: CartaoComConta, onDism
             }
         }
     }
+}
+
+// ============================================================================
+// R41 — limite compartilhado do grupo + saldo PRÓPRIO de cada cartão (físico e virtuais)
+// ============================================================================
+@Composable
+fun PainelLimiteCompartilhado(
+    focado: CartaoComConta, todos: List<CartaoComConta>, despesasDoGrupo: List<Despesa>,
+    /** Tocar na linha leva o carrossel até o cartão. */
+    onSelecionar: (CartaoComConta) -> Unit = {},
+    /** Editar/excluir por linha de cartão VIRTUAL (o físico usa os botões do cartão focado). */
+    onEditar: ((CartaoComConta) -> Unit)? = null,
+    onExcluir: ((CartaoComConta) -> Unit)? = null
+) {
+    val grupo = todos.filter { it.idDoGrupo == focado.idDoGrupo }.sortedBy { it.ehVirtual }
+    val principal = grupo.firstOrNull { !it.ehVirtual } ?: return
+    if (Financas.tipoDeCartao(principal.tipo) == "DEBITO" || principal.limiteTotal <= 0.0) return
+    val cartoes = grupo.map { it.paraCartao() }
+    val saldos = cartoes.map { it to Financas.saldoDoCartao(it, cartoes, despesasDoGrupo) }
+    val disponivelGrupo = saldos.first().second.disponivelGrupo
+    val usadoGrupo = Financas.limiteDisponivel(principal.paraCartao(), emptyList(), emptySet()) - disponivelGrupo
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        colors = CardDefaults.cardColors(containerColor = CardGlass),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Limite compartilhado", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(6.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Total", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                Text(formatarMoedaBR(principal.limiteTotal, false), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Usado (grupo)", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                Text(formatarMoedaBR(usadoGrupo, false), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Disponível (grupo)", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                Text(formatarMoedaBR(disponivelGrupo, false), color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            ComprometimentoLimite(principal, grupo, despesasDoGrupo, disponivelGrupo)
+            saldos.forEach { (c, s) ->
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = Color.White.copy(0.1f))
+                val ehFocado = c.id == focado.id
+                val real = grupo.first { it.id == c.id }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { onSelecionar(real) }
+                ) {
+                    Text("${c.nome} •••• ${c.finalCartao}", color = if (ehFocado) NeonCyan else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
+                    if (c.ehVirtual) {
+                        Text(
+                            "VIRTUAL", color = DeepSpaceBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(6.dp)).background(NeonPurple.copy(alpha = 0.9f)).padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (c.ehVirtual) {
+                        if (onEditar != null) IconButton(onClick = { onEditar(real) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.Edit, "Editar ${c.nome}", tint = NeonPurple, modifier = Modifier.size(18.dp))
+                        }
+                        if (onExcluir != null) IconButton(onClick = { onExcluir(real) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.DeleteSweep, "Excluir ${c.nome}", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Usado: ${formatarMoedaBR(s.usado, false)} (${(s.razao * 100).toInt()}%)", color = Color.White.copy(0.8f), fontSize = 12.sp)
+                    Text("Disponível: ${formatarMoedaBR(s.disponivel, false)}", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                LinearProgressIndicator(
+                    progress = { s.razao.toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(4.dp).clip(CircleShape),
+                    color = if (s.razao >= 0.9) Color(0xFFFF5252) else if (c.ehVirtual) NeonPurple else NeonCyan,
+                    trackColor = Color.White.copy(0.1f)
+                )
+                if (s.limiteProprio != null) {
+                    Text("Limite próprio: ${formatarMoedaBR(s.limiteProprio, false)}", color = Color.White.copy(0.5f), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Visibilidade do limite: fatura atual × parcelas futuras × disponível + o que volta ao pagar
+// ============================================================================
+private val CorParcelasFuturas = Color(0xFFFFB74D)
+private val CorFaturaAtual = Color(0xFFFF5252)
+
+@Composable
+private fun ComprometimentoLimite(
+    principal: CartaoComConta, grupo: List<CartaoComConta>, despesas: List<Despesa>, disponivelGrupo: Double
+) {
+    val ids = grupo.map { it.id }.toSet()
+    val comp = remember(principal, despesas, grupo) {
+        Financas.comprometimentoCartao(principal.paraCartao(), despesas, System.currentTimeMillis(), ids)
+    }
+    val total = principal.limiteTotal
+    if (total <= 0.0 || comp.emAbertoTotal <= 0.0) return
+    val pAtual = (comp.faturaAtual / total).toFloat().coerceIn(0f, 1f)
+    val pFut = (comp.parcelasFuturas / total).toFloat().coerceIn(0f, 1f - pAtual)
+    val pDisp = (1f - pAtual - pFut).coerceAtLeast(0f)
+    val fmt = remember { java.text.SimpleDateFormat("dd/MM", java.util.Locale("pt", "BR")) }
+
+    Spacer(Modifier.height(10.dp))
+    Row(modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)).background(Color.White.copy(0.08f))) {
+        if (pAtual > 0f) Box(Modifier.weight(pAtual).fillMaxSize().background(CorFaturaAtual))
+        if (pFut > 0f) Box(Modifier.weight(pFut).fillMaxSize().background(CorParcelasFuturas))
+        if (pDisp > 0f) Box(Modifier.weight(pDisp).fillMaxSize().background(NeonCyan.copy(alpha = 0.6f)))
+    }
+    Spacer(Modifier.height(6.dp))
+    LegendaLimite(CorFaturaAtual, "Fatura atual", comp.faturaAtual)
+    LegendaLimite(CorParcelasFuturas, "Parcelas futuras", comp.parcelasFuturas)
+    LegendaLimite(NeonCyan, "Disponível", disponivelGrupo)
+
+    Spacer(Modifier.height(10.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Rounded.Payments, null, tint = NeonCyan, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("Limite que volta ao pagar", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+    comp.liberacaoPorFatura.take(6).forEach { l ->
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                "%02d/%d • vence %s".format(l.ref.mes, l.ref.ano, fmt.format(Date(l.vencimento))),
+                color = Color.White.copy(0.6f), fontSize = 12.sp
+            )
+            Text("+ " + formatarMoedaBR(l.valor, false), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun LegendaLimite(cor: Color, rotulo: String, valor: Double) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(cor))
+        Spacer(Modifier.width(6.dp))
+        Text(rotulo, color = Color.White.copy(0.6f), fontSize = 11.sp, modifier = Modifier.weight(1f))
+        Text(formatarMoedaBR(valor, false), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Chips "Todos | <cada cartão do grupo>" que filtram os lançamentos da fatura (a fatura continua única, R18). */
+@Composable
+private fun FiltroCartoesChips(grupo: List<CartaoComConta>, filtro: Int?, onFiltro: (Int?) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ChipFiltroCartao("Todos os cartões", filtro == null) { onFiltro(null) }
+        grupo.forEach { k ->
+            ChipFiltroCartao(
+                (if (k.ehVirtual) "${k.nomeCartao} · virtual" else k.nomeCartao) + " ••${k.finalCartao}",
+                filtro == k.id
+            ) { onFiltro(k.id) }
+        }
+    }
+}
+
+@Composable
+private fun ChipFiltroCartao(texto: String, ativo: Boolean, onClick: () -> Unit) {
+    Text(
+        texto,
+        color = if (ativo) NeonCyan else Color.White.copy(0.7f),
+        fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(if (ativo) NeonCyan.copy(alpha = 0.15f) else Color.Transparent)
+            .border(1.dp, if (ativo) NeonCyan else Color.White.copy(0.2f), CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    )
 }

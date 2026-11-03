@@ -38,4 +38,7 @@ interface CategoriaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserirTodas(categorias: List<Categoria>)
+
+    @Query("DELETE FROM categorias WHERE id IN (:ids)")
+    suspend fun excluirPorIds(ids: List<Int>)
 }

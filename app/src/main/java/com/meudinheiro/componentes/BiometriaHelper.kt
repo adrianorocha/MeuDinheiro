@@ -54,3 +54,42 @@ fun solicitarBiometria(
 
     biometricPrompt.authenticate(promptInfo)
 }
+/**
+ * Pede biometria (ou PIN do aparelho) antes de gravar um lançamento.
+ * - [exigir] falso → autoriza direto.
+ * - Aparelho sem biometria/PIN configurado → autoriza (não há como travar) .
+ * - Cancelou ou errou → não autoriza ([onNegado]).
+ */
+fun autenticarParaLancar(
+    context: Context,
+    exigir: Boolean,
+    titulo: String,
+    subtitulo: String,
+    onNegado: () -> Unit = {},
+    onAutorizado: () -> Unit
+) {
+    if (!exigir) return onAutorizado()
+    val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+        .filterIsInstance<FragmentActivity>().firstOrNull() ?: return onNegado()
+
+    val autenticadores = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    if (BiometricManager.from(activity).canAuthenticate(autenticadores) != BiometricManager.BIOMETRIC_SUCCESS) {
+        return onAutorizado()
+    }
+
+    val prompt = BiometricPrompt(
+        activity,
+        ContextCompat.getMainExecutor(activity),
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onNegado()
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onAutorizado()
+        }
+    )
+    prompt.authenticate(
+        BiometricPrompt.PromptInfo.Builder()
+            .setTitle(titulo)
+            .setSubtitle(subtitulo)
+            .setAllowedAuthenticators(autenticadores)
+            .build()
+    )
+}

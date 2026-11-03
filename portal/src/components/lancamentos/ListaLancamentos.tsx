@@ -1,0 +1,262 @@
+"use client";
+
+import { Check, Circle, Copy, FastForward, Paperclip, Pencil, Receipt, Repeat, Split, Trash2, Unlink } from "lucide-react";
+import { useState } from "react";
+import { Input, Select } from "@/components/ui/Field";
+import { Confirmar, Modal, RodapeForm } from "@/components/ui/Modal";
+import type { UnidadeRepeticao } from "@/lib/finance/operations";
+import { Money } from "@/components/ui/Money";
+import { Badge } from "@/components/ui/Misc";
+import { IconButton } from "@/components/ui/Button";
+import { PicBadge } from "@/components/ui/PicIcon";
+import { cartaoDeDebito, cartaoIdDe, ehGrupoParcelas, estaAtrasada } from "@/lib/finance/calc";
+import type { Despesa } from "@/lib/finance/types";
+import { formatData } from "@/lib/format";
+import { useAgora, useDataset } from "@/lib/hooks";
+import { acoes } from "@/lib/store/actions";
+import { useCompartilhamento, usePode } from "@/lib/compartilhamento";
+import { rotuloAutor } from "@/lib/finance/autoria";
+import { useStore } from "@/lib/store/store";
+import { DividirModal } from "@/components/pessoas/DividirModal";
+import { AntecipacaoModal } from "./AntecipacaoModal";
+import { AnexosModal } from "./AnexosModal";
+import { ComprovanteModal } from "./ComprovanteModal";
+import { normalizarAnexos } from "@/lib/finance/anexos";
+import { chaveTag } from "@/lib/finance/tags";
+import { LancamentoModal } from "./LancamentoModal";
+
+const ROTULO_NATUREZA: Partial<Record<Despesa["natureza"], string>> = {
+  SALDO_INICIAL: "Saldo inicial",
+  TRANSFERENCIA: "Transferência",
+  APORTE_META: "Aporte em meta",
+  RESGATE_META: "Resgate de meta",
+  PAGAMENTO_FATURA: "Pagamento de fatura",
+  AJUSTE: "Ajuste",
+};
+
+const EDITAVEL = new Set<Despesa["natureza"]>(["NORMAL", "SALDO_INICIAL", "AJUSTE"]);
+const ALTERNAVEL = new Set<Despesa["natureza"]>(["NORMAL", "AJUSTE"]);
+
+interface Props {
+  itens: readonly Despesa[];
+  /** Esconde o nome da conta/cartão (útil quando o contexto já o informa). */
+  semOrigem?: boolean;
+}
+
+export function ListaLancamentos({ itens, semOrigem }: Props) {
+  const ds = useDataset();
+  const agora = useAgora();
+  const avisar = useStore((s) => s.avisar);
+  // R67: LEITOR só consulta (esconde ações que alteram); "por <nome>" só em contas com membros. As regras do servidor decidem de verdade.
+  const podeEditar = usePode("LANCAMENTO_EDITAR");
+  const temMembros = useCompartilhamento((s) => s.temMembros);
+  const [editando, setEditando] = useState<Despesa | null>(null);
+  const [excluindo, setExcluindo] = useState<Despesa | null>(null);
+  const [repetindo, setRepetindo] = useState<Despesa | null>(null);
+  const [antecipando, setAntecipando] = useState<Despesa | null>(null);
+  const [comprovante, setComprovante] = useState<Despesa | null>(null);
+  const [dividindo, setDividindo] = useState<Despesa | null>(null);
+  const [vendoAnexos, setVendoAnexos] = useState<Despesa | null>(null); // R60
+  const [repN, setRepN] = useState("3");
+  const [repIntervalo, setRepIntervalo] = useState("1");
+  const [repUnidade, setRepUnidade] = useState<UnidadeRepeticao>("MESES");
+  const [repErro, setRepErro] = useState<string | null>(null);
+
+  function desconciliar(d: Despesa) {
+    const r = acoes.desfazerConciliacao(d.id);
+    avisar(r.ok ? "sucesso" : "erro", r.ok ? "Conciliação desfeita (valor e data já mesclados não são revertidos)." : r.erro);
+  }
+
+  function duplicar(d: Despesa) {
+    const r = acoes.duplicarLancamento(d.id);
+    avisar(r.ok ? "sucesso" : "erro", r.ok ? "Lançamento duplicado como pendente, com a data de hoje." : r.erro);
+  }
+
+  function repetir(e: React.FormEvent) {
+    e.preventDefault();
+    if (!repetindo) return;
+    const r = acoes.repetirLancamento(repetindo.id, { n: Number(repN), intervalo: Number(repIntervalo), unidade: repUnidade });
+    if (!r.ok) return setRepErro(r.erro);
+    avisar("sucesso", `${r.criados.length} lançamento(s) criado(s).`);
+    setRepetindo(null);
+  }
+
+  const nomeOrigem = (d: Despesa): string => {
+    const cid = cartaoIdDe(d);
+    if (cid !== null) {
+      const c = ds.cartoes.find((x) => x.id === cid);
+      return c ? `Cartão ${c.nome}` : "Cartão";
+    }
+    const conta = ds.contas.find((c) => c.conta === d.conta);
+    return conta ? `${conta.banco} · ${conta.conta}` : d.conta;
+  };
+
+  const picDe = (d: Despesa): string =>
+    ds.categorias.find((c) => c.nome.trim().toLowerCase() === d.categoria.trim().toLowerCase())?.pic || d.pic;
+
+  function alternar(d: Despesa) {
+    const r = acoes.alternarPago(d.id);
+    if (!r.ok) avisar("erro", r.erro);
+  }
+
+  /** Natureza bloqueada: a regra pura devolve a mensagem; senão pede confirmação. */
+  function pedirExclusao(d: Despesa) {
+    if (d.natureza === "PAGAMENTO_FATURA" || d.natureza === "APORTE_META" || d.natureza === "RESGATE_META") {
+      const r = acoes.removerLancamento(d.id);
+      if (!r.ok) avisar("erro", r.erro);
+      return;
+    }
+    setExcluindo(d);
+  }
+
+  function excluir(grupo: boolean) {
+    if (!excluindo) return;
+    const r = acoes.removerLancamento(excluindo.id, { grupoParcelas: grupo });
+    if (r.ok) avisar("sucesso", r.removidos > 1 ? `${r.removidos} lançamentos excluídos.` : "Lançamento excluído.");
+    else avisar("erro", r.erro);
+    setExcluindo(null);
+  }
+
+  const ehParcela = (d: Despesa) => ehGrupoParcelas(d);
+
+  return (
+    <>
+      <ul className="divide-y divide-line">
+        {itens.map((d) => {
+          const atrasada = estaAtrasada(d, agora);
+          const entrada = d.tipo === "CREDITO";
+          const rotuloNat = ROTULO_NATUREZA[d.natureza];
+          return (
+            <li key={d.id} className="flex items-center gap-3 py-3">
+              <PicBadge pic={picDe(d)} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{d.descricao}</p>
+                <p className="truncate text-xs text-muted">
+                  {formatData(d.data)} · {d.categoria}
+                  {!semOrigem && ` · ${nomeOrigem(d)}`}
+                  {rotuloAutor(d.autor, temMembros) && ` · ${rotuloAutor(d.autor, temMembros)}`}
+                  {d.moedaOriginal !== "BRL" && ` · ${d.moedaOriginal} ${d.valorOriginal.toFixed(2).replace(".", ",")} @ ${String(d.cotacaoNaData).replace(".", ",")}`}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {rotuloNat && <Badge tom="primary">{rotuloNat}</Badge>}
+                  {d.conciliadoEm != null && <Badge tom="pos">✓ conciliado</Badge>}
+                  {cartaoIdDe(d) !== null && <Badge>Fatura</Badge>}
+                  {cartaoDeDebito(d) !== null && <Badge>Débito no cartão</Badge>}
+                  {!d.pago && <Badge tom={atrasada ? "neg" : "warn"}>{atrasada ? "Atrasada" : "Pendente"}</Badge>}
+                  {ds.acertos.some((a) => a.despesaId === d.id && a.grupoRateio) && <Badge tom="primary">Dividido</Badge>}
+                  {(d.tags ?? []).map((t) => (
+                    chaveTag(t) === "pix" ? (
+                      <span key={t} title="Lançamento via Pix" aria-label="Lançamento via Pix">
+                        <Badge tom="primary">PIX</Badge>
+                      </span>
+                    ) : (
+                      <Badge key={t}>#{t}</Badge>
+                    )
+                  ))}
+                </div>
+              </div>
+              <Money valor={entrada ? d.valor : -d.valor} tom="auto" className="text-sm font-semibold" />
+              <div className="flex shrink-0 items-center">
+                {podeEditar && ALTERNAVEL.has(d.natureza) && (
+                  <IconButton rotulo={d.pago ? "Marcar como pendente" : "Marcar como pago"} aria-pressed={d.pago} onClick={() => alternar(d)}>
+                    {d.pago ? <Check size={18} className="text-pos" aria-hidden /> : <Circle size={18} aria-hidden />}
+                  </IconButton>
+                )}
+                {podeEditar && d.natureza === "NORMAL" && (
+                  <>
+                    {d.conciliadoEm != null && (
+                      <IconButton rotulo={`Desfazer conciliação de ${d.descricao}`} onClick={() => desconciliar(d)}>
+                        <Unlink size={16} aria-hidden />
+                      </IconButton>
+                    )}
+                    {!d.pago && d.tipo === "DEBITO" && cartaoIdDe(d) === null && (
+                      <IconButton rotulo={`Antecipar pagamento de ${d.descricao}`} onClick={() => setAntecipando(d)}>
+                        <FastForward size={16} aria-hidden />
+                      </IconButton>
+                    )}
+                    <IconButton rotulo={`Duplicar ${d.descricao}`} onClick={() => duplicar(d)}>
+                      <Copy size={16} aria-hidden />
+                    </IconButton>
+                    {d.tipo === "DEBITO" && (
+                      <IconButton rotulo={`Dividir ${d.descricao}`} onClick={() => setDividindo(d)}>
+                        <Split size={16} aria-hidden />
+                      </IconButton>
+                    )}
+                    <IconButton rotulo={`Repetir ${d.descricao}`} onClick={() => { setRepErro(null); setRepetindo(d); }}>
+                      <Repeat size={16} aria-hidden />
+                    </IconButton>
+                  </>
+                )}
+                {(d.anexos?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    aria-label={`Ver ${normalizarAnexos(d.anexos).length} anexo(s) de ${d.descricao}`}
+                    title="Anexos"
+                    onClick={() => setVendoAnexos(d)}
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-0.5 rounded-lg px-2 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                  >
+                    <Paperclip size={16} aria-hidden />
+                    {normalizarAnexos(d.anexos).length}
+                  </button>
+                )}
+                <IconButton rotulo={`Comprovante de ${d.descricao}`} onClick={() => setComprovante(d)}>
+                  <Receipt size={16} aria-hidden />
+                </IconButton>
+                {podeEditar && EDITAVEL.has(d.natureza) && (
+                  <IconButton rotulo={`Editar ${d.descricao}`} onClick={() => setEditando(d)}>
+                    <Pencil size={16} aria-hidden />
+                  </IconButton>
+                )}
+                {podeEditar && (
+                  <IconButton rotulo={`Excluir ${d.descricao}`} onClick={() => pedirExclusao(d)}>
+                    <Trash2 size={16} aria-hidden />
+                  </IconButton>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <Modal aberto={repetindo !== null} onFechar={() => setRepetindo(null)} titulo={`Repetir: ${repetindo?.descricao ?? ""}`}>
+        <form onSubmit={repetir} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-3 gap-3">
+            <Input rotulo="Repetições" type="number" min={1} max={120} value={repN} onChange={(e) => setRepN(e.target.value)} />
+            <Input rotulo="A cada" type="number" min={1} value={repIntervalo} onChange={(e) => setRepIntervalo(e.target.value)} />
+            <Select rotulo="Unidade" value={repUnidade} onChange={(e) => setRepUnidade(e.target.value as UnidadeRepeticao)}>
+              <option value="DIAS">dia(s)</option>
+              <option value="SEMANAS">semana(s)</option>
+              <option value="MESES">mês(es)</option>
+            </Select>
+          </div>
+          <p className="text-xs text-muted">Cria cópias pendentes a partir da data do lançamento. Compras de cartão consomem limite.</p>
+          {repErro && <p role="alert" className="text-sm text-neg">{repErro}</p>}
+          <RodapeForm onCancelar={() => setRepetindo(null)} rotuloEnviar="Repetir" />
+        </form>
+      </Modal>
+      <DividirModal despesa={dividindo} onFechar={() => setDividindo(null)} />
+      <ComprovanteModal despesa={comprovante} onFechar={() => setComprovante(null)} />
+      <AnexosModal despesa={vendoAnexos} onFechar={() => setVendoAnexos(null)} />
+      <AntecipacaoModal aberto={antecipando !== null} onFechar={() => setAntecipando(null)} base={antecipando} />
+      <LancamentoModal aberto={editando !== null} onFechar={() => setEditando(null)} editar={editando} />
+      <Confirmar
+        aberto={excluindo !== null}
+        titulo="Excluir lançamento"
+        perigo
+        rotuloConfirmar="Excluir"
+        mensagem={
+          excluindo?.natureza === "TRANSFERENCIA"
+            ? "Esta transferência será excluída junto com o lançamento par na outra conta."
+            : `Excluir "${excluindo?.descricao}"? Os saldos e limites serão recalculados.`
+        }
+        onConfirmar={() => excluir(false)}
+        onCancelar={() => setExcluindo(null)}
+      >
+        {excluindo && ehParcela(excluindo) && (
+          <button type="button" onClick={() => excluir(true)} className="mt-3 text-sm font-medium text-neg underline">
+            Excluir todas as parcelas deste parcelamento
+          </button>
+        )}
+      </Confirmar>
+    </>
+  );
+}

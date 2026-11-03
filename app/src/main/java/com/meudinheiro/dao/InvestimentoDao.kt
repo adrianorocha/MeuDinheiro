@@ -36,4 +36,7 @@ interface InvestimentoDao {
 
     @Query("SELECT * FROM investimentos")
     suspend fun obterTodasStatic(): List<Investimento>
+
+    @Query("DELETE FROM investimentos WHERE id IN (:ids)")
+    suspend fun excluirPorIds(ids: List<Int>)
 }

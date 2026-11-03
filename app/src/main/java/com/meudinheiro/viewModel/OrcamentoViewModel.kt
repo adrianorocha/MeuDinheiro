@@ -2,8 +2,10 @@ package com.meudinheiro.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meudinheiro.data.EscopoOrcamento
 import com.meudinheiro.data.OrcamentoProgresso
-import com.meudinheiro.data.TipoDespesa
+import com.meudinheiro.data.Pessoa
+import com.meudinheiro.domain.Financas
 import com.meudinheiro.repository.MainRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,48 +19,45 @@ import java.util.Calendar
 
 class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
 
-    // 1. Pegamos o mês atual para filtrar as despesas do orçamento
-    private val calendar = Calendar.getInstance()
-    private val mesAtual = calendar.get(Calendar.MONTH) // 0 a 11
-    private val anoAtual = calendar.get(Calendar.YEAR)
-
-    // 2. Fluxo de Orçamentos (Vem do Banco)
     private val orcamentosFlow = repository.obterOrcamentosFlow()
 
-    // 3. Fluxo de Despesas (Vem do Banco e filtramos o mês atual aqui)
-    private val despesasDoMesFlow = repository.todasDespesasFlow
-        .map { lista ->
-            lista.filter { despesa ->
-                val calDespesa = Calendar.getInstance()
-                calDespesa.time = despesa.data
+    /**
+     * R13 — gasto do mês corrente por categoria (despesas NORMAIS, inclusive compras no cartão, menos
+     * estornos). O mês é resolvido a cada emissão, então a tela vira sozinha na virada do mês.
+     */
+    val pessoas: StateFlow<List<Pessoa>> = repository.obterPessoasFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-                calDespesa.get(Calendar.MONTH) == mesAtual &&
-                        calDespesa.get(Calendar.YEAR) == anoAtual &&
-                        despesa.tipo == TipoDespesa.DEBITO
-            }
-        }
-
-    // 4. COMBINE: Cruza os dois fluxos
     val orcamentosComProgresso: StateFlow<List<OrcamentoProgresso>> = combine(
         orcamentosFlow,
-        despesasDoMesFlow
-    ) { listaOrcamentos, listaDespesas ->
+        repository.todasDespesasFlow,
+        repository.obterAcertosFlow(),
+        repository.obterPessoasFlow()
+    ) { listaOrcamentos, despesas, acertos, listaPessoas ->
+        val agora = System.currentTimeMillis()
+        val mes = Financas.mesDe(agora)
+        val ano = Financas.anoDe(agora)
+        val inicio = Financas.inicioDoMes(mes, ano)
+        val fim = Financas.fimDoMes(mes, ano)
 
         listaOrcamentos.map { orcamento ->
-            // Para cada orçamento, somamos as despesas daquela categoria
-            val gastoTotal = listaDespesas
-                .filter { it.categoria == orcamento.categoria }
-                .sumOf { it.valor }
-
-            val porcentagem = if (orcamento.valorLimite > 0) {
-                (gastoTotal / orcamento.valorLimite).toFloat()
-            } else 0f
-
+            val (escopo, pessoaId) = EscopoOrcamento.normalizar(orcamento.escopo, orcamento.pessoaId)
+            val p = Financas.progressoOrcamento(
+                orcamento.categoria, orcamento.valorLimite, despesas, inicio, fim, escopo, pessoaId, acertos
+            )
             OrcamentoProgresso(
                 categoria = orcamento.categoria,
-                limite = orcamento.valorLimite,
-                gastoAtual = gastoTotal,
-                porcentagem = porcentagem
+                limite = p.limite,
+                gastoAtual = p.gasto,
+                porcentagem = p.percentual.toFloat(),
+                id = orcamento.id,
+                escopo = escopo,
+                pessoaId = pessoaId,
+                rotuloEscopo = when (escopo) {
+                    null -> null
+                    EscopoOrcamento.EU -> "Só eu"
+                    else -> "Só " + (listaPessoas.firstOrNull { it.id == pessoaId }?.nome ?: "pessoa removida")
+                }
             )
         }
     }.stateIn(
@@ -67,17 +66,17 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
         initialValue = emptyList()
     )
 
-    fun salvarOrcamento(categoria: String, valor: Double) {
+    fun salvarOrcamento(categoria: String, valor: Double, escopo: String? = null, pessoaId: Int? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             // Chama a função do repositório para salvar no banco de dados (Room)
-            repository.salvarOrcamento(categoria, valor)
+            repository.salvarOrcamento(categoria, valor, escopo, pessoaId)
         }
     }
 
-    fun excluirOrcamento(categoria: String) {
+    fun excluirOrcamento(categoria: String, escopo: String? = null, pessoaId: Int? = null) {
         viewModelScope.launch {
             try {
-                repository.excluirOrcamento(categoria)
+                repository.excluirOrcamento(categoria, escopo, pessoaId)
             } catch (e: Exception) {
                 e.printStackTrace()
                 // Se quiser, pode adicionar um Log aqui caso falhe
@@ -85,10 +84,10 @@ class OrcamentoViewModel(private val repository: MainRepository) : ViewModel() {
         }
     }
 
-    fun atualizarOrcamento(categoria: String, novoValor: Double) {
+    fun atualizarOrcamento(categoria: String, novoValor: Double, escopo: String? = null, pessoaId: Int? = null) {
         viewModelScope.launch {
             try {
-                repository.atualizarOrcamento(categoria, novoValor)
+                repository.atualizarOrcamento(categoria, novoValor, escopo, pessoaId)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
