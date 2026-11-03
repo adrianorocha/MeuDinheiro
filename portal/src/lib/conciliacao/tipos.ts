@@ -1,4 +1,4 @@
-import type { Despesa } from "../finance/types";
+import type { Cartao, Despesa } from "../finance/types";
 
 /** R35 - transação lida do extrato (valor com sinal: entrada +, saída −). */
 export interface TransacaoBanco {
@@ -8,6 +8,8 @@ export interface TransacaoBanco {
   valor: number;
   descricao: string;
   saldo?: number;
+  /** R101 - final (4 dígitos) do cartão usado, quando o arquivo informa (coluna própria ou texto da linha) */
+  finalCartao?: string;
 }
 
 export interface SaldoArquivo {
@@ -62,6 +64,8 @@ export interface OpcoesMatching {
   toleranciaPct?: number;
   /** tolerância mínima em R$ (padrão 1,00) */
   toleranciaMin?: number;
+  /** R101 - cartões do grupo do destino: o final da linha desempata a favor do lançamento do cartão certo */
+  cartoes?: readonly Pick<Cartao, "id" | "finalCartao">[];
 }
 
 export interface ResultadoMatching {

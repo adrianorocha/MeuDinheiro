@@ -268,13 +268,17 @@ export function saldoCentavos(ds: Dataset, contas?: readonly string[] | null): n
   return total;
 }
 
-/** Gasto de hoje (NORMAL, débito em conta ou compra no cartão, líquido de estornos de cartão). */
+/**
+ * Gasto de hoje (NORMAL, débito em conta ou compra no cartão, líquido de estornos de cartão). Ocorrência de conta fixa
+ * (`grupoId` `fixa:*`) fica de fora: já estava prevista nos eventos e saiu do `disponivel`, então não é gasto livre do dia.
+ */
 export function gastosDeHoje(ds: Dataset, agora: number, contas?: readonly string[] | null): GastoHoje[] {
   const hoje = serialDeMs(agora);
   const filtro = contas ? new Set(contas) : null;
   const out: GastoHoje[] = [];
   for (const d of ds.despesas) {
     if (d.natureza !== "NORMAL" || serialDeMs(d.data) !== hoje) continue;
+    if (d.grupoId?.startsWith("fixa:")) continue;
     const cid = cartaoIdDe(d);
     if (cid === null) {
       if (d.tipo !== "DEBITO") continue;

@@ -195,7 +195,7 @@ export interface Assinatura {
   totalAnual: number;
 }
 
-function chaveRecorrente(descricao: string): string {
+export function chaveRecorrente(descricao: string): string {
   return limparDescricao(descricao.replace(/\(\s*\d+\s*\/\s*\d+\s*\)/g, " "));
 }
 

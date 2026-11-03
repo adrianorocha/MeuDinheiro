@@ -70,7 +70,9 @@ object RelatorioPessoas {
         val quitadoAPagar: Long,
         val nAcertos: Int,
         /** vazio quando `incluirDetalhes` é falso */
-        val linhas: List<Linha>
+        val linhas: List<Linha>,
+        /** R96 — composição do gasto (A_RECEBER filtrado) por categoria; vazia = sem gasto, sem gráfico. */
+        val composicao: ComposicaoGasto.Composicao = ComposicaoGasto.VAZIA
     )
 
     data class Resumo(
@@ -210,7 +212,8 @@ object RelatorioPessoas {
                 iniciais = iniciaisDoNome(p.nome), corIndice = corIndiceDaPessoa(p.nome),
                 aReceber = aReceber, aPagar = aPagar, liquido = liquido, sentido = sentido, saldoTexto = texto,
                 quitadoAReceber = soma(Rateios.A_RECEBER, true), quitadoAPagar = soma(Rateios.A_PAGAR, true),
-                nAcertos = meus.size, linhas = if (op.incluirDetalhes) linhas else emptyList()
+                nAcertos = meus.size, linhas = if (op.incluirDetalhes) linhas else emptyList(),
+                composicao = ComposicaoGasto.calcular(meus, porDespesa)
             )
         }
 

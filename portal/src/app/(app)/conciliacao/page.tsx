@@ -11,7 +11,7 @@ import { Revisao } from "@/components/conciliacao/Revisao";
 import { Button } from "@/components/ui/Button";
 import { Segmentado } from "@/components/ui/Field";
 import { Card, ErroBox, PageHeader } from "@/components/ui/Misc";
-import { casar, janelaPadrao, lancamentosDoDestino } from "@/lib/conciliacao/matching";
+import { casar, cartoesDoDestino, janelaPadrao, lancamentosDoDestino } from "@/lib/conciliacao/matching";
 import { gerarOfxExemplo } from "@/lib/conciliacao/exemplo";
 import { gravarHashes, lerHashes, registrarHash } from "@/lib/conciliacao/importacao-arquivos";
 import { useUltimoLote } from "@/lib/conciliacao/lote";
@@ -59,7 +59,7 @@ export default function ConciliacaoPage() {
   const [relatorio, setRelatorio] = useState<{ csv: string; nome: string; resumo: string } | null>(null);
 
   const resultado = useMemo(
-    () => (extrato && destino ? casar(extrato.transacoes, lancamentosDoDestino(ds, destino), { janelaDias: janela, toleranciaPct: tolerancia / 100 }) : null),
+    () => (extrato && destino ? casar(extrato.transacoes, lancamentosDoDestino(ds, destino), { janelaDias: janela, toleranciaPct: tolerancia / 100, cartoes: cartoesDoDestino(ds, destino) }) : null),
     [extrato, destino, ds, janela, tolerancia],
   );
 

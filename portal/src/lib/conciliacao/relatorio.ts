@@ -1,5 +1,6 @@
 import { fromCents, toCents } from "../finance/money";
 import type { Dataset } from "../finance/types";
+import { conferirFatura, type ConferenciaFatura } from "./fatura-total";
 import { diferencaSaldo, type DiferencaSaldo } from "./saldo";
 import { lancamentosDoDestino } from "./matching";
 import type { ArquivoExtrato, ClasseMatch, Destino, ResultadoMatching } from "./tipos";
@@ -11,6 +12,8 @@ export interface ResumoConciliacao {
   appEntradas: number;
   appSaidas: number;
   saldo: DiferencaSaldo | null;
+  /** R102 - cartão: total da fatura do extrato × soma dos lançamentos do app (null para conta) */
+  fatura: ConferenciaFatura | null;
 }
 
 /** R39 - resumo: contagens por classe, entradas/saídas do extrato × do app no período e diferença de saldo. */
@@ -46,7 +49,8 @@ export function resumoConciliacao(
     extratoSaidas: fromCents(eOut),
     appEntradas: fromCents(aIn),
     appSaidas: fromCents(aOut),
-    saldo: arquivo.saldoFinal ? diferencaSaldo(ds, destino, arquivo.saldoFinal) : null,
+    saldo: arquivo.saldoFinal ? diferencaSaldo(ds, destino, arquivo.saldoFinal, resultado.itens.map((i) => i.transacao)) : null,
+    fatura: conferirFatura(ds, destino, resultado.itens.map((i) => i.transacao)),
   };
 }
 

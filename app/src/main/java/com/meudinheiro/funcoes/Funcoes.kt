@@ -72,6 +72,12 @@ class UserPreferences(private val context: Context) {
         private val KEY_ALERTAS_ORCAMENTO = stringSetPreferencesKey("alertas_orcamento")
         private val KEY_PAINEL_503020 = stringPreferencesKey("painel_503020_config") // R54
         private val KEY_IR_CONFIG = stringPreferencesKey("ir_config") // R61
+        // R98 — índices econômicos editados e insights dispensados: SÓ locais (não sincronizam, não vão ao backup/Firestore).
+        private val KEY_INDICES_ECON = stringPreferencesKey("indices_economicos_r98")
+        private val KEY_INSIGHTS_DISPENSADOS = stringPreferencesKey("insights_dispensados_r98")
+        // R100 — cache das consultas ao Banco Central (JSON com `atualizadoEm`): SÓ local, fora do backup/Room/Firestore.
+        private val KEY_BCB_INDICES = stringPreferencesKey("bcb_indices_cache_r100")
+        private val KEY_BCB_CAMBIO = stringPreferencesKey("bcb_cambio_cache_r100")
         private val KEY_LIMITE_DIARIO_ATE_RECEITA = booleanPreferencesKey("limite_diario_ate_receita")
         private val KEY_LIMITE_DIARIO_AVISO = booleanPreferencesKey("limite_diario_aviso")
         // R65 — push (FCM): interruptor geral (opt-in, padrão desligado) e preferências por tipo
@@ -159,6 +165,33 @@ class UserPreferences(private val context: Context) {
     suspend fun salvarIrConfig(texto: String, carimbar: Boolean = true) {
         context.dataStore.edit { it[KEY_IR_CONFIG] = texto }
         if (carimbar) carimbarConfiguracao()
+    }
+
+    // ---- R98: índices econômicos (texto de `IndicesEconomicos.serializar`, só o que difere da semente) e insights dispensados.
+    // Locais de propósito: sem carimbo de sincronização, fora do backup e do Firestore.
+    val indicesEconomicosFlow: Flow<String> = context.dataStore.data.map { it[KEY_INDICES_ECON].orEmpty() }
+
+    suspend fun salvarIndicesEconomicos(texto: String) {
+        context.dataStore.edit { if (texto.isEmpty()) it.remove(KEY_INDICES_ECON) else it[KEY_INDICES_ECON] = texto }
+    }
+
+    // ---- R100: cache do Banco Central (índices SGS e câmbio PTAX). Os valores do BCB ficam só aqui; a base editável fica em KEY_INDICES_ECON.
+    val bcbIndicesCacheFlow: Flow<String> = context.dataStore.data.map { it[KEY_BCB_INDICES].orEmpty() }
+
+    suspend fun salvarBcbIndicesCache(texto: String) {
+        context.dataStore.edit { if (texto.isEmpty()) it.remove(KEY_BCB_INDICES) else it[KEY_BCB_INDICES] = texto }
+    }
+
+    val bcbCambioCacheFlow: Flow<String> = context.dataStore.data.map { it[KEY_BCB_CAMBIO].orEmpty() }
+
+    suspend fun salvarBcbCambioCache(texto: String) {
+        context.dataStore.edit { if (texto.isEmpty()) it.remove(KEY_BCB_CAMBIO) else it[KEY_BCB_CAMBIO] = texto }
+    }
+
+    val insightsDispensadosFlow: Flow<String> = context.dataStore.data.map { it[KEY_INSIGHTS_DISPENSADOS].orEmpty() }
+
+    suspend fun salvarInsightsDispensados(texto: String) {
+        context.dataStore.edit { if (texto.isEmpty()) it.remove(KEY_INSIGHTS_DISPENSADOS) else it[KEY_INSIGHTS_DISPENSADOS] = texto }
     }
 
     /** R57 — registra a alteração local (nunca impede o salvamento da preferência em caso de erro no banco). */

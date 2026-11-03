@@ -49,10 +49,11 @@ class ProjecaoFinanceiraTest {
 
     private fun desp(
         valor: Double, data: Long, tipo: TipoDespesa = TipoDespesa.DEBITO, pago: Boolean = true, cartaoId: Int? = null,
-        natureza: String = Natureza.NORMAL, descricao: String = "Item", conta: String = "111", id: Long = 0
+        natureza: String = Natureza.NORMAL, descricao: String = "Item", conta: String = "111", id: Long = 0,
+        grupoId: String? = null
     ) = Despesa(
         id = id, descricao = descricao, valor = valor, data = Date(data), categoria = "Geral", conta = conta, pic = "",
-        tipo = tipo, mes = 1, ano = 2025, cartaoId = cartaoId, pago = pago, natureza = natureza
+        tipo = tipo, mes = 1, ano = 2025, cartaoId = cartaoId, pago = pago, natureza = natureza, grupoId = grupoId
     )
 
     private fun cartao(id: Int = 10, fech: Int = 25, venc: Int = 5, nome: String = "Nubank", tipo: String = "CRÉDITO") = Cartao(
@@ -348,6 +349,17 @@ class ProjecaoFinanceiraTest {
         val ate = limiteDiarioDosDados(contas, cartoes, despesas, fixas, ms(2025, 3, 10), ateProximaReceita = true)
         assertEquals(S(2025, 3, 14), ate.fimPeriodo)
         assertEquals(100000L, ate.disponivelCentavos)
+    }
+
+    @Test fun `ocorrencia de conta fixa lancada hoje nao conta como gasto livre do dia`() {
+        val despesas = listOf(
+            desp(3000.0, ms(2025, 3, 1), tipo = TipoDespesa.CREDITO, pago = true),
+            desp(450.0, ms(2025, 3, 10), descricao = "Aluguel", grupoId = "fixa:1:2025-03"),
+            desp(30.0, ms(2025, 3, 10), descricao = "Lanche")
+        )
+        val r = limiteDiarioDosDados(contas, emptyList(), despesas, emptyList(), ms(2025, 3, 10))
+        assertEquals(3000L, r.gastoHojeCentavos)
+        assertTrue(r.restanteHojeCentavos > 0)
     }
 
     @Test fun `calendario sobre os dados - fatura em abril e saldo projetado`() {

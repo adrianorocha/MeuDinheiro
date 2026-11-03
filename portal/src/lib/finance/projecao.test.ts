@@ -378,6 +378,20 @@ describe("limite diário e calendário sobre o dataset", () => {
     expect(aoReceber.disponivelCentavos).toBe(100000);
   });
 
+  it("ocorrência de conta fixa lançada hoje não conta como gasto livre do dia; compra comum conta", () => {
+    const ds = dataset({
+      contas: [conta({ id: 1, conta: "111" })],
+      despesas: [
+        desp({ tipo: "CREDITO", valor: 3000, pago: true, data: dt(2025, 3, 1) }),
+        desp({ valor: 450, pago: true, data: dt(2025, 3, 10), descricao: "Aluguel", grupoId: "fixa:1:2025-03" }),
+        desp({ valor: 30, pago: true, data: dt(2025, 3, 10), descricao: "Lanche" }),
+      ],
+    });
+    const r = limiteDiarioDoDataset(ds, dt(2025, 3, 10));
+    expect(r.gastoHojeCentavos).toBe(3000);
+    expect(r.restanteHojeCentavos).toBeGreaterThan(0);
+  });
+
   it("calendário do dataset: fatura em abril e saldo projetado", () => {
     const ds = dataset({
       contas: [conta({ id: 1, conta: "111" })],

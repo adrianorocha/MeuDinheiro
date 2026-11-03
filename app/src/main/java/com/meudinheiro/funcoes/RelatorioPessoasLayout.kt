@@ -1,5 +1,6 @@
 package com.meudinheiro.funcoes
 
+import com.meudinheiro.domain.ComposicaoGasto
 import com.meudinheiro.domain.FormatoCentavos
 import com.meudinheiro.domain.Rateios
 import com.meudinheiro.domain.RelatorioPessoas
@@ -33,6 +34,11 @@ object LayoutPessoas {
         abstract val h: Float
         data class Titulo(val texto: String, override val h: Float = 64f) : Bloco()
         data class CartaoPessoa(val pessoa: RelatorioPessoas.PessoaBloco, override val h: Float = 156f) : Bloco()
+        /** R96 — mini gráfico de composição do gasto da pessoa: título, barra empilhada e legenda em linhas já quebradas. */
+        data class Composicao(
+            val composicao: ComposicaoGasto.Composicao, val titulo: String, val legenda: List<List<ComposicaoGasto.Fatia>>,
+            val indices: Map<ComposicaoGasto.Fatia, Int>, val rotulos: Map<ComposicaoGasto.Fatia, String>, override val h: Float
+        ) : Bloco()
         data class Cont(val nome: String, val iniciais: String, val corIndice: Int, override val h: Float = H_PESSOA_CONT) : Bloco()
         data class Linha(
             val linha: RelatorioPessoas.Linha, val desc: List<String>, val origem: List<String>, val rateio: List<String>,
@@ -83,15 +89,44 @@ object LayoutPessoas {
             return Bloco.Linha(l, desc, origem, rateio, mostrarPessoa, p?.corIndice ?: 0, p?.iniciais ?: "?", maxOf(texto + 30f, 104f))
         }
 
+        fun composicaoBloco(c: ComposicaoGasto.Composicao): Bloco.Composicao {
+            val maxItem = CW - 40f
+            val rotulos = HashMap<ComposicaoGasto.Fatia, String>()
+            val larguras = HashMap<ComposicaoGasto.Fatia, Float>()
+            for (f in c.visiveis) {
+                var t = ComposicaoGasto.rotulo(f)
+                val sufixo = " ${f.percentual}%"
+                if (m.largura(t, 500, 18f) > maxItem) {
+                    var nome = f.categoria
+                    while (nome.length > 1 && m.largura("$nome...$sufixo", 500, 18f) > maxItem) nome = nome.dropLast(1)
+                    t = "$nome...$sufixo"
+                }
+                rotulos[f] = t
+                larguras[f] = 26f + m.largura(t, 500, 18f)
+            }
+            val linhas = ArrayList<List<ComposicaoGasto.Fatia>>()
+            var atual = ArrayList<ComposicaoGasto.Fatia>()
+            var x = 0f
+            for (f in c.visiveis) {
+                val w = larguras.getValue(f)
+                if (atual.isNotEmpty() && x + w > CW) { linhas += atual; atual = ArrayList(); x = 0f }
+                atual += f; x += w + 28f
+            }
+            if (atual.isNotEmpty()) linhas += atual
+            val titulo = "Composição do gasto · ${FormatoCentavos.brl(c.total)}"
+            return Bloco.Composicao(c, titulo, linhas, c.visiveis.withIndex().associate { it.value to it.index }, rotulos, 12f + 24f + 14f + 14f + 16f + linhas.size * 28f + 8f)
+        }
+
         val porId = rel.pessoas.associateBy { it.pessoaId }
         if (cronologico) {
             blocos += Bloco.Titulo("Saldo por pessoa")
-            rel.pessoas.forEach { blocos += Bloco.CartaoPessoa(it) }
+            rel.pessoas.forEach { blocos += Bloco.CartaoPessoa(it); if (!it.composicao.vazia) blocos += composicaoBloco(it.composicao) }
             blocos += Bloco.Titulo("Acertos em ordem cronológica")
             rel.cronologico.forEach { blocos += linhaBloco(it, porId[it.pessoaId], true) }
         } else {
             for (p in rel.pessoas) {
                 blocos += Bloco.CartaoPessoa(p)
+                if (!p.composicao.vazia) blocos += composicaoBloco(p.composicao)
                 p.linhas.forEach { blocos += linhaBloco(it, p, false) }
             }
         }
@@ -118,6 +153,8 @@ object LayoutPessoas {
             if (b is Bloco.CartaoPessoa) atual = b.pessoa
             var precisa = b.h
             if (b is Bloco.Titulo || b is Bloco.CartaoPessoa) blocos.getOrNull(i + 1)?.let { precisa += it.h }
+            // cartão + gráfico + primeira linha ficam juntos (o gráfico nunca fica separado da sua pessoa)
+            if (b is Bloco.CartaoPessoa && blocos.getOrNull(i + 1) is Bloco.Composicao) blocos.getOrNull(i + 2)?.let { precisa += it.h }
             if (usado + precisa > capacidade && partes.last().isNotEmpty()) {
                 partes += ArrayList<Bloco>()
                 usado = 0f

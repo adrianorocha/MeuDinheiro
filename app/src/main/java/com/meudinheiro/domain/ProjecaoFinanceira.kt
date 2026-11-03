@@ -234,7 +234,10 @@ object ProjecaoFinanceira {
             .sumOf { it.centavosAssinados }
     }
 
-    /** Gasto de hoje (NORMAL, débito em conta ou compra no cartão, líquido de estornos de cartão). */
+    /**
+     * Gasto de hoje (NORMAL, débito em conta ou compra no cartão, líquido de estornos de cartão). Ocorrência de conta fixa
+     * (`grupoId` `fixa:*`) fica de fora: já estava prevista em [eventosPrevistos] e saiu do `disponivel`, então não é gasto livre do dia.
+     */
     fun gastosDeHoje(
         contas: List<ContaRef>,
         cartoes: List<Cartao>,
@@ -246,6 +249,7 @@ object ProjecaoFinanceira {
         val out = mutableListOf<GastoHoje>()
         for (d in despesas) {
             if (d.natureza != Natureza.NORMAL || serialDeMs(d.dataMs) != hoje) continue
+            if (d.grupoId?.startsWith("fixa:") == true) continue
             val cid = d.cartaoReal()
             if (cid == null) {
                 if (d.tipo != TipoDespesa.DEBITO) continue

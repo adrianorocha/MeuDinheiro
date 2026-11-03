@@ -242,3 +242,64 @@ describe("vencimento da fatura em destaque e lançamentos adiados", () => {
     expect(ac2).toHaveLength(3);
   });
 });
+
+describe("R95 - composição do gasto por pessoa", () => {
+  const ps: Pessoa[] = [{ id: 1, nome: "Ana" }];
+  const cats = ["Mercado", "Lazer", "Transporte", "Saúde", "Casa", "Pets", "Viagem"];
+  const ds = cats.map((c, i) => desp({ id: 500 + i, descricao: c, valor: 100, categoria: c, data: dt(2026, 9, 5) }));
+  const a = (id: number, desp: number | null, valor: number, extra: Partial<Acerto> = {}) =>
+    ac(id, 1, "A_RECEBER", valor, `g${id}`, dt(2026, 9, 6), { despesaId: desp, ...extra });
+  const comp = (acs: Acerto[], o: Partial<OpcoesRelatorioPessoas> = {}, dsp = ds) => montarRelatorioPessoas(ps, acs, dsp, { ...base, ...o }).pessoas[0].composicao;
+
+  it("soma exatamente 100, ordena do maior para o menor e centavos batem com o total", () => {
+    const c = comp([a(1, 500, 10), a(2, 501, 20), a(3, 502, 30)]);
+    expect(c.map((f) => f.categoria)).toEqual(["Transporte", "Lazer", "Mercado"]);
+    expect(c.map((f) => f.percentual)).toEqual([50, 33, 17]);
+    expect(c.reduce((s, f) => s + f.percentual, 0)).toBe(100);
+    expect(c.reduce((s, f) => s + f.centavos, 0)).toBe(6000);
+  });
+
+  it("método do maior resto: 3 fatias iguais somam 100", () => {
+    const c = comp([a(1, 500, 10), a(2, 501, 10), a(3, 502, 10)]);
+    expect(c.map((f) => f.percentual).sort()).toEqual([33, 33, 34]);
+    expect(c.reduce((s, f) => s + f.percentual, 0)).toBe(100);
+  });
+
+  it("mais de 5 categorias: 5 maiores + Outros agregando o resto", () => {
+    const c = comp(cats.map((_, i) => a(i + 1, 500 + i, 70 - i * 10)));
+    expect(c).toHaveLength(6);
+    expect(c.slice(0, 5).map((f) => f.categoria)).toEqual(["Mercado", "Lazer", "Transporte", "Saúde", "Casa"]);
+    expect(c[5]).toMatchObject({ categoria: "Outros", outros: true, centavos: 2000 + 1000 });
+    expect(c.reduce((s, f) => s + f.percentual, 0)).toBe(100);
+    expect(c.reduce((s, f) => s + f.centavos, 0)).toBe([70, 60, 50, 40, 30, 20, 10].reduce((s, v) => s + v * 100, 0));
+  });
+
+  it("avulso, lançamento removido e categoria em branco viram Sem categoria", () => {
+    const dsp = [...ds, desp({ id: 600, categoria: "  ", valor: 5, data: dt(2026, 9, 5) })];
+    const c = comp([a(1, null, 10), a(2, 999, 5), a(3, 600, 5), a(4, 500, 20)], {}, dsp);
+    expect(c.find((f) => f.categoria === "Sem categoria")?.centavos).toBe(2000);
+    expect(c.find((f) => f.categoria === "Mercado")?.centavos).toBe(2000);
+  });
+
+  it("não inclui A_PAGAR e usa só a base filtrada (período, situação, adiados)", () => {
+    const acs = [
+      a(1, 500, 10),
+      ac(2, 1, "A_PAGAR", 50, "Empréstimo", dt(2026, 9, 7), { despesaId: 501 }),
+      a(3, 502, 30, { data: dt(2026, 7, 1) }),
+      a(4, 503, 40, { quitado: true, quitadoEm: dt(2026, 9, 9) }),
+      a(5, 504, 60),
+    ];
+    expect(comp(acs).map((f) => f.categoria).sort()).toEqual(["Casa", "Mercado", "Saúde", "Transporte"].sort());
+    expect(comp(acs, { periodo: periodoPorAtalho("ESTE_MES", agora) }).some((f) => f.categoria === "Transporte")).toBe(false);
+    expect(comp(acs, { situacao: "PENDENTES" }).some((f) => f.categoria === "Saúde")).toBe(false);
+    const adiado = comp(acs, { excluirAcertoIds: [5] });
+    expect(adiado.some((f) => f.categoria === "Casa")).toBe(false);
+    expect(adiado.reduce((s, f) => s + f.centavos, 0)).toBe(1000 + 3000 + 4000);
+  });
+
+  it("só A_PAGAR ou valor zero: composição vazia; uma categoria: 100%", () => {
+    expect(comp([ac(1, 1, "A_PAGAR", 10, "x", dt(2026, 9, 6), { despesaId: 500 })])).toEqual([]);
+    expect(comp([a(1, 500, 0)])).toEqual([]);
+    expect(comp([a(1, 500, 12.34), a(2, 500, 1)])).toEqual([{ categoria: "Mercado", centavos: 1334, percentual: 100 }]);
+  });
+});

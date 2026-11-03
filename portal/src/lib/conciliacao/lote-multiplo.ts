@@ -1,6 +1,7 @@
 import { cartaoIdDe } from "../finance/calc";
 import type { Dataset } from "../finance/types";
-import { casar, janelaPadrao, lancamentosDoDestino } from "./matching";
+import { cartaoDoFinal } from "./final-cartao";
+import { casar, cartoesDoDestino, janelaPadrao, lancamentosDoDestino } from "./matching";
 import { acaoConciliar, aplicarConciliacao, detectarFaturaPaga, montarPlano, type AcaoPlano, type Plano, type PlanoInverso, type ResumoAplicacao } from "./plano";
 import { limparDescricaoBanco } from "./texto-banco";
 import type { ArquivoExtrato, ClasseMatch, Destino, ResultadoMatching } from "./tipos";
@@ -107,7 +108,7 @@ export interface LinhaAtualizacao {
   data: number;
   acao: "conciliar" | "criar";
   /** o que mudou no lançamento existente */
-  mudancas: ("valor" | "data" | "pago")[];
+  mudancas: ("valor" | "data" | "pago" | "cartao")[];
 }
 
 export interface ResultadoArquivo {
@@ -169,6 +170,7 @@ export function casarArquivo(ds: Dataset, arq: Pick<ArquivoParaLote, "extrato" |
   return casar(arq.extrato.transacoes, lancamentosDoDestino(ds, arq.destino), {
     janelaDias: opcoes.janelaDias ?? janelaPadrao(arq.destino),
     toleranciaPct: opcoes.toleranciaPct,
+    cartoes: cartoesDoDestino(ds, arq.destino),
   });
 }
 
@@ -216,6 +218,8 @@ function linhasAtualizacao(ds: Dataset, plano: Plano, arquivo: string): LinhaAtu
       if (a.mescla.valor && Math.round(Math.abs(t.valor) * 100) !== Math.round(d.valor * 100)) mudancas.push("valor");
       if (a.mescla.data && t.data !== d.data) mudancas.push("data");
       if (!d.pago && (plano.faturaPaga ? true : a.mescla.pago && cartaoIdDe(d) === null)) mudancas.push("pago");
+      const doFinal = a.mescla.cartao === false ? null : cartaoDoFinal(t.finalCartao, cartoesDoDestino(ds, plano.destino));
+      if (doFinal && doFinal.id !== cartaoIdDe(d)) mudancas.push("cartao");
     }
     return { arquivo, descricaoBanco: t.descricao, lancamento: d?.descricao ?? "—", valor: t.valor, data: t.data, acao: "conciliar", mudancas };
   });

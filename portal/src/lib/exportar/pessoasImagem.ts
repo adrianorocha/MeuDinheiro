@@ -11,9 +11,9 @@
 import type { LinhaRelatorioPessoas, PessoaRelatorio, RelatorioPessoas } from "../finance/relatorioPessoas";
 import { brlCentavos } from "../finance/centavos";
 import type { ItemRateio } from "../finance/rateios";
-import { dataBR } from "../finance/relatorioPessoas";
+import { dataBR, fatiasVisiveis, rotuloFatia } from "../finance/relatorioPessoas";
 import { quebrarTexto } from "./comprovante";
-import { alvoCanvas, COR, corAvatar, desenharIcone, type NomeIcone } from "./pessoasIcones";
+import { alvoCanvas, COR, corAvatar, corFatia, desenharIcone, quebrarLegenda, type NomeIcone } from "./pessoasIcones";
 
 export const LARGURA_IMG = 1200;
 export const MAX_ALTURA = 6000;
@@ -29,7 +29,7 @@ export type Medidor = Pick<CanvasRenderingContext2D, "measureText" | "font">;
 
 export type Bloco =
   | { tipo: "titulo"; h: number; texto: string; manter: true }
-  | { tipo: "pessoa"; h: number; pessoa: PessoaRelatorio; manter: true }
+  | { tipo: "pessoa"; h: number; pessoa: PessoaRelatorio; manter: true; legenda: number[][] }
   | { tipo: "linha"; h: number; linha: LinhaRelatorioPessoas; desc: string[]; origem: string[]; rateio: string[]; mostrarPessoa: boolean; corPessoa: string; iniciais: string }
   | { tipo: "cont"; h: number; nome: string; iniciais: string; cor: string }
   | { tipo: "rateio"; h: number; item: ItemRateio; l1: string[]; l2: string[] }
@@ -55,7 +55,22 @@ function quebrar(m: Medidor, texto: string, peso: string | number, tam: number, 
   return quebrarTexto(m, texto, max);
 }
 
-const hPessoa = (p: PessoaRelatorio) => 120 + (p.proximoVencimento ? 64 : 0);
+/** R95: legenda do mini gráfico quebrada em linhas pela largura (`legenda` = índices das fatias visíveis por linha). */
+const SW_IMG = 14;
+const GAP_IMG = 28;
+const H_COMP_BASE = 54;
+const H_COMP_LINHA = 28;
+function legendaDe(p: PessoaRelatorio, m: Medidor): number[][] {
+  const fatias = fatiasVisiveis(p.composicao);
+  m.font = fonteImg(500, 17);
+  return quebrarLegenda(fatias.map((f) => SW_IMG + 8 + m.measureText(rotuloFatia(f)).width + GAP_IMG), CW - 8 + GAP_IMG);
+}
+export const hPessoa = (p: PessoaRelatorio, legenda: number[][]) =>
+  120 + (p.proximoVencimento ? 64 : 0) + (p.composicao.length > 0 ? H_COMP_BASE + legenda.length * H_COMP_LINHA : 0);
+const blocoPessoa = (p: PessoaRelatorio, m: Medidor): Bloco => {
+  const legenda = legendaDe(p, m);
+  return { tipo: "pessoa", h: hPessoa(p, legenda), pessoa: p, manter: true, legenda };
+};
 
 export function planejarImagens(rel: RelatorioPessoas, m: Medidor, maxAltura = MAX_ALTURA): PlanoImagens {
   const filtrosLinhas = quebrar(m, rel.filtros.join("   ·   "), 400, 18, CW);
@@ -86,12 +101,12 @@ export function planejarImagens(rel: RelatorioPessoas, m: Medidor, maxAltura = M
   const pessoaPorId = new Map(rel.pessoas.map((p) => [p.pessoaId, p]));
   if (cronologico) {
     blocos.push({ tipo: "titulo", h: 64, texto: "Saldo por pessoa", manter: true });
-    for (const p of rel.pessoas) blocos.push({ tipo: "pessoa", h: hPessoa(p), pessoa: p, manter: true });
+    for (const p of rel.pessoas) blocos.push(blocoPessoa(p, m));
     blocos.push({ tipo: "titulo", h: 64, texto: "Acertos em ordem cronológica", manter: true });
     for (const l of rel.cronologico) blocos.push(linhaBloco(l, pessoaPorId.get(l.pessoaId), true));
   } else {
     for (const p of rel.pessoas) {
-      blocos.push({ tipo: "pessoa", h: hPessoa(p), pessoa: p, manter: true });
+      blocos.push(blocoPessoa(p, m));
       for (const l of p.linhas) blocos.push(linhaBloco(l, p, false));
     }
   }
@@ -194,7 +209,37 @@ function corSaldo(s: PessoaRelatorio["sentido"]) {
   return s === "TE_DEVE" ? COR.verde : s === "VOCE_DEVE" ? COR.laranja : COR.cinza;
 }
 
-function desenharPessoa(ctx: Ctx, p: PessoaRelatorio, y0: number) {
+function desenharComposicao(ctx: Ctx, p: PessoaRelatorio, legenda: number[][], yTopo: number) {
+  const fatias = fatiasVisiveis(p.composicao);
+  if (fatias.length === 0) return;
+  texto(ctx, "Composição do gasto", M, yTopo + 16, 500, 16, COR.cinza);
+  const yb = yTopo + 24;
+  const total = fatias.reduce((s, f) => s + f.centavos, 0);
+  let x = M;
+  fatias.forEach((f, i) => {
+    const w = i === fatias.length - 1 ? M + CW - x : (CW * f.centavos) / total;
+    ctx.fillStyle = corFatia(i, f.outros);
+    ctx.fillRect(x, yb, w, 14);
+    if (i > 0) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(x - 1, yb, 2, 14);
+    }
+    x += w;
+  });
+  legenda.forEach((ix, r) => {
+    const yl = yb + 14 + 10 + r * H_COMP_LINHA;
+    let xl = M;
+    for (const i of ix) {
+      ctx.fillStyle = corFatia(i, fatias[i].outros);
+      ctx.fillRect(xl, yl + 3, SW_IMG, SW_IMG);
+      const rot = rotuloFatia(fatias[i]);
+      texto(ctx, rot, xl + SW_IMG + 8, yl + 17, 500, 17, COR.tinta);
+      xl += SW_IMG + 8 + larg(ctx, rot, 500, 17) + GAP_IMG;
+    }
+  });
+}
+
+function desenharPessoa(ctx: Ctx, p: PessoaRelatorio, legenda: number[][], y0: number) {
   const y = y0 + 20;
   const h = 100;
   const cor = corAvatar(p.corIndice);
@@ -244,6 +289,7 @@ function desenharPessoa(ctx: Ctx, p: PessoaRelatorio, y0: number) {
     texto(ctx, `VENCIMENTO DA FATURA DO CARTÃO: ${dataBR(v.ms)}${v.vencido ? " (vencida)" : ""}`, M + 66, yb + 34, 800, 23, c);
     texto(ctx, `valor ligado à fatura: ${brlCentavos(v.centavos)}`, M + CW - 24, yb + 33, 500, 18, c, "right");
   }
+  desenharComposicao(ctx, p, legenda, y0 + 120 + (v ? 64 : 0) + 4);
 }
 
 function desenharLinha(ctx: Ctx, b: Extract<Bloco, { tipo: "linha" }>, y0: number) {
@@ -298,7 +344,7 @@ function desenharBloco(ctx: Ctx, b: Bloco, y: number) {
       texto(ctx, b.texto, M + 18, y + 54, 700, 26, COR.marcaEscura);
       break;
     case "pessoa":
-      desenharPessoa(ctx, b.pessoa, y);
+      desenharPessoa(ctx, b.pessoa, b.legenda, y);
       break;
     case "cont":
       avatar(ctx, M + 22, y + 30, 16, b.iniciais, b.cor);

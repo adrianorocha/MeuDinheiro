@@ -1,3 +1,4 @@
+import { finalNaDescricao } from "./final-cartao";
 import { atribuirFitids } from "./texto-banco";
 import type { ArquivoExtrato, SaldoArquivo } from "./tipos";
 
@@ -69,7 +70,7 @@ export function parseOfx(texto: string): ArquivoExtrato {
   const re = /<STMTTRN>([\s\S]*?)(?=<\/STMTTRN>|<STMTTRN>|<\/BANKTRANLIST>|<\/CCSTMTRS>|<\/STMTRS>|$)/gi;
   for (let m = re.exec(texto); m !== null; m = re.exec(texto)) blocos.push(m[1]);
 
-  const linhas: { fitid?: string; data: number; valor: number; descricao: string }[] = [];
+  const linhas: { fitid?: string; data: number; valor: number; descricao: string; finalCartao?: string }[] = [];
   for (const b of blocos) {
     const data = dataOfx(campo(b, "DTPOSTED") ?? "");
     const valor = valorOfx(campo(b, "TRNAMT") ?? "");
@@ -77,7 +78,8 @@ export function parseOfx(texto: string): ArquivoExtrato {
       avisos.push("Uma transação sem data ou valor válido foi ignorada.");
       continue;
     }
-    linhas.push({ fitid: campo(b, "FITID"), data, valor, descricao: descricaoOfx(campo(b, "NAME"), campo(b, "MEMO")) });
+    const descricao = descricaoOfx(campo(b, "NAME"), campo(b, "MEMO"));
+    linhas.push({ fitid: campo(b, "FITID"), data, valor, descricao, finalCartao: finalNaDescricao(descricao) });
   }
 
   const ehCartao = /<CREDITCARDMSGSRSV1>|<CCSTMTRS>|<CCACCTFROM>/i.test(texto);

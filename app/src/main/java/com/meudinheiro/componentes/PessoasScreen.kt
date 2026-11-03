@@ -8,7 +8,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -57,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import com.meudinheiro.data.Acerto
 import com.meudinheiro.data.ContaSaldo
 import com.meudinheiro.data.Pessoa
+import com.meudinheiro.domain.ComposicaoGasto
 import com.meudinheiro.domain.Dinheiro
 import com.meudinheiro.domain.FormatoCentavos
 import com.meudinheiro.domain.Rateios
@@ -672,6 +682,10 @@ private fun RelatorioPessoasDialog(pessoas: List<Pessoa>, acertos: List<Acerto>,
                             )
                             linha("Quitado (a receber / a pagar)", "${moeda(r.quitadoAReceber)} / ${moeda(r.quitadoAPagar)}")
                             linha("Acertos / pessoas", "${r.nAcertos} / ${r.nPessoas} (${r.nPessoasComSaldo} com saldo)")
+                            // R96 — mini gráfico por pessoa (só quem teve gasto)
+                            relatorio.pessoas.filter { !it.composicao.vazia }.forEach { p ->
+                                MiniComposicaoGasto(p.nome, p.composicao, moeda(p.composicao.total))
+                            }
                         }
                     }
                 }
@@ -705,4 +719,36 @@ private fun RelatorioPessoasDialog(pessoas: List<Pessoa>, acertos: List<Acerto>,
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !gerando) { Text("Cancelar", color = Color.White.copy(0.7f)) } }
     )
+}
+
+
+/** R96 — barra horizontal empilhada fina + legenda compacta "Categoria 42%"; o percentual vem escrito, não só pela cor. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MiniComposicaoGasto(nome: String, c: ComposicaoGasto.Composicao, totalTexto: String) {
+    val visiveis = c.visiveis
+    val descricao = "$nome, gasto de $totalTexto. " + ComposicaoGasto.descricaoAcessivel(c)
+    Column(
+        Modifier.fillMaxWidth().padding(top = 6.dp).semantics(mergeDescendants = true) { contentDescription = descricao },
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text("$nome · composição do gasto $totalTexto", color = Color.White.copy(0.7f), fontSize = 11.sp)
+        Row(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))) {
+            visiveis.forEachIndexed { i, f ->
+                Box(
+                    Modifier.weight(f.centavos.toFloat().coerceAtLeast(1f)).fillMaxHeight()
+                        .background(Color(android.graphics.Color.parseColor(ComposicaoGasto.corHex(i, f))))
+                )
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            visiveis.forEachIndexed { i, f ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(Color(android.graphics.Color.parseColor(ComposicaoGasto.corHex(i, f))), RoundedCornerShape(2.dp)))
+                    Spacer(Modifier.width(4.dp))
+                    Text(ComposicaoGasto.rotulo(f), color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
 }

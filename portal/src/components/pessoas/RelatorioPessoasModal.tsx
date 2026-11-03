@@ -9,9 +9,14 @@ import { Modal } from "@/components/ui/Modal";
 import { baixarBlob } from "@/lib/download";
 import { brlCentavos } from "@/lib/finance/centavos";
 import { fimDoDia, inicioDoDia } from "@/lib/finance/dates";
+import { corFatia } from "@/lib/exportar/pessoasIcones";
 import {
   MSG_SEM_ACERTOS,
   dataBR,
+  descricaoComposicao,
+  fatiasVisiveis,
+  rotuloFatia,
+  type FatiaComposicao,
   montarRelatorioPessoas,
   nomeArquivoPessoas,
   periodoPorAtalho,
@@ -43,6 +48,29 @@ export function RelatorioPessoasModal({ aberto, onFechar, ...resto }: Props) {
     <Modal aberto={aberto} onFechar={onFechar} titulo="Relatório de pessoas">
       {aberto && <Conteudo onFechar={onFechar} {...resto} />}
     </Modal>
+  );
+}
+
+/** R95 - mini gráfico: barra empilhada fina (role="img" com a descrição) + legenda com o percentual escrito. */
+function MiniComposicao({ nome, composicao }: { nome: string; composicao: FatiaComposicao[] }) {
+  const fatias = fatiasVisiveis(composicao);
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium">{nome}</span>
+      <div role="img" aria-label={`${nome}. ${descricaoComposicao(composicao)}`} className="flex h-1.5 w-full gap-px overflow-hidden rounded-full">
+        {fatias.map((f, i) => (
+          <span key={f.categoria} style={{ width: `${f.percentual}%`, backgroundColor: corFatia(i, f.outros) }} />
+        ))}
+      </div>
+      <ul aria-hidden className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-muted">
+        {fatias.map((f, i) => (
+          <li key={f.categoria} className="inline-flex items-center gap-1">
+            <span className="inline-block size-2 rounded-sm" style={{ backgroundColor: corFatia(i, f.outros) }} />
+            {rotuloFatia(f)}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -248,6 +276,16 @@ function Conteudo({ onFechar, pessoas, acertos, despesas, cartoes, pessoaIdInici
             <dt className="text-muted">Acertos / pessoas</dt>
             <dd className="text-right">{r.nAcertos} / {r.nPessoas} ({r.nPessoasComSaldo} com saldo)</dd>
           </dl>
+        )}
+        {relatorio && !relatorio.vazio && relatorio.pessoas.some((p) => p.composicao.length > 0) && (
+          <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
+            <h4 className="text-xs font-semibold text-muted">Composição do gasto</h4>
+            {relatorio.pessoas
+              .filter((p) => p.composicao.length > 0)
+              .map((p) => (
+                <MiniComposicao key={p.pessoaId} nome={p.nome} composicao={p.composicao} />
+              ))}
+          </div>
         )}
       </section>
 

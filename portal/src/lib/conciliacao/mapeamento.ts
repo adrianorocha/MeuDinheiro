@@ -13,7 +13,7 @@ export function recuperarMapeamento(assinatura: string, colunas: number): Config
   if (!raw) return null;
   try {
     const c = JSON.parse(raw) as Partial<ConfigCsv>;
-    const indices = [c.colData, c.colDescricao, c.colValor, c.colDebito, c.colCredito, c.colSaldo];
+    const indices = [c.colData, c.colDescricao, c.colValor, c.colDebito, c.colCredito, c.colSaldo, c.colCartao];
     const valido =
       typeof c.colData === "number" &&
       typeof c.colDescricao === "number" &&

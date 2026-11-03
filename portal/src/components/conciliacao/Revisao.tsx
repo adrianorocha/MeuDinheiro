@@ -6,7 +6,10 @@ import { Checkbox, Input, Select } from "@/components/ui/Field";
 import { Badge, Card, CardTitulo, EmptyState, ErroBox } from "@/components/ui/Misc";
 import { Modal } from "@/components/ui/Modal";
 import { Money } from "@/components/ui/Money";
-import { diasDoPar, similaridadeDescricao } from "@/lib/conciliacao/matching";
+import { conferirFatura } from "@/lib/conciliacao/fatura-total";
+import { cartaoDoFinal } from "@/lib/conciliacao/final-cartao";
+import { ConferenciaFaturaBox } from "./ConferenciaFaturaBox";
+import { cartoesDoDestino, diasDoPar, similaridadeDescricao } from "@/lib/conciliacao/matching";
 import {
   aplicarConciliacao,
   categoriaSugerida,
@@ -21,7 +24,7 @@ import { detectarParcelaExtrato, limparDescricaoBanco } from "@/lib/conciliacao/
 import type { ClasseMatch, Destino, ItemMatch, ResultadoMatching } from "@/lib/conciliacao/tipos";
 import { toCents } from "@/lib/finance/money";
 import { normalizar } from "@/lib/finance/texto";
-import type { Dataset, Despesa } from "@/lib/finance/types";
+import type { Cartao, Dataset, Despesa } from "@/lib/finance/types";
 import { formatBRL, formatData } from "@/lib/format";
 import { useAgora } from "@/lib/hooks";
 
@@ -57,12 +60,14 @@ function padrao(it: ItemMatch, ds: Dataset, destino: Destino): Escolha {
   return { acao: "ignorar", mescla, categoria, parcelasRestantes: true };
 }
 
-function descreverAcao(e: Escolha, it: ItemMatch, d: Despesa | undefined, destino: Destino, faturaPaga = false): string {
+function descreverAcao(e: Escolha, it: ItemMatch, d: Despesa | undefined, destino: Destino, faturaPaga = false, grupo: readonly Cartao[] = []): string {
   if (e.acao === "ignorar") return it.classe === "DUPLICADO" ? "Nada será feito (já conciliado antes)." : "Nada será feito (ignorado).";
+  const doFinal = destino.tipo === "CARTAO" ? cartaoDoFinal(it.transacao.finalCartao, grupo) : null;
+  const rotuloCartao = doFinal ? `${doFinal.nome} (final ${it.transacao.finalCartao})` : "";
   if (e.acao === "criar") {
     const p = destino.tipo === "CARTAO" && it.transacao.valor < 0 ? detectarParcelaExtrato(it.transacao.descricao, it.transacao.data) : null;
     const resto = p && p.i < p.n && e.parcelasRestantes ? ` Também lançará as parcelas ${p.i + 1}/${p.n} a ${p.n}/${p.n} em aberto (reserva ${formatBRL(Math.abs(it.transacao.valor) * (p.n - p.i))} do limite).` : "";
-    return `Criará um lançamento de ${formatBRL(Math.abs(it.transacao.valor))} em ${formatData(it.transacao.data)}, categoria "${e.categoria}", ${destino.tipo === "CONTA" || faturaPaga ? "já pago" : "pendente na fatura"}.${resto}`;
+    return `Criará um lançamento de ${formatBRL(Math.abs(it.transacao.valor))} em ${formatData(it.transacao.data)}, categoria "${e.categoria}", ${destino.tipo === "CONTA" || faturaPaga ? "já pago" : "pendente na fatura"}${rotuloCartao ? `, no cartão ${rotuloCartao}` : ""}.${resto}`;
   }
   if (!d) return "Escolha um lançamento.";
   const partes = [`Vinculará ao lançamento "${d.descricao}"`];
@@ -71,6 +76,7 @@ function descreverAcao(e: Escolha, it: ItemMatch, d: Despesa | undefined, destin
   if (e.mescla.descricao) partes.push(`descrição → "${limparDescricaoBanco(it.transacao.descricao)}"`);
   if (e.mescla.pago && destino.tipo === "CONTA" && !d.pago) partes.push("marcará como pago");
   if (faturaPaga && destino.tipo === "CARTAO" && !d.pago) partes.push("marcará como pago (fatura paga)");
+  if (doFinal && e.mescla.cartao !== false && (d.cartaoId ?? null) !== doFinal.id) partes.push(`cartão → ${rotuloCartao}`);
   return `${partes[0]}${partes.length > 1 ? ` · ${partes.slice(1).join(" · ")}` : ""}.`;
 }
 
@@ -87,6 +93,7 @@ interface LinhaProps {
 
 function Linha({ it, e, ds, destino, porId, conflito, faturaPaga, onChange }: LinhaProps) {
   const id = useId();
+  const grupoCartoes = useMemo(() => cartoesDoDestino(ds, destino), [ds, destino]);
   const t = it.transacao;
   const d = e.lancamentoId !== undefined ? porId.get(e.lancamentoId) : undefined;
   const candidatos = [it.lancamentoId, ...it.alternativas.map((a) => a.lancamentoId)].filter((x): x is number => x !== undefined);
@@ -181,6 +188,7 @@ function Linha({ it, e, ds, destino, porId, conflito, faturaPaga, onChange }: Li
                 <Checkbox rotulo="Usar data do banco" checked={e.mescla.data} onChange={(ev) => onChange({ mescla: { ...e.mescla, data: ev.target.checked } })} />
                 <Checkbox rotulo="Usar valor do banco" checked={e.mescla.valor} onChange={(ev) => onChange({ mescla: { ...e.mescla, valor: ev.target.checked } })} />
                 <Checkbox rotulo="Usar descrição do banco" checked={e.mescla.descricao} onChange={(ev) => onChange({ mescla: { ...e.mescla, descricao: ev.target.checked } })} />
+                {destino.tipo === "CARTAO" && <Checkbox rotulo="Vincular ao cartão pelo final" checked={e.mescla.cartao !== false} onChange={(ev) => onChange({ mescla: { ...e.mescla, cartao: ev.target.checked } })} />}
                 {destino.tipo === "CONTA" && <Checkbox rotulo="Marcar como pago" checked={e.mescla.pago} onChange={(ev) => onChange({ mescla: { ...e.mescla, pago: ev.target.checked } })} />}
               </div>
             </details>
@@ -188,7 +196,7 @@ function Linha({ it, e, ds, destino, porId, conflito, faturaPaga, onChange }: Li
         </div>
       )}
       <p className={`mt-2 text-xs ${conflito ? "text-neg" : "text-muted"}`} role={conflito ? "alert" : undefined}>
-        {conflito ? "Este lançamento foi escolhido para mais de uma linha do extrato." : descreverAcao(e, it, d, destino, faturaPaga)}
+        {conflito ? "Este lançamento foi escolhido para mais de uma linha do extrato." : descreverAcao(e, it, d, destino, faturaPaga, grupoCartoes)}
       </p>
     </article>
   );
@@ -266,6 +274,9 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
     });
 
   const simulacao = useMemo(() => (previa ? aplicarConciliacao(ds, plano, agora) : null), [previa, ds, plano, agora]);
+  const transacoesArquivo = useMemo(() => resultado.itens.map((i) => i.transacao), [resultado.itens]);
+  const faturaAntes = useMemo(() => conferirFatura(ds, destino, transacoesArquivo), [ds, destino, transacoesArquivo]);
+  const faturaDepois = useMemo(() => (simulacao?.ok ? conferirFatura(simulacao.ds, destino, transacoesArquivo) : null), [simulacao, destino, transacoesArquivo]);
   const alvoAntes = destino.tipo === "CONTA" ? ds.contas.find((c) => c.conta === destino.conta)?.saldo : ds.cartoes.find((c) => c.id === destino.cartaoId)?.limiteDisponivel;
   const alvoDepois = simulacao?.ok ? (destino.tipo === "CONTA" ? simulacao.ds.contas.find((c) => c.conta === destino.conta)?.saldo : simulacao.ds.cartoes.find((c) => c.id === destino.cartaoId)?.limiteDisponivel) : undefined;
 
@@ -303,6 +314,12 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
         ))}
       </div>
       <p className="mt-2 text-xs text-muted">{abaAtual.ajuda}</p>
+
+      {faturaAntes && (
+        <div className="mt-3">
+          <ConferenciaFaturaBox antes={faturaAntes} />
+        </div>
+      )}
 
       {destino.tipo === "CARTAO" && (
         <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3 text-sm">
@@ -399,6 +416,7 @@ export function Revisao({ ds, destino, resultado, onAplicar, onVoltar }: Props) 
               <li>{simulacao.resumo.valoresAlterados} valor(es) alterado(s) para o do banco</li>
               <li>{simulacao.resumo.pagosMarcados} lançamento(s) marcado(s) como pago</li>
             </ul>
+            {faturaAntes && faturaDepois && <ConferenciaFaturaBox antes={faturaAntes} depois={faturaDepois} />}
             {alvoAntes !== undefined && alvoDepois !== undefined && (
               <p>
                 {destino.tipo === "CONTA" ? "Saldo da conta" : "Limite disponível"}: <Money valor={alvoAntes} /> → <Money valor={alvoDepois} className="font-semibold" />

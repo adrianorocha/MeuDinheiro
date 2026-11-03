@@ -79,7 +79,7 @@ export function PainelContadores({ c }: { c: Contadores }) {
   );
 }
 
-const ROTULO_MUDANCA = { valor: "valor", data: "data", pago: "pago" } as const;
+const ROTULO_MUDANCA = { valor: "valor", data: "data", pago: "pago", cartao: "cartão" } as const;
 
 function ListaAtualizacoes({ linhas }: { linhas: LinhaAtualizacao[] }) {
   if (linhas.length === 0) return <p className="text-sm text-muted">Aguardando as primeiras atualizações…</p>;

@@ -2,7 +2,8 @@ import { cartaoIdDe, cartoesDoGrupo } from "../finance/calc";
 import { inicioDoDia } from "../finance/dates";
 import { toCents } from "../finance/money";
 import { jaccard, tokensDescricao } from "../finance/texto";
-import type { Dataset, Despesa } from "../finance/types";
+import type { Cartao, Dataset, Despesa } from "../finance/types";
+import { cartaoDoFinal } from "./final-cartao";
 import { limparDescricaoBanco, normalizarDescricaoBanco } from "./texto-banco";
 import type { Candidato, ClasseMatch, Destino, ItemMatch, OpcoesMatching, ResultadoMatching, TransacaoBanco } from "./tipos";
 
@@ -25,6 +26,13 @@ export function lancamentosDoDestino(ds: Pick<Dataset, "despesas" | "cartoes">, 
     const cid = cartaoIdDe(d);
     return cid !== null && ids.has(cid);
   });
+}
+
+/** R101 - cartões do grupo do destino (vazio para conta): base do vínculo pelo final do cartão. */
+export function cartoesDoDestino(ds: Pick<Dataset, "cartoes">, destino: Destino): Cartao[] {
+  if (destino.tipo !== "CARTAO") return [];
+  const escolhido = ds.cartoes.find((c) => c.id === destino.cartaoId);
+  return escolhido ? cartoesDoGrupo(escolhido, ds.cartoes) : [];
 }
 
 function diasEntre(a: number, b: number): number {
@@ -53,7 +61,12 @@ interface Par {
   tipo: "EXATO" | "DIFERENCA";
   dias: number;
   id: number;
+  /** R101 - ordenação: score + bônus quando o lançamento está no cartão cujo final consta na linha (o score exibido não muda) */
+  rank: number;
 }
+
+/** Bônus de ordenação para o lançamento do cartão indicado pelo final da linha. */
+const BONUS_CARTAO = 0.1;
 
 /**
  * R37 - casamento extrato × lançamentos do destino.
@@ -93,6 +106,7 @@ export function casar(transacoes: readonly TransacaoBanco[], lancamentos: readon
     const arr = porDirecao[cents < 0 ? "DEBITO" : "CREDITO"];
     const diaT = inicioDoDia(t.data);
     const tol = tolerancia(cents, opcoes);
+    const cartaoDaLinha = t.finalCartao && opcoes.cartoes ? (cartaoDoFinal(t.finalCartao, opcoes.cartoes)?.id ?? null) : null;
     for (let k = limite(arr, diaT - janela * DIA_MS); k < arr.length && arr[k].dia <= diaT + janela * DIA_MS; k++) {
       const { d, dia, idx } = arr[k];
       const dif = Math.abs(toCents(d.valor) - alvoAbs);
@@ -104,13 +118,14 @@ export function casar(transacoes: readonly TransacaoBanco[], lancamentos: readon
       const prox = 1 - Math.abs(dias) / (janela + 1);
       const sim = similaridadeDescricao(t.descricao, d.descricao);
       const score = 0.55 * (tipo === "EXATO" ? 1 : 0.6) + 0.3 * prox + 0.15 * sim;
-      const par: Par = { t: ti, l: idx, score, tipo, dias, id: d.id };
+      const rank = score + (cartaoDaLinha !== null && cartaoIdDe(d) === cartaoDaLinha ? BONUS_CARTAO : 0);
+      const par: Par = { t: ti, l: idx, score, tipo, dias, id: d.id, rank };
       pares.push(par);
       porTransacao[ti].push(par);
     }
   });
 
-  const ordem = (a: Par, b: Par) => b.score - a.score || Math.abs(a.dias) - Math.abs(b.dias) || a.id - b.id || a.t - b.t;
+  const ordem = (a: Par, b: Par) => b.rank - a.rank || Math.abs(a.dias) - Math.abs(b.dias) || a.id - b.id || a.t - b.t;
   for (const lista of porTransacao) lista.sort(ordem);
 
   // atribuição um-para-um, determinística (maior score; empate: menor |dias|, menor id)
@@ -131,7 +146,7 @@ export function casar(transacoes: readonly TransacaoBanco[], lancamentos: readon
     const todas = porTransacao[ti];
     const par = atribuido.get(ti);
     if (!par) return { indice: ti, transacao: t, classe: "SO_NO_EXTRATO", alternativas: todas.map(aCandidato) };
-    const unico = todas.length < 2 || todas[0].score > todas[1].score + 1e-12;
+    const unico = todas.length < 2 || todas[0].rank > todas[1].rank + 1e-12;
     const classe: ClasseMatch = par.score >= LIMIAR_AUTOMATICO && unico && par.tipo === "EXATO" ? "AUTOMATICO" : "SUGERIDO";
     return {
       indice: ti,

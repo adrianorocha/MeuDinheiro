@@ -6,8 +6,8 @@
 import type { CellHookData } from "jspdf-autotable";
 import { brlCentavos } from "../finance/centavos";
 import type { LinhaRelatorioPessoas, PessoaRelatorio, RelatorioPessoas } from "../finance/relatorioPessoas";
-import { dataBR } from "../finance/relatorioPessoas";
-import { alvoPdf, COR, corAvatar, desenharIcone, hexParaRgb, type NomeIcone } from "./pessoasIcones";
+import { dataBR, fatiasVisiveis, rotuloFatia } from "../finance/relatorioPessoas";
+import { alvoPdf, COR, corAvatar, corFatia, desenharIcone, hexParaRgb, quebrarLegenda, type NomeIcone } from "./pessoasIcones";
 
 /** Helvetica padrão do PDF não tem "—", "−", "→" nem "…" garantidos: troca por equivalentes seguros. */
 export function textoPdf(s: string): string {
@@ -76,9 +76,56 @@ export async function gerarPdfPessoas(rel: RelatorioPessoas): Promise<Blob> {
   }
   y += 3;
 
+  // ---- R95: mini gráfico (barra empilhada fina + legenda com o percentual escrito)
+  const SW = 2.2;
+  const GAP = 5;
+  const legendaPdf = (p: PessoaRelatorio) => {
+    const fatias = fatiasVisiveis(p.composicao);
+    fonte("normal", 7.5);
+    const rotulos = fatias.map((f) => textoPdf(rotuloFatia(f)));
+    const larguras = rotulos.map((r) => SW + 1.6 + pdf.getTextWidth(r) + GAP);
+    return { fatias, rotulos, linhas: quebrarLegenda(larguras, CW + GAP) };
+  };
+  const alturaComposicao = (p: PessoaRelatorio) => (p.composicao.length === 0 ? 0 : 4.2 + 3 + 3.6 + legendaPdf(p).linhas.length * 4 + 1);
+  const composicaoPessoa = (p: PessoaRelatorio) => {
+    if (p.composicao.length === 0) return;
+    const { fatias, rotulos, linhas } = legendaPdf(p);
+    fonte("normal", 7);
+    cor(COR.cinza);
+    t("Composição do gasto", MARGEM, y + 2.4);
+    const total = fatias.reduce((s, f) => s + f.centavos, 0);
+    const yb = y + 4.2;
+    let x = MARGEM;
+    fatias.forEach((f, i) => {
+      const w = i === fatias.length - 1 ? MARGEM + CW - x : (CW * f.centavos) / total;
+      fundo(corFatia(i, f.outros));
+      pdf.rect(x, yb, w, 3, "F");
+      if (i > 0) {
+        pdf.setDrawColor(255, 255, 255);
+        pdf.setLineWidth(0.3);
+        pdf.line(x, yb, x, yb + 3);
+      }
+      x += w;
+    });
+    let yl = yb + 3 + 3.6;
+    for (const ix of linhas) {
+      let xl = MARGEM;
+      for (const i of ix) {
+        fundo(corFatia(i, fatias[i].outros));
+        pdf.rect(xl, yl - 2, SW, SW, "F");
+        fonte("normal", 7.5);
+        cor(COR.tinta);
+        t(rotulos[i], xl + SW + 1.6, yl);
+        xl += SW + 1.6 + pdf.getTextWidth(rotulos[i]) + GAP;
+      }
+      yl += 4;
+    }
+    y = yl - 4 + 3.4;
+  };
+
   // ---- cartão da pessoa
   const cartaoPessoa = (p: PessoaRelatorio) => {
-    garantir(p.proximoVencimento ? 30 : 18);
+    garantir((p.proximoVencimento ? 30 : 18) + alturaComposicao(p));
     const hex = corAvatar(p.corIndice);
     fundo(COR.cinzaClaro);
     pdf.roundedRect(MARGEM, y, CW, 14, 2, 2, "F");
@@ -119,6 +166,7 @@ export async function gerarPdfPessoas(rel: RelatorioPessoas): Promise<Blob> {
       t(`valor ligado à fatura: ${brlCentavos(v.centavos)}`, L - MARGEM - 3, y + 5.4, { align: "right" });
       y += 12;
     }
+    composicaoPessoa(p);
   };
 
   const titulo = (s: string) => {

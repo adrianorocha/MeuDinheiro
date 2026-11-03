@@ -35,7 +35,7 @@ export function LimiteDiarioCard() {
       </CardTitulo>
       <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
         <p className="text-2xl font-semibold tracking-tight">
-          <Money valor={r.restanteHojeCentavos / 100} tom="auto" />
+          <Money valor={Math.max(0, r.restanteHojeCentavos) / 100} tom="auto" />
           <span className="ml-2 text-xs font-normal text-muted">restante de hoje</span>
         </p>
         <p className="text-xs text-muted">

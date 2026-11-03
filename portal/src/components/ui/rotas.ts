@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Calculator,
   CalendarDays,
   Clock,
   CreditCard,
@@ -53,6 +54,7 @@ export const ROTAS: Rota[] = [
   { href: "/orcamentos/", rotulo: "Orçamentos", icone: PieChart, matiz: 5, grupo: "Planejar" },
   { href: "/metas/", rotulo: "Metas", icone: PiggyBank, matiz: 6, grupo: "Planejar" },
   { href: "/planejamento/", rotulo: "Planejamento", icone: Target, matiz: 3, grupo: "Planejar" },
+  { href: "/ferramentas/", rotulo: "Ferramentas", icone: Calculator, matiz: 4, grupo: "Planejar" },
   { href: "/investimentos/", rotulo: "Investimentos", icone: TrendingUp, matiz: 1, grupo: "Planejar" },
   { href: "/dividas/", rotulo: "Dívidas", icone: TrendingDown, matiz: 5, grupo: "Planejar" },
   { href: "/projetos/", rotulo: "Projetos", icone: FolderKanban, matiz: 7, grupo: "Planejar" },

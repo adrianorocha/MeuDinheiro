@@ -243,7 +243,7 @@ object Analises {
     }
 
     private val SUFIXO_PARCELA = Regex("\\(\\d+/\\d+\\)")
-    private fun chaveAssinatura(descricao: String): String =
+    internal fun chaveAssinatura(descricao: String): String =
         Texto.normalizar(descricao.replace(SUFIXO_PARCELA, " ")).replace(Regex("[^a-z ]"), " ").replace(Regex("\\s+"), " ").trim()
 
     fun assinaturas(hoje: Long, despesas: List<Despesa>, fixas: List<DespesaFixa>): List<Assinatura> {

@@ -24,6 +24,12 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CurrencyExchange
+import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.MoneyOff
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -58,7 +64,11 @@ import com.meudinheiro.ui.theme.NeonGreen
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA, CALENDARIO, RESUMO, REGRAS, PROJETOS, DIVIDAS, PESSOAS, IMPOSTO, SUGESTOES }
+private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFERENCIA, CALENDARIO, RESUMO, REGRAS, PROJETOS, DIVIDAS, PESSOAS, IMPOSTO, SUGESTOES,
+    // R98 — índices econômicos e planejamento
+    INDICES, RENDIMENTO, AVISTA_PARCELADO, DIVIDAS_SIMULADOR, FLUXO_CAIXA, REAJUSTE,
+    // R100 — câmbio (PTAX do Banco Central)
+    CAMBIO }
 
 private val TextoClaro = Color(0xFFE0E1DD)
 private val CardFundo = Color(0xFF1B263B)
@@ -91,6 +101,13 @@ fun FerramentasScreen(repository: MainRepository, userPrefs: UserPreferences, is
         Tela.PESSOAS -> PessoasScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.IMPOSTO -> ImpostoRendaScreen(repository, userPrefs, isPrivate) { tela = Tela.HUB }
         Tela.SUGESTOES -> SugestoesLancamentoScreen(isPrivate, repository) { tela = Tela.HUB }
+        Tela.INDICES -> IndicesEconomicosScreen(userPrefs, isPrivate) { tela = Tela.HUB }
+        Tela.RENDIMENTO -> RendimentoScreen(userPrefs, isPrivate) { tela = Tela.HUB }
+        Tela.AVISTA_PARCELADO -> AvistaParceladoScreen(userPrefs, isPrivate) { tela = Tela.HUB }
+        Tela.DIVIDAS_SIMULADOR -> DividasSimuladorScreen(repository, userPrefs, isPrivate) { tela = Tela.HUB }
+        Tela.FLUXO_CAIXA -> FluxoCaixaScreen(repository, userPrefs, isPrivate) { tela = Tela.HUB }
+        Tela.REAJUSTE -> ReajusteScreen(userPrefs, isPrivate) { tela = Tela.HUB }
+        Tela.CAMBIO -> CambioScreen(userPrefs, isPrivate) { tela = Tela.HUB }
         Tela.HUB -> Hub(repository, isPrivate, onBack) { tela = it }
     }
 }
@@ -137,6 +154,15 @@ private fun Hub(repository: MainRepository, isPrivate: Boolean, onBack: () -> Un
             }
 
             if (termo.isBlank()) {
+                item { SecaoHub("ÍNDICES E PLANEJAMENTO") }
+                item { Atalho(Icons.Default.TrendingUp, "Índices e taxas", "Selic, CDI, TR, poupança, IPCA, IGP-M, INPC, salário mínimo… atualizados pelo Banco Central ao abrir a tela (a cada 6 h) e editáveis, com anual equivalente e link para o histórico") { abrir(Tela.INDICES) } }
+                item { Atalho(Icons.Default.CurrencyExchange, "Câmbio", "Dólar, euro e mais 8 moedas pela PTAX do Banco Central, com conversor R$ ↔ moeda e gráfico dos últimos fechamentos") { abrir(Tela.CAMBIO) } }
+                item { Atalho(Icons.Default.Insights, "Onde o dinheiro rende mais?", "Simule poupança x produto atrelado ao CDI (com IR) x dinheiro parado, com ganho real descontada a inflação") { abrir(Tela.RENDIMENTO) } }
+                item { Atalho(Icons.Default.CompareArrows, "À vista x parcelado", "Taxa de juros embutida, total pago e se compensa pagar à vista frente ao rendimento do dinheiro") { abrir(Tela.AVISTA_PARCELADO) } }
+                item { Atalho(Icons.Default.MoneyOff, "Dívidas: custo e quitação", "Custo do rotativo e do cheque especial; simule avalanche x bola de neve com valor extra mensal") { abrir(Tela.DIVIDAS_SIMULADOR) } }
+                item { Atalho(Icons.Default.Timeline, "Fluxo de caixa e economia", "Projeção de 6 a 12 meses, meses no vermelho, quanto cortar por mês e sugestões de economia explicadas") { abrir(Tela.FLUXO_CAIXA) } }
+                item { Atalho(Icons.Default.Calculate, "Reajuste de aluguel e mensalidades", "Novo valor por IGP-M, IPCA ou INPC e comparação entre os índices") { abrir(Tela.REAJUSTE) } }
+                item { SecaoHub("FERRAMENTAS") }
                 item { Atalho(Icons.Default.Assessment, "Relatórios", "Filtre por período, cartão, categoria… e exporte PDF, PNG ou CSV") { abrir(Tela.RELATORIOS) } }
                 item { Atalho(Icons.Default.CalendarMonth, "Calendário financeiro", "Vencimentos, recebimentos previstos e saldo projetado dia a dia") { abrir(Tela.CALENDARIO) } }
                 item { Atalho(Icons.Default.Insights, "Resumo inteligente", "O que mudou no mês ou na semana: totais, categorias em alta, gasto fora do padrão e projeção") { abrir(Tela.RESUMO) } }
@@ -175,6 +201,11 @@ private fun Hub(repository: MainRepository, isPrivate: Boolean, onBack: () -> Un
             }
         }
     }
+}
+
+@Composable
+private fun SecaoHub(titulo: String) {
+    Text(titulo, color = Color.White.copy(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
 }
 
 @Composable

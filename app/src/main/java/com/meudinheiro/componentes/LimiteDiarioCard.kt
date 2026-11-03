@@ -90,7 +90,7 @@ fun LimiteDiarioCard(
                 Text(rotulo, color = cor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(moeda(r.restanteHojeCentavos), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(moeda(maxOf(0L, r.restanteHojeCentavos)),color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text(
                     "  restante de hoje · limite ${moeda(r.limiteDiarioCentavos)}",
                     color = Color.White.copy(0.55f), fontSize = 11.sp, modifier = Modifier.padding(bottom = 3.dp)

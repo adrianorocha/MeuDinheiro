@@ -25,6 +25,33 @@ export const PALETA_AVATAR = ["#0f766e", "#0e7490", "#4f46e5", "#b45309", "#be18
 
 export const corAvatar = (indice: number) => PALETA_AVATAR[((indice % PALETA_AVATAR.length) + PALETA_AVATAR.length) % PALETA_AVATAR.length];
 
+/**
+ * R95 - paleta categórica do mini gráfico de composição do gasto (base Okabe-Ito/Tol, distinguível em daltonismo, contraste
+ * >= 3:1 sobre branco para áreas gráficas; a legenda sempre traz o percentual escrito). A cor é por POSIÇÃO: a maior fatia
+ * usa a cor 1, a segunda a cor 2... (o app usa a mesma ordem). "Outros" usa a cor neutra.
+ */
+export const PALETA_COMPOSICAO = ["#0072B2", "#D55E00", "#009E73", "#AA4499", "#B58900", "#882255", "#1B7F8C"] as const;
+export const COR_OUTROS = "#7c8794";
+export const corFatia = (indice: number, outros = false) => (outros ? COR_OUTROS : PALETA_COMPOSICAO[indice % PALETA_COMPOSICAO.length]);
+
+/** Quebra itens de legenda (larguras já medidas, com o espaçamento) em linhas de no máximo `max`; devolve os índices por linha. */
+export function quebrarLegenda(larguras: readonly number[], max: number): number[][] {
+  const linhas: number[][] = [];
+  let atual: number[] = [];
+  let usado = 0;
+  larguras.forEach((w, i) => {
+    if (atual.length > 0 && usado + w > max) {
+      linhas.push(atual);
+      atual = [];
+      usado = 0;
+    }
+    atual.push(i);
+    usado += w;
+  });
+  if (atual.length > 0) linhas.push(atual);
+  return linhas;
+}
+
 export type NomeIcone = "entrada" | "saida" | "relogio" | "check" | "recibo" | "carteira" | "balanca" | "calendario";
 
 type Forma = { k: "L"; p: readonly (readonly [number, number])[]; fechar?: boolean } | { k: "C"; cx: number; cy: number; r: number };

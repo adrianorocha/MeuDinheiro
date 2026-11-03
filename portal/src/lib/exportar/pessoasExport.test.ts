@@ -111,3 +111,28 @@ describe("R69 - PDF e ícones", () => {
     }
   });
 });
+
+describe("R95 - mini gráfico de composição no plano de imagens", () => {
+  const comp = (n: number) => Array.from({ length: n }, (_, i) => ({ categoria: `Categoria ${i + 1} de nome razoavelmente comprido`, centavos: 1000, percentual: Math.floor(100 / n) }));
+  const relCom = (c: ReturnType<typeof comp>) => {
+    const r = rel(1);
+    r.pessoas[0].composicao = c;
+    return r;
+  };
+  it("sem composição a altura do bloco da pessoa não muda; com ela cresce por barra + linhas de legenda", () => {
+    const sem = planejarImagens(relCom([]), medidor).paginas[0].blocos[0];
+    const poucas = planejarImagens(relCom(comp(2)), medidor).paginas[0].blocos[0];
+    const muitas = planejarImagens(relCom(comp(6)), medidor).paginas[0].blocos[0];
+    if (sem.tipo !== "pessoa" || poucas.tipo !== "pessoa" || muitas.tipo !== "pessoa") throw new Error("bloco inesperado");
+    expect(sem.h).toBe(120);
+    expect(poucas.h).toBe(120 + 54 + poucas.legenda.length * 28);
+    expect(muitas.legenda.length).toBeGreaterThan(poucas.legenda.length);
+    expect(muitas.h).toBe(120 + 54 + muitas.legenda.length * 28);
+    expect(muitas.legenda.flat()).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it("PDF com composição gera sem erro", async () => {
+    const blob = await gerarPdfPessoas(relCom(comp(6)));
+    expect(blob.size).toBeGreaterThan(2000);
+  });
+});

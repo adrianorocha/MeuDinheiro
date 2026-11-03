@@ -7,6 +7,7 @@ import { round2, toCents } from "../finance/money";
 import { categoriaPorRegras } from "../finance/regras";
 import { limparDescricao } from "../finance/texto";
 import type { Dataset, Despesa, Result } from "../finance/types";
+import { cartaoDoFinal } from "./final-cartao";
 import { lancamentosDoDestino } from "./matching";
 import { detectarParcela, detectarParcelaExtrato, limparDescricaoBanco, semMarcadorParcela } from "./texto-banco";
 import type { ArquivoExtrato, Destino, ItemMatch, ResultadoMatching, TransacaoBanco } from "./tipos";
@@ -17,6 +18,8 @@ export interface Mescla {
   valor: boolean;
   descricao: boolean;
   pago: boolean;
+  /** R101 - em cartão, move o lançamento para o cartão do grupo cujo final consta na linha (ausente = ligado) */
+  cartao?: boolean;
 }
 
 export type AcaoPlano =
@@ -147,6 +150,8 @@ export interface ResumoAplicacao {
   pagosMarcados: number;
   /** R44 - parcelas futuras (i+1..n) criadas além da parcela do extrato */
   parcelasRestantes: number;
+  /** R101 - lançamentos vinculados ao cartão certo pelo final (criados no cartão do final ou movidos de cartão) */
+  vinculadosPorFinal?: number;
 }
 
 type Op<T extends object> = Result<{ ds: Dataset } & T>;
@@ -181,7 +186,10 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
   const resumo: ResumoAplicacao = { conciliados: 0, criados: 0, valoresAlterados: 0, datasAlteradas: 0, pagosMarcados: 0, parcelasRestantes: 0 };
   const extras: Despesa[] = [];
   const cartaoObj = cartaoDestino !== null ? ds.cartoes.find((c) => c.id === cartaoDestino) : undefined;
-  const idsCartoesDestino = new Set(cartaoObj ? cartoesDoGrupo(cartaoObj, ds.cartoes).map((c) => c.id) : []);
+  const grupoDestino = cartaoObj ? cartoesDoGrupo(cartaoObj, ds.cartoes) : [];
+  const idsCartoesDestino = new Set(grupoDestino.map((c) => c.id));
+  /** R101 - cartão do grupo indicado pelo final da linha (null = sem final, sem correspondência ou ambíguo) */
+  const cartaoDaLinha = (t: TransacaoBanco): number | null => (cartaoDestino !== null && t.finalCartao ? (cartaoDoFinal(t.finalCartao, grupoDestino)?.id ?? null) : null);
 
   for (const a of plano.acoes) {
     const t = a.transacao;
@@ -201,8 +209,12 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
       if (valor !== d.valor) resumo.valoresAlterados++;
       if (data !== d.data) resumo.datasAlteradas++;
       if (pago && !d.pago) resumo.pagosMarcados++;
+      const cartaoLinha = a.mescla.cartao === false ? null : cartaoDaLinha(t);
+      const mudaCartao = cartaoLinha !== null && cartaoLinha !== cartaoIdDe(d);
+      if (mudaCartao) resumo.vinculadosPorFinal = (resumo.vinculadosPorFinal ?? 0) + 1;
       alterados.set(d.id, {
         ...d,
+        ...(mudaCartao ? { cartaoId: cartaoLinha } : {}),
         valor,
         valorOriginal: a.mescla.valor && d.moedaOriginal === "BRL" ? valor : d.valorOriginal,
         data,
@@ -218,6 +230,9 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
       if (!a.categoria.trim()) return { ok: false, erro: "Informe a categoria dos lançamentos a criar." };
       const id = novoIdLong(usadosIds, agora);
       usadosIds.add(id);
+      const cartaoDoFinalLinha = cartaoDaLinha(t);
+      const cartaoCriado = cartaoDoFinalLinha ?? cartaoDestino;
+      if (cartaoDoFinalLinha !== null) resumo.vinculadosPorFinal = (resumo.vinculadosPorFinal ?? 0) + 1;
       const parcela = a.parcelasRestantes && cartaoDestino !== null && t.valor < 0 ? detectarParcelaExtrato(t.descricao, t.data) : null;
       const expandir = parcela !== null && parcela.i < parcela.n;
       const baseDesc = expandir ? semMarcadorParcela(limparDescricaoBanco(t.descricao)) || "Compra parcelada" : "";
@@ -254,7 +269,7 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
                 categoria: a.categoria.trim(),
                 conta: contaDestino,
                 tipo: "DEBITO",
-                cartaoId: cartaoDestino,
+                cartaoId: cartaoCriado,
                 pago: false,
                 grupoId: grupoParcelas,
                 autor: AUTOR_IMPORTACAO,
@@ -275,7 +290,7 @@ export function aplicarConciliacao(ds: Dataset, plano: Plano, agora: number): Op
             categoria: a.categoria.trim(),
             conta: contaDestino,
             tipo: t.valor < 0 ? "DEBITO" : "CREDITO",
-            cartaoId: cartaoDestino,
+            cartaoId: cartaoCriado,
             pago: cartaoDestino === null || faturaPaga,
             autor: AUTOR_IMPORTACAO,
             fitid: t.fitid,

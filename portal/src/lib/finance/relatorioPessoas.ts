@@ -79,8 +79,71 @@ export interface PessoaRelatorio {
   nAcertos: number;
   /** vencimento de fatura mais próximo (ou o já vencido mais antigo) entre os pendentes, com o valor ligado a faturas */
   proximoVencimento: { ms: number; texto: string; vencido: boolean; centavos: number } | null;
+  /** R95 - composição do gasto atribuído à pessoa (ver `montarComposicao`); vazia quando não há gasto no relatório */
+  composicao: FatiaComposicao[];
   /** vazio quando `incluirDetalhes` é falso */
   linhas: LinhaRelatorioPessoas[];
+}
+
+/** Uma fatia do mini gráfico "composição do gasto": categoria, valor em centavos e percentual inteiro (somam 100). */
+export interface FatiaComposicao {
+  categoria: string;
+  centavos: number;
+  percentual: number;
+  /** true só na fatia agregada "Outros" */
+  outros?: boolean;
+}
+
+export const MAX_FATIAS_COMPOSICAO = 5;
+export const ROTULO_SEM_CATEGORIA = "Sem categoria";
+export const ROTULO_OUTROS = "Outros";
+
+/**
+ * R95 - composição do gasto (regra compartilhada com o app). Entrada: pares categoria/centavos dos A_RECEBER (gasto/rateio
+ * atribuído à pessoa) já filtrados. Agrupa por categoria (trim; vazia = "Sem categoria"), ordena do maior para o menor
+ * (empate: nome), mantém as 5 maiores e agrega o resto em "Outros"; percentuais inteiros pelo método do maior resto (soma
+ * exatamente 100; empate no resto: maior valor, depois a ordem). Valores <= 0 são ignorados; total 0 = lista vazia.
+ */
+export function montarComposicao(itens: readonly { categoria: string; centavos: number }[]): FatiaComposicao[] {
+  const mapa = new Map<string, number>();
+  for (const it of itens) {
+    if (!(it.centavos > 0)) continue;
+    const nome = it.categoria.trim() || ROTULO_SEM_CATEGORIA;
+    mapa.set(nome, (mapa.get(nome) ?? 0) + it.centavos);
+  }
+  const ordenadas = [...mapa.entries()]
+    .map(([categoria, centavos]) => ({ categoria, centavos }))
+    .sort((a, b) => b.centavos - a.centavos || (a.categoria < b.categoria ? -1 : a.categoria > b.categoria ? 1 : 0));
+  const total = ordenadas.reduce((s, x) => s + x.centavos, 0);
+  if (total === 0) return [];
+  const fatias: { categoria: string; centavos: number; outros?: boolean }[] = ordenadas.slice(0, MAX_FATIAS_COMPOSICAO);
+  const resto = ordenadas.slice(MAX_FATIAS_COMPOSICAO);
+  if (resto.length > 0) fatias.push({ categoria: ROTULO_OUTROS, centavos: resto.reduce((s, x) => s + x.centavos, 0), outros: true });
+  // maior resto, em inteiros (sem ponto flutuante)
+  const base = fatias.map((f) => Math.floor((f.centavos * 100) / total));
+  const restos = fatias.map((f, i) => ({ i, r: f.centavos * 100 - base[i] * total }));
+  let faltam = 100 - base.reduce((s, x) => s + x, 0);
+  restos.sort((a, b) => b.r - a.r || fatias[b.i].centavos - fatias[a.i].centavos || a.i - b.i);
+  for (const { i } of restos) {
+    if (faltam <= 0) break;
+    base[i] += 1;
+    faltam -= 1;
+  }
+  return fatias.map((f, i) => (f.outros ? { categoria: f.categoria, centavos: f.centavos, percentual: base[i], outros: true } : { categoria: f.categoria, centavos: f.centavos, percentual: base[i] }));
+}
+
+/** Fatias que aparecem no desenho (percentual 0 não tem largura visível; continua somando nos centavos do modelo). */
+export const fatiasVisiveis = (c: readonly FatiaComposicao[]) => c.filter((f) => f.percentual > 0);
+
+/** "Alimentação 42%" (nome abreviado com "..." se passar de `max`). */
+export function rotuloFatia(f: FatiaComposicao, max = 22): string {
+  const n = f.categoria.length > max ? `${f.categoria.slice(0, max - 1).trimEnd()}...` : f.categoria;
+  return `${n} ${f.percentual}%`;
+}
+
+/** Texto para leitores de tela: "Composição do gasto: Alimentação 42% (R$ 10,00), ...". */
+export function descricaoComposicao(c: readonly FatiaComposicao[]): string {
+  return `Composição do gasto: ${fatiasVisiveis(c).map((f) => `${f.categoria} ${f.percentual}% (${brlCentavos(f.centavos)})`).join(", ")}`;
 }
 
 export interface ResumoRelatorioPessoas {
@@ -254,6 +317,12 @@ export function montarRelatorioPessoas(
     const liquido = aReceber - aPagar;
     const saldo = saldoTextoDe(liquido);
     const linhas = meus.map((a) => linhaDe(a, p)).sort(porData);
+    // R95: só o gasto atribuído à pessoa (A_RECEBER, pendente ou quitado, dentro do filtro); A_PAGAR (a favor dela) fica de fora.
+    const composicao = montarComposicao(
+      meus
+        .filter((a) => a.tipo === "A_RECEBER")
+        .map((a) => ({ categoria: (a.despesaId != null ? porDespesa.get(a.despesaId)?.categoria : "") ?? "", centavos: toCents(a.valor) })),
+    );
     todas.push(...linhas);
     const comVenc = linhas.filter((l) => l.vencimento);
     const primeiro = comVenc.length > 0 ? comVenc.reduce((x, y) => (y.vencimento!.ms < x.vencimento!.ms ? y : x)) : null;
@@ -275,6 +344,7 @@ export function montarRelatorioPessoas(
       quitadoAPagar: soma("A_PAGAR", true),
       nAcertos: meus.length,
       proximoVencimento,
+      composicao,
       linhas: op.incluirDetalhes ? linhas : [],
     });
   }

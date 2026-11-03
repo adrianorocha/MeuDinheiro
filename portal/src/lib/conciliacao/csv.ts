@@ -1,4 +1,5 @@
 import { normalizar } from "../finance/texto";
+import { finalDaCelula, finalNaDescricao } from "./final-cartao";
 import { atribuirFitids } from "./texto-banco";
 import type { ArquivoExtrato } from "./tipos";
 
@@ -16,6 +17,8 @@ export interface ConfigCsv {
   colDebito: number | null;
   colCredito: number | null;
   colSaldo: number | null;
+  /** R101 - coluna com o cartão/final do cartão de cada compra (opcional; ausente = só o texto da descrição) */
+  colCartao?: number | null;
   /** CSV de fatura de cartão costuma trazer compra positiva */
   inverter: boolean;
 }
@@ -170,7 +173,8 @@ function mapearPorCabecalho(cab: string[]): Partial<ConfigCsv> {
   const colCredito = achar(/credito|entrada|deposito|\bcredit\b/);
   const colValor = achar(/^(valor|amount|montante|quantia)|\bvalor\b/);
   const colDescricao = achar(/descri|historico|estabelecimento|memo|detalhe|lancamento|\bnome\b|description/);
-  return { colData: colData ?? undefined, colSaldo, colDebito, colCredito, colValor, colDescricao: colDescricao ?? undefined };
+  const colCartao = achar(/cartao|\bcard\b|\bfinal\b/, /tipo|bandeira|fatura|limite|vencimento|titular/);
+  return { colData: colData ?? undefined, colSaldo, colDebito, colCredito, colValor, colDescricao: colDescricao ?? undefined, colCartao };
 }
 
 /** Analisa o CSV: delimitador, cabeçalho, decimal e mapeamento sugerido de colunas. */
@@ -217,6 +221,7 @@ export function analisarCsv(texto: string, forcado?: Partial<ConfigCsv>): Analis
     colDebito,
     colCredito,
     colSaldo,
+    colCartao: forcado?.colCartao !== undefined ? forcado.colCartao : (porNome.colCartao ?? null),
     inverter: forcado?.inverter ?? false,
   };
   const cabecalho = temCabecalho ? primeira : Array.from({ length: colunas }, (_x, i) => `Coluna ${i + 1}`);
@@ -229,7 +234,7 @@ export function parseCsv(texto: string, config: ConfigCsv): ArquivoExtrato {
   const linhas = linhasUteis(texto, config.delimitador);
   const corpo = config.temCabecalho ? linhas.slice(1) : linhas;
   const avisos: string[] = [];
-  const brutas: { data: number; valor: number; descricao: string; saldo?: number }[] = [];
+  const brutas: { data: number; valor: number; descricao: string; saldo?: number; finalCartao?: string }[] = [];
   let ignoradas = 0;
   for (const l of corpo) {
     const data = parseDataCsv(l[config.colData] ?? "");
@@ -245,11 +250,14 @@ export function parseCsv(texto: string, config: ConfigCsv): ArquivoExtrato {
       continue;
     }
     const saldo = config.colSaldo !== null ? parseValorCsv(l[config.colSaldo] ?? "", config.decimal) : null;
+    const descricao = (l[config.colDescricao] ?? "").trim() || "Sem descrição";
+    const finalCartao = (config.colCartao != null ? finalDaCelula(l[config.colCartao]) : undefined) ?? finalNaDescricao(descricao);
     brutas.push({
       data,
       valor: config.inverter ? -valor : valor,
-      descricao: (l[config.colDescricao] ?? "").trim() || "Sem descrição",
+      descricao,
       ...(saldo !== null ? { saldo } : {}),
+      ...(finalCartao ? { finalCartao } : {}),
     });
   }
   if (ignoradas > 0) avisos.push(`${ignoradas} linha(s) sem data ou valor válido foram ignoradas.`);

@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.vector.VectorGroup
 import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.graphics.vector.toPath
 import androidx.core.content.FileProvider
+import com.meudinheiro.domain.ComposicaoGasto
 import com.meudinheiro.domain.FormatoCentavos
 import com.meudinheiro.domain.RelatorioPessoas
 import com.meudinheiro.funcoes.LayoutPessoas.CW
@@ -243,6 +244,36 @@ object RelatorioPessoasExport {
         preenche(c, DIVISOR) { c.drawRect(M, y0 + b.h - 2f, M + CW, y0 + b.h, it) }
     }
 
+    /** R96 — barra empilhada fina + legenda "Categoria 42%" com quadradinho de cor (a cor nunca é a única informação). */
+    private fun desenharComposicao(c: Canvas, b: LayoutPessoas.Bloco.Composicao, y0: Float) {
+        texto(c, b.titulo, M, y0 + 12f + 18f, 600, 18f, CINZA)
+        val yb = y0 + 12f + 24f + 14f
+        val total = b.composicao.total.toDouble()
+        c.save()
+        c.clipPath(Path().apply { addRoundRect(RectF(M, yb, M + CW, yb + 14f), 7f, 7f, Path.Direction.CW) })
+        var x = M
+        val fatias = b.composicao.visiveis
+        for ((i, f) in fatias.withIndex()) {
+            val w = if (i == fatias.lastIndex) M + CW - x else (CW * (f.centavos / total)).toFloat()
+            pincel.reset(); pincel.style = Paint.Style.FILL; pincel.color = Color.parseColor(ComposicaoGasto.corHex(i, f))
+            c.drawRect(x, yb, x + w, yb + 14f, pincel)
+            x += w
+            if (i < fatias.lastIndex && w > 0f) { pincel.color = BRANCO; c.drawRect(x - 1f, yb, x, yb + 14f, pincel) }
+        }
+        c.restore()
+        var ty = yb + 14f + 16f
+        for (linha in b.legenda) {
+            var lx = M
+            for (f in linha) {
+                val t = b.rotulos.getValue(f)
+                retanguloArredondado(c, lx, ty + 2f, 16f, 16f, 3f, Color.parseColor(ComposicaoGasto.corHex(b.indices.getValue(f), f)))
+                texto(c, t, lx + 24f, ty + 16f, 500, 18f, TINTA)
+                lx += 26f + larg(t, 500, 18f) + 28f
+            }
+            ty += 28f
+        }
+    }
+
     private fun desenharBloco(c: Canvas, b: LayoutPessoas.Bloco, y: Float) {
         when (b) {
             is LayoutPessoas.Bloco.Titulo -> {
@@ -250,6 +281,7 @@ object RelatorioPessoasExport {
                 texto(c, b.texto, M + 18f, y + 54f, 700, 26f, MARCA_ESCURA)
             }
             is LayoutPessoas.Bloco.CartaoPessoa -> desenharPessoa(c, b.pessoa, y)
+            is LayoutPessoas.Bloco.Composicao -> desenharComposicao(c, b, y)
             is LayoutPessoas.Bloco.Cont -> {
                 val cor = corAvatar(b.corIndice)
                 avatar(c, M + 22f, y + 30f, 16f, b.iniciais, cor)

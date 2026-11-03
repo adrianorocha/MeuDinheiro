@@ -155,6 +155,9 @@ export function ConfirmarArquivo({ arquivo, restantes, onPronto, onCancelar }: {
             <Select rotulo="Coluna de saldo (opcional)" value={config.colSaldo ?? ""} onChange={(e) => set({ colSaldo: num(e.target.value) })}>
               {opcoesColuna(true)}
             </Select>
+            <Select rotulo="Coluna do cartão/final (opcional)" value={config.colCartao ?? ""} onChange={(e) => set({ colCartao: num(e.target.value) })}>
+              {opcoesColuna(true)}
+            </Select>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             <Checkbox rotulo="A primeira linha é cabeçalho" checked={config.temCabecalho} onChange={(e) => set({ temCabecalho: e.target.checked })} />

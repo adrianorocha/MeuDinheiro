@@ -202,3 +202,71 @@ class RelatorioPessoasTest {
         assertEquals("pessoas_2026-09-30-2.png", RelatorioPessoas.nomeArquivo(agora, "png", 2))
     }
 }
+
+/** R96 — composição do gasto por categoria. */
+class ComposicaoGastoTest {
+    private fun cat(vararg p: Pair<String, Long>) = ComposicaoGasto.deCategorias(linkedMapOf(*p))
+
+    @Test fun `percentuais somam 100 pelo maior resto`() {
+        val c = cat("A" to 1, "B" to 1, "C" to 1)
+        assertEquals(100, c.fatias.sumOf { it.percentual })
+        assertEquals(listOf(34, 33, 33), c.fatias.map { it.percentual })
+    }
+
+    @Test fun `ordena do maior para o menor e agrega o resto em Outros`() {
+        val c = cat("a" to 10, "b" to 50, "c" to 20, "d" to 5, "e" to 8, "f" to 4, "g" to 3)
+        assertEquals(listOf("b", "c", "a", "e", "d", "Outros"), c.fatias.map { it.categoria })
+        assertTrue(c.fatias.last().outros)
+        assertEquals(7L, c.fatias.last().centavos)
+        assertEquals(100, c.fatias.sumOf { it.percentual })
+        assertEquals(100L, c.total)
+    }
+
+    @Test fun `ate cinco categorias nao gera Outros`() {
+        assertTrue(cat("a" to 1, "b" to 2, "c" to 3, "d" to 4, "e" to 5).fatias.none { it.outros })
+    }
+
+    @Test fun `sem gasto - sem grafico`() {
+        assertTrue(ComposicaoGasto.deCategorias(emptyMap()).vazia)
+        assertTrue(ComposicaoGasto.calcular(emptyList(), emptyMap()).vazia)
+    }
+
+    private fun desp(id: Long, categoria: String) = Despesa(
+        id = id, descricao = "x", valor = 1.0, data = Date(0), categoria = categoria, conta = "1", pic = "p",
+        tipo = TipoDespesa.DEBITO, mes = 1, ano = 2026
+    )
+    private fun ac(id: Int, tipo: String, valor: Double, despesaId: Long?, quitado: Boolean = false, data: Long = 0) =
+        Acerto(id, 1, tipo, valor, "d", data, despesaId, quitado, null, null)
+
+    @Test fun `categoria vazia, avulso e removido viram Sem categoria, A_PAGAR nao entra`() {
+        val ds = mapOf(1L to desp(1, "Mercado"), 2L to desp(2, "  "))
+        val c = ComposicaoGasto.calcular(
+            listOf(ac(1, "A_RECEBER", 60.0, 1), ac(2, "A_RECEBER", 20.0, 2), ac(3, "A_RECEBER", 10.0, null), ac(4, "A_RECEBER", 10.0, 999), ac(5, "A_PAGAR", 500.0, 1)),
+            ds
+        )
+        assertEquals(listOf("Mercado", "Sem categoria"), c.fatias.map { it.categoria })
+        assertEquals(listOf(60, 40), c.fatias.map { it.percentual })
+        assertEquals(10000L, c.total)
+    }
+
+    @Test fun `usa a mesma base filtrada do relatorio (periodo e situacao)`() {
+        val pessoas = listOf(Pessoa(1, "Ana", null))
+        val ds = listOf(desp(1, "Mercado"), desp(2, "Lazer"))
+        val acs = listOf(ac(1, "A_RECEBER", 30.0, 1, data = 100), ac(2, "A_RECEBER", 70.0, 2, quitado = true, data = 100), ac(3, "A_RECEBER", 50.0, 1, data = 9999))
+        fun montar(op: RelatorioPessoas.Opcoes) = RelatorioPessoas.montar(pessoas, acs, ds, op).pessoas.single().composicao
+        val pend = montar(Opcoes(situacao = Situacao.PENDENTES, periodo = 0L..500L, agora = 0))
+        assertEquals(listOf("Mercado"), pend.fatias.map { it.categoria })
+        assertEquals(3000L, pend.total)
+        val todos = montar(Opcoes(agora = 0))
+        assertEquals(listOf("Mercado", "Lazer"), todos.fatias.map { it.categoria })
+        assertEquals(listOf(53, 47), todos.fatias.map { it.percentual })
+        assertEquals(100, todos.fatias.sumOf { it.percentual })
+    }
+
+    @Test fun `descricao acessivel escreve os percentuais`() {
+        assertEquals("Composição do gasto: A 75% (R$ 0,75), B 25% (R$ 0,25)", ComposicaoGasto.descricaoAcessivel(cat("A" to 75, "B" to 25)))
+        assertEquals("Categoria muito longa... 100%", ComposicaoGasto.rotulo(cat("Categoria muito longa demais para caber" to 5).fatias[0]))
+        // 0% não aparece no desenho
+        assertEquals(listOf("A"), cat("A" to 1000, "B" to 1).visiveis.map { it.categoria })
+    }
+}

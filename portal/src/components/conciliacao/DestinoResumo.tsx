@@ -6,7 +6,9 @@ import { Input, Segmentado, Select } from "@/components/ui/Field";
 import { Card, CardTitulo } from "@/components/ui/Misc";
 import { Money } from "@/components/ui/Money";
 import { janelaPadrao } from "@/lib/conciliacao/matching";
+import { conferirFatura } from "@/lib/conciliacao/fatura-total";
 import { diferencaSaldo } from "@/lib/conciliacao/saldo";
+import { ConferenciaFaturaBox } from "./ConferenciaFaturaBox";
 import type { ArquivoExtrato, Destino } from "@/lib/conciliacao/tipos";
 import { toCents, fromCents } from "@/lib/finance/money";
 import type { Dataset } from "@/lib/finance/types";
@@ -67,7 +69,8 @@ export function DestinoResumo({ ds, arquivo, destino, janela, tolerancia, onDest
     }
     return { entradas: fromCents(ent), saidas: fromCents(sai) };
   }, [arquivo.transacoes]);
-  const saldo = useMemo(() => (destino && arquivo.saldoFinal ? diferencaSaldo(ds, destino, arquivo.saldoFinal) : null), [ds, destino, arquivo.saldoFinal]);
+  const saldo = useMemo(() => (destino && arquivo.saldoFinal ? diferencaSaldo(ds, destino, arquivo.saldoFinal, arquivo.transacoes) : null), [ds, destino, arquivo.saldoFinal, arquivo.transacoes]);
+  const fatura = useMemo(() => (destino ? conferirFatura(ds, destino, arquivo.transacoes) : null), [ds, destino, arquivo.transacoes]);
 
   return (
     <Card aria-labelledby="t-destino">
@@ -150,6 +153,11 @@ export function DestinoResumo({ ds, arquivo, destino, janela, tolerancia, onDest
                 </dd>
               </div>
             </>
+          )}
+          {fatura && (
+            <div className="col-span-2">
+              <ConferenciaFaturaBox antes={fatura} />
+            </div>
           )}
         </dl>
       </div>

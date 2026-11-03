@@ -130,7 +130,7 @@ export function fitidSintetico(data: number, valor: number, descricao: string, n
  * Atribui fitid sintético às transações sem id; `n` é a ordem da ocorrência idêntica no arquivo.
  * FITIDs repetidos dentro do arquivo recebem sufixo "#n" para permanecerem únicos.
  */
-export function atribuirFitids(linhas: { fitid?: string; data: number; valor: number; descricao: string; saldo?: number }[]): TransacaoBanco[] {
+export function atribuirFitids(linhas: { fitid?: string; data: number; valor: number; descricao: string; saldo?: number; finalCartao?: string }[]): TransacaoBanco[] {
   const ocorrencias = new Map<string, number>();
   const vistos = new Map<string, number>();
   return linhas.map((l) => {
@@ -145,6 +145,6 @@ export function atribuirFitids(linhas: { fitid?: string; data: number; valor: nu
       ocorrencias.set(chave, n);
       fitid = fitidSintetico(l.data, l.valor, l.descricao, n);
     }
-    return { fitid, data: l.data, valor: l.valor, descricao: l.descricao, ...(l.saldo !== undefined ? { saldo: l.saldo } : {}) };
+    return { fitid, data: l.data, valor: l.valor, descricao: l.descricao, ...(l.saldo !== undefined ? { saldo: l.saldo } : {}), ...(l.finalCartao ? { finalCartao: l.finalCartao } : {}) };
   });
 }
