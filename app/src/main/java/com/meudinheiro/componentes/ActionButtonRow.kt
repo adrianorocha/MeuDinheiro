@@ -992,6 +992,8 @@ fun AddDespesaDialog(
             LancamentoTexto.Destino.CARTAO -> {
                 formaPagamento = "CARTAO"
                 r.destino?.id?.toIntOrNull()?.takeIf { id -> cartoesFiltrados.any { it.id == id } }?.let { cartaoSelecionadoId = it }
+                // "no débito": cartão MÚLTIPLO sai da conta e fica pago (cartão só-débito já é débito pelo tipo).
+                if (r.falouDebito) modalidadePedida = Financas.Modalidade.DEBITO
             }
             LancamentoTexto.Destino.CONTA -> formaPagamento = "CONTA"
             null -> Unit

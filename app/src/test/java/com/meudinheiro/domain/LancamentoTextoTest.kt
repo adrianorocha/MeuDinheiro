@@ -152,6 +152,18 @@ class LancamentoTextoTest {
         assertEquals(Destino.CONTA, interp("gastei 30 na conta nubank", c).destino?.tipo)
     }
 
+    @Test fun `debito falado com cartao marca modalidade debito`() {
+        val c = ctx(contas = emptyList(), cartoes = listOf(LancamentoTexto.CartaoCtx(5, "Nubank")))
+        for (frase in listOf("gastei 30 no débito do nubank", "gastei 30 no cartão de débito nubank")) {
+            val r = interp(frase, c)
+            assertEquals(frase, "5", r.destino?.id)
+            assertEquals(frase, LancamentoTexto.Destino.CARTAO, r.destino?.tipo)
+            assertTrue(frase, r.falouDebito)
+        }
+        assertTrue(!interp("gastei 30 no cartão nubank", c).falouDebito)
+        assertTrue(!interp("gastei 30 no débito do itaú").falouDebito) // conta Itaú: segue como conta
+    }
+
     @Test fun `so um cartao no cartao sem nome escolhe esse cartao`() {
         val r = interp("parcelei 600 em 3x no cartão", ctx(cartoes = listOf(LancamentoTexto.CartaoCtx(5, "Visa"))))
         assertEquals("5", r.destino?.id)

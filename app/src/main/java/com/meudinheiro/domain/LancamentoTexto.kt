@@ -69,7 +69,9 @@ object LancamentoTexto {
         val parcelas: Int?,
         val categoria: String?,
         val confianca: Confiancas,
-        val pendencias: List<String>
+        val pendencias: List<String>,
+        /** O usuário disse "débito" (compra no débito: sai da conta e fica paga, mesmo num cartão MÚLTIPLO). */
+        val falouDebito: Boolean = false
     )
 
     /** 2..120, o mesmo teto do formulário. */
@@ -463,17 +465,22 @@ object LancamentoTexto {
         var flagCartao = pediuParcelamento || parcelas != null
         var explicitoCartao = false
         var flagConta = false
+        var falouDebito = false
+        var flagContaExplicita = false
         for (i in toks.indices) {
             if (!livre(i)) continue
             if (toks[i].n in PALAVRAS_CARTAO) { explicitoCartao = true; flagCartao = true; usar(i) }
-            else if (toks[i].n in PALAVRAS_CONTA) { flagConta = true; usar(i) }
+            else if (toks[i].n in PALAVRAS_CONTA) { flagConta = true; if (toks[i].n == "debito") falouDebito = true else flagContaExplicita = true; usar(i) }
         }
         val todos: List<Candidato> =
             ctx.contas.map { Candidato(Destino.CONTA, it.id, it.nome) } + ctx.cartoes.map { Candidato(Destino.CARTAO, it.id.toString(), it.nome) }
         var pontuados = todos.map { pontuar(it, toks) }.filter { it.pontos > 0 }
         var destino: Candidato? = null
         var candidatos: List<Candidato> = emptyList()
-        val dica: Destino? = if (explicitoCartao) Destino.CARTAO else if (flagConta) Destino.CONTA else null
+        // "débito" sozinho ("gastei 30 no débito do Nubank"): se o nome bate com um cartão, é o cartão no débito, não a conta.
+        val debitoDeCartao = falouDebito && !explicitoCartao && pontuados.any { it.c.tipo == Destino.CARTAO } &&
+            pontuados.none { it.c.tipo == Destino.CONTA } && !flagContaExplicita
+        val dica: Destino? = if (explicitoCartao || debitoDeCartao) Destino.CARTAO else if (flagConta) Destino.CONTA else null
         var tipoSemNome = false
         if (dica != null) {
             val filtrados = pontuados.filter { it.c.tipo == dica }
@@ -551,7 +558,8 @@ object LancamentoTexto {
 
         return Interpretacao(
             tipo, valor, descricao, data, destino, candidatos, parcelas, categoria,
-            Confiancas(cTipo, cValor, cData, cDesc, cDestino, cCat, cParc), pend
+            Confiancas(cTipo, cValor, cData, cDesc, cDestino, cCat, cParc), pend,
+            falouDebito = falouDebito && destino?.tipo != Destino.CONTA
         )
     }
 
