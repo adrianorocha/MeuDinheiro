@@ -80,6 +80,7 @@ class UserPreferences(private val context: Context) {
         private val KEY_BCB_CAMBIO = stringPreferencesKey("bcb_cambio_cache_r100")
         private val KEY_LIMITE_DIARIO_ATE_RECEITA = booleanPreferencesKey("limite_diario_ate_receita")
         private val KEY_LIMITE_DIARIO_AVISO = booleanPreferencesKey("limite_diario_aviso")
+        private val KEY_LIMITE_DIARIO_RENDA_ESTIMADA = booleanPreferencesKey("limite_diario_renda_estimada")
         // R65 — push (FCM): interruptor geral (opt-in, padrão desligado) e preferências por tipo
         private val KEY_PUSH_ENABLED = booleanPreferencesKey("push_enabled")
         private val KEY_PUSH_VENCIMENTOS = booleanPreferencesKey("push_vencimentos")
@@ -296,6 +297,12 @@ class UserPreferences(private val context: Context) {
     suspend fun saveLimiteDiarioAteReceita(v: Boolean, carimbar: Boolean = true) {
         context.dataStore.edit { it[KEY_LIMITE_DIARIO_ATE_RECEITA] = v }
         if (carimbar) carimbarConfiguracao()
+    }
+
+    /** Limite diário: considera a renda estimada pelo histórico (padrão ligado; só neste aparelho). */
+    val limiteDiarioRendaEstimadaFlow = context.dataStore.data.map { it[KEY_LIMITE_DIARIO_RENDA_ESTIMADA] ?: true }
+    suspend fun saveLimiteDiarioRendaEstimada(v: Boolean) {
+        context.dataStore.edit { it[KEY_LIMITE_DIARIO_RENDA_ESTIMADA] = v }
     }
 
     /** R51 — aviso "Hoje você já passou do limite" na ronda diária (padrão ligado; vale só com a ronda ligada). */

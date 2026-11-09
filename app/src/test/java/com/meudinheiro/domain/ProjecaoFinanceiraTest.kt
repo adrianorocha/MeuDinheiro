@@ -351,6 +351,51 @@ class ProjecaoFinanceiraTest {
         assertEquals(100000L, ate.disponivelCentavos)
     }
 
+    // Renda estimada (só app): sem receita cadastrada o limite zerava mesmo com renda recorrente no histórico.
+    private fun historicoDeRenda() = listOf(
+        desp(1000.0, ms(2024, 12, 1), tipo = TipoDespesa.CREDITO, natureza = Natureza.SALDO_INICIAL),
+        desp(10000.0, ms(2024, 12, 16), tipo = TipoDespesa.CREDITO, descricao = "Pro labore"),
+        desp(12000.0, ms(2025, 1, 16), tipo = TipoDespesa.CREDITO, descricao = "Pro labore"),
+        desp(5000.0, ms(2025, 1, 20), tipo = TipoDespesa.CREDITO, descricao = "Empréstimo Nubank"), // dinheiro emprestado: não é renda
+        desp(14000.0, ms(2025, 2, 16), tipo = TipoDespesa.CREDITO, descricao = "Pro labore"),
+        desp(300.0, ms(2025, 2, 17), tipo = TipoDespesa.CREDITO, pago = false, descricao = "Ainda não recebido"),
+        desp(2000.0, ms(2025, 3, 10, hora = 8), pago = true, descricao = "Aluguel")
+    )
+
+    @Test fun `renda estimada usa a mediana dos meses sem emprestimo e o dia tipico`() {
+        val ev = ProjecaoFinanceira.rendaEstimada(historicoDeRenda(), ms(2025, 3, 10))
+        assertEquals(2, ev.size)
+        assertTrue(ev.all { it.estimado && it.centavos == 1200000L })
+        assertEquals(S(2025, 3, 16), ev[0].dia)
+        assertEquals(S(2025, 4, 16), ev[1].dia)
+    }
+
+    @Test fun `renda estimada neste mes so entra o que falta e se o dia tipico nao passou`() {
+        val recebido = historicoDeRenda() + desp(500.0, ms(2025, 3, 5), tipo = TipoDespesa.CREDITO, descricao = "Pix")
+        assertEquals(1150000L, ProjecaoFinanceira.rendaEstimada(recebido, ms(2025, 3, 10))[0].centavos)
+        val passou = ProjecaoFinanceira.rendaEstimada(historicoDeRenda(), ms(2025, 3, 20))
+        assertEquals(1, passou.size) // dia 16 já passou: só o mês seguinte
+        assertEquals(S(2025, 4, 16), passou[0].dia)
+        assertTrue(ProjecaoFinanceira.rendaEstimada(historicoDeRenda().take(2), ms(2025, 3, 10)).isEmpty()) // 1 mês de renda: pouco histórico
+    }
+
+    @Test fun `limite diario com renda estimada deixa de zerar e o padrao continua igual`() {
+        val despesas = historicoDeRenda() + desp(45000.0, ms(2025, 3, 5), pago = false, cartaoId = 10)
+        val cartoes = listOf(cartao(fech = 25, venc = 28))
+        val agora = ms(2025, 3, 10)
+        val sem = limiteDiarioDosDados(contas, cartoes, despesas, emptyList(), agora)
+        assertTrue(sem.mesNoVermelho)
+        assertEquals(0L, sem.limiteDiarioCentavos)
+        val com = limiteDiarioDosDados(contas, cartoes, despesas, emptyList(), agora, incluirRendaEstimada = true)
+        assertEquals(1200000L, com.rendaEstimadaCentavos)
+        assertTrue(!com.mesNoVermelho)
+        assertEquals((com.disponivelCentavos + com.gastoHojeCentavos) / com.diasRestantes, com.limiteDiarioCentavos) // gasto de hoje (aluguel) já saiu do saldo
+        assertTrue(com.limiteDiarioCentavos > 0)
+        // até a próxima receita: o período termina no dia anterior à renda estimada
+        val ate = limiteDiarioDosDados(contas, cartoes, despesas, emptyList(), agora, ateProximaReceita = true, incluirRendaEstimada = true)
+        assertEquals(S(2025, 3, 15), ate.fimPeriodo)
+    }
+
     @Test fun `ocorrencia de conta fixa lancada hoje nao conta como gasto livre do dia`() {
         val despesas = listOf(
             desp(3000.0, ms(2025, 3, 1), tipo = TipoDespesa.CREDITO, pago = true),

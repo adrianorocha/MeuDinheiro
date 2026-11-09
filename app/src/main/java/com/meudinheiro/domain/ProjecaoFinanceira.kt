@@ -90,7 +90,9 @@ object ProjecaoFinanceira {
         /** Id do lançamento real (pendências); nulo em fatura e recorrência ainda não lançada. */
         val lancamentoId: Long? = null,
         /** Cartão principal da fatura; nulo nos demais. */
-        val cartaoId: Int? = null
+        val cartaoId: Int? = null,
+        /** Receita estimada pelo histórico (não existe lançamento nem recorrência): só entra no limite diário, nunca no calendário. */
+        val estimado: Boolean = false
     )
 
     data class GastoHoje(
@@ -267,6 +269,68 @@ object ProjecaoFinanceira {
         return out
     }
 
+    // ------------------------------------------------------------ renda estimada (limite diário)
+
+    /** Meses completos olhados para estimar a renda. */
+    private const val MESES_RENDA = 3
+
+    /** Entradas que não são renda recorrente (dinheiro emprestado, estorno, reembolso). */
+    private val NAO_E_RENDA = listOf("emprestimo", "financiamento", "estorno", "reembolso")
+
+    private fun ehRendaHistorica(d: Despesa): Boolean {
+        if (d.natureza != Natureza.NORMAL || d.tipo != TipoDespesa.CREDITO || !d.pago || d.cartaoReal() != null) return false
+        val txt = Texto.normalizar(d.descricao)
+        return NAO_E_RENDA.none { it in txt }
+    }
+
+    /**
+     * Receita que o histórico indica para o mês corrente e o seguinte. Sem receita cadastrada o limite diário zerava
+     * (as faturas do mês pesavam e a renda, que o app não conhecia, ficava de fora).
+     * Regra conservadora: mediana (lado menor) dos totais dos últimos [MESES_RENDA] meses completos com renda, só
+     * receitas normais pagas fora de cartão, sem empréstimo/estorno/reembolso; dia = mediana do dia da maior entrada.
+     * Precisa de pelo menos 2 meses com renda. Neste mês só entra o que ainda falta receber e só se o dia típico não passou.
+     */
+    fun rendaEstimada(
+        despesas: List<Despesa>,
+        agora: Long,
+        filtroContas: Set<String>? = null
+    ): List<EventoProjecao> {
+        val cal = Calendar.getInstance().apply { timeInMillis = agora }
+        val idxHoje = cal.get(Calendar.YEAR) * 12 + cal.get(Calendar.MONTH)
+        val diaHoje = cal.get(Calendar.DAY_OF_MONTH)
+        val totais = HashMap<Int, Long>()
+        val maiorDia = HashMap<Int, Pair<Long, Int>>() // mês → (maior valor, dia)
+        for (d in despesas) {
+            if (!ehRendaHistorica(d) || (filtroContas != null && d.conta !in filtroContas)) continue
+            val c = Calendar.getInstance().apply { timeInMillis = d.dataMs }
+            val idx = c.get(Calendar.YEAR) * 12 + c.get(Calendar.MONTH)
+            val v = Dinheiro.centavos(d.valor)
+            totais[idx] = (totais[idx] ?: 0L) + v
+            val atual = maiorDia[idx]
+            if (atual == null || v > atual.first) maiorDia[idx] = v to c.get(Calendar.DAY_OF_MONTH)
+        }
+        val meses = (1..MESES_RENDA).map { idxHoje - it }.filter { (totais[it] ?: 0L) > 0 }
+        if (meses.size < 2) return emptyList()
+        val valores = meses.map { totais.getValue(it) }.sorted()
+        val dias = meses.map { maiorDia.getValue(it).second }.sorted()
+        val media = valores[(valores.size - 1) / 2]
+        val diaTipico = dias[(dias.size - 1) / 2]
+        val out = mutableListOf<EventoProjecao>()
+        fun evento(idx: Int, centavos: Long) {
+            val ano = idx / 12
+            val mes = idx % 12 + 1
+            val dia = diaTipico.coerceAtMost(Financas.diasNoMes(mes, ano))
+            out += EventoProjecao(
+                dia = diaSerial(ano, mes, dia), centavos = centavos, tipo = TipoEvento.RECEITA,
+                descricao = "Renda estimada (histórico)", origem = "Histórico", estimado = true
+            )
+        }
+        val faltaNoMes = maxOf(0L, media - (totais[idxHoje] ?: 0L))
+        if (faltaNoMes > 0 && diaTipico > diaHoje) evento(idxHoje, faltaNoMes)
+        evento(idxHoje + 1, media)
+        return out
+    }
+
     // ------------------------------------------------------------ R51
 
     enum class StatusLimite { VERDE, AMARELO, VERMELHO }
@@ -294,7 +358,9 @@ object ProjecaoFinanceira {
         val status: StatusLimite,
         val mesNoVermelho: Boolean,
         val faltaCentavos: Long,
-        val mensagem: String
+        val mensagem: String,
+        /** Parte das receitas previstas que vem da estimativa pelo histórico (já somada em [receitasPrevistasCentavos]). */
+        val rendaEstimadaCentavos: Long = 0L
     )
 
     /** R51 — quanto posso gastar hoje (tudo em centavos inteiros). */
@@ -310,9 +376,13 @@ object ProjecaoFinanceira {
 
         var receitas = 0L
         var despesas = 0L
+        var estimada = 0L
         for (ev in e.eventos) {
             if (ev.dia > fim) continue
-            if (ev.centavos >= 0) receitas += ev.centavos else despesas += -ev.centavos
+            if (ev.centavos >= 0) {
+                receitas += ev.centavos
+                if (ev.estimado) estimada += ev.centavos
+            } else despesas += -ev.centavos
         }
         val disponivel = e.saldoCentavos + receitas - despesas
 
@@ -349,7 +419,7 @@ object ProjecaoFinanceira {
             fimPeriodo = fim, diasRestantes = dias, receitasPrevistasCentavos = receitas, despesasPrevistasCentavos = despesas,
             disponivelCentavos = disponivel, limiteDiarioCentavos = limite, gastoHojeCentavos = gasto,
             restanteHojeCentavos = restante, status = status, mesNoVermelho = mesNoVermelho,
-            faltaCentavos = falta, mensagem = mensagem
+            faltaCentavos = falta, mensagem = mensagem, rendaEstimadaCentavos = estimada
         )
     }
 
@@ -361,17 +431,20 @@ object ProjecaoFinanceira {
         fixas: List<DespesaFixa>,
         agora: Long,
         ateProximaReceita: Boolean = false,
-        filtroContas: Set<String>? = null
+        filtroContas: Set<String>? = null,
+        /** Inclui a renda estimada pelo histórico (só o app; o calendário não usa). */
+        incluirRendaEstimada: Boolean = false
     ): ResultadoLimiteDiario {
         val cal = Calendar.getInstance().apply { timeInMillis = agora }
         val mes = cal.get(Calendar.MONTH) + 1
         val ano = cal.get(Calendar.YEAR)
         // Horizonte: fim do mês seguinte (a próxima receita pode estar lá).
         val ate = if (mes == 12) ultimoDiaSerial(1, ano + 1) else ultimoDiaSerial(mes + 1, ano)
+        val previstos = eventosPrevistos(contas, cartoes, despesas, fixas, agora, ate, filtroContas)
         return calcularLimiteDiario(
             EntradaLimiteDiario(
                 saldoCentavos = saldoCentavos(contas, despesas, filtroContas),
-                eventos = eventosPrevistos(contas, cartoes, despesas, fixas, agora, ate, filtroContas),
+                eventos = if (incluirRendaEstimada) ordenarEventos(previstos + rendaEstimada(despesas, agora, filtroContas)) else previstos,
                 hoje = serialDeMs(agora),
                 fimDoMes = ultimoDiaSerial(mes, ano),
                 ateProximaReceita = ateProximaReceita,

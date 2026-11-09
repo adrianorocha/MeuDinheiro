@@ -53,19 +53,22 @@ fun LimiteDiarioCard(
     val contas by repository.getTodasContas().collectAsState(initial = emptyList())
     val cartoes by repository.cartoesFlow().collectAsState(initial = emptyList())
     val ateReceita by userPrefs.limiteDiarioAteReceitaFlow.collectAsState(initial = false)
+    val rendaEstimada by userPrefs.limiteDiarioRendaEstimadaFlow.collectAsState(initial = true)
     var fixas by remember { mutableStateOf<List<DespesaFixa>>(emptyList()) }
     LaunchedEffect(despesas) { fixas = repository.obterTodasRecorrencias() }
 
     // Sem nenhuma conta ainda, não há o que projetar.
     if (contas.isEmpty()) return
 
-    val r = remember(contas, cartoes, despesas, fixas, ateReceita) {
+    val r = remember(contas, cartoes, despesas, fixas, ateReceita, rendaEstimada) {
         ProjecaoFinanceira.limiteDiarioDosDados(
             contas = contas.map { ProjecaoFinanceira.ContaRef(it.id, it.conta, it.banco) },
             cartoes = cartoes, despesas = despesas, fixas = fixas,
-            agora = System.currentTimeMillis(), ateProximaReceita = ateReceita
+            agora = System.currentTimeMillis(), ateProximaReceita = ateReceita,
+            incluirRendaEstimada = rendaEstimada
         )
     }
+    var detalhes by remember { mutableStateOf(false) }
     val (rotulo, cor) = when {
         r.mesNoVermelho -> "Mês no vermelho" to NeonRed
         r.status == StatusLimite.VERMELHO -> "Acima do limite" to NeonRed
@@ -97,6 +100,17 @@ fun LimiteDiarioCard(
                 )
             }
             Text(mensagem, color = Color.White.copy(0.85f), fontSize = 12.sp)
+            Spacer(Modifier.height(2.dp))
+            // De onde vem o número: saldo + receitas previstas − compromissos (faturas, contas, recorrências) até o fim do período.
+            val saldo = r.disponivelCentavos - r.receitasPrevistasCentavos + r.despesasPrevistasCentavos
+            Text(
+                (if (detalhes) "Saldo ${moeda(saldo)} + receitas ${moeda(r.receitasPrevistasCentavos)}" +
+                    (if (r.rendaEstimadaCentavos > 0) " (estimadas ${moeda(r.rendaEstimadaCentavos)})" else "") +
+                    " − compromissos ${moeda(r.despesasPrevistasCentavos)} até ${ProjecaoFinanceira.ddmm(r.fimPeriodo)} = ${moeda(r.disponivelCentavos)} ÷ ${r.diasRestantes} dia(s)"
+                else "Ver como foi calculado ▸"),
+                color = Color.White.copy(0.5f), fontSize = 11.sp,
+                modifier = Modifier.clickable { detalhes = !detalhes }
+            )
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
@@ -106,6 +120,11 @@ fun LimiteDiarioCard(
                 )
                 Text("Calendário ▸", color = NeonCyan, fontSize = 11.sp, modifier = Modifier.clickable(onClick = onAbrirCalendario))
             }
+            Text(
+                if (rendaEstimada) "Renda estimada pelo histórico: ligada ▸ (toque p/ desligar)" else "Renda estimada pelo histórico: desligada ▸ (toque p/ ligar)",
+                color = Color.White.copy(0.5f), fontSize = 11.sp,
+                modifier = Modifier.clickable { scope.launch { userPrefs.saveLimiteDiarioRendaEstimada(!rendaEstimada) } }
+            )
         }
     }
 }

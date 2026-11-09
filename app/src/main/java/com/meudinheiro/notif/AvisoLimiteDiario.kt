@@ -42,7 +42,8 @@ object AvisoLimiteDiario {
                 despesas = repo.todasDespesasFlow.first(),
                 fixas = repo.obterTodasRecorrencias(),
                 agora = System.currentTimeMillis(),
-                ateProximaReceita = prefs.limiteDiarioAteReceitaFlow.firstOrNull() ?: false
+                ateProximaReceita = prefs.limiteDiarioAteReceitaFlow.firstOrNull() ?: false,
+                incluirRendaEstimada = prefs.limiteDiarioRendaEstimadaFlow.firstOrNull() ?: true
             )
             if (r.mesNoVermelho || r.gastoHojeCentavos <= r.limiteDiarioCentavos) return@withContext
             Notificacoes.mostrar(
