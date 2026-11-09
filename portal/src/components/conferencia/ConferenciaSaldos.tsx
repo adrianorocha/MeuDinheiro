@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, Info, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AuditoriaCartoes } from "@/components/conferencia/AuditoriaCartoes";
 import { Button } from "@/components/ui/Button";
 import { Badge, Card, CardTitulo } from "@/components/ui/Misc";
 import { Confirmar } from "@/components/ui/Modal";
@@ -152,6 +153,8 @@ export function ConferenciaSaldos() {
           </div>
         )}
       </section>
+
+      <AuditoriaCartoes />
 
       <section aria-labelledby="t-conf-cartoes">
         <h2 id="t-conf-cartoes" className="mb-2 text-lg font-semibold">

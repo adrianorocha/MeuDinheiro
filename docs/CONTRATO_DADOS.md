@@ -1025,3 +1025,19 @@ Sem campos novos, sem preferência nova e sem mudança de formato: tudo é calcu
 - **Maiores gastos variáveis:** ranking por média mensal (informativo; não soma economia).
 - **Limites:** estimativas por regras simples, não recomendação personalizada; a classificação essencial/flexível é por nome de categoria; compras parceladas e recorrências lançadas (`parc:`/`fixa:`) não entram nos blocos de categoria (só como assinatura/evitável).
 - **Testes:** `cortes.test.ts` / `CortesTest.kt` (10 casos).
+
+## R105 — Auditoria dos cartões de crédito (somente portal)
+
+Sem campos novos nem mudança de formato: tudo é calculado em memória sobre os lançamentos. Fica em **Conferência de saldos → "Auditoria dos cartões de crédito"** e complementa R45 (limite gravado × calculado) e R70/R71/R77 (reprocessar faturas).
+
+- **`auditarCartoes(ds, limiteBanco?)`** (`lib/finance/auditoriaCartao.ts`, puro): por grupo de cartão de crédito (R18; débito é ignorado) devolve achados com título, detalhe, lançamentos envolvidos, efeito no limite e a ação de correção:
+  1. `LIMITE_GRAVADO` — limite gravado ≠ calculado (R4/R18) → regravar. **Segura.**
+  2. `ITEM_EM_FATURA_PAGA` — itens em aberto de fatura com pagamento completo (R7) → marcar como pagos. **Segura.**
+  3. `PAGAMENTO_NO_CARTAO` — crédito "pagamento de fatura" importado dentro do cartão (abate em dobro) → remover (lixeira).
+  4. `POSSIVEL_DUPLICIDADE` — mesma descrição/valor/dia/cartão em aberto, fora de parcelas/recorrências e sem FITIDs distintos → remover as cópias (lixeira); o usuário decide.
+  5. `CONTA_DIFERENTE` — compra do cartão em conta diferente da conta do cartão → ajustar a conta (não muda o limite).
+  6. `FATURA_PAGA_DIVERGENTE` e `LIMITE_FORA_DA_FAIXA` (disponível > total ou negativo) — só informativos, sem correção automática.
+  7. **Limite do banco** (opcional, digitado, não gravado): `diferencaBanco = calculado − banco`. Aponta como suspeitos (`CANDIDATO_BANCO`) os lançamentos com exatamente o valor da diferença (diferença > 0: itens marcados como pagos → reabrir; < 0: itens em aberto → marcar como pagos) e, sem candidato, oferece **ajustar o limite total** para `limiteTotal − diferença` (via `editarCartao`, que propaga ao grupo).
+- **`aplicarCorrecoesCartao`** aplica só os achados escolhidos e regrava saldos/limites (`recalcularSaldos`). Idempotente; nunca altera valor nem data; remoções usam `excluirLancamento` (lixeira R31, restaurável). `corrigirSeguras` aplica apenas os itens "seguros" (1 e 2). A ação do store `corrigirCartoes(chaves, limiteBanco)` revalida os achados no estado atual antes de aplicar.
+- **Tela:** um cartão por bloco com limite total/calculado/gravado, campo "Limite disponível no app do banco", lista de achados com os lançamentos apontados e caixas de seleção (seguros já marcados); "Corrigir selecionados" (confirma quando há remoção) e "Corrigir só o que é seguro".
+- **Testes:** `auditoriaCartao.test.ts` (16 casos: cada tipo de achado, grupo com virtual, limite do banco com candidato/ajuste, idempotência).

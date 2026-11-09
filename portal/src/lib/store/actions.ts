@@ -50,6 +50,7 @@ import {
   type NovoCartao,
   type NovoLancamento,
 } from "../finance/operations";
+import { aplicarCorrecoesCartao, auditarCartoes } from "../finance/auditoriaCartao";
 import { auditarSaldos, recalcularSaldos } from "../finance/conferencia";
 import { reprocessarFatura, reprocessarSaldos, type AlvoFatura, type AlvoCartao } from "../finance/reprocessar";
 import { round2 } from "../finance/money";
@@ -321,6 +322,17 @@ export const acoes = {
       const r = recalcularSaldos(ds);
       return { ok: true as const, ds: r.ds, correcoes: r.correcoes };
     }),
+
+  // R105 - auditoria dos cartões de crédito: aplica as correções dos achados escolhidos (por chave), revalidando no estado atual
+  corrigirCartoes: (chaves: readonly string[], limiteBanco: Readonly<Record<number, number | null | undefined>> = {}) =>
+    rastreado(() =>
+      exec()((ds, ctx) => {
+        const escolhidos = new Set(chaves);
+        const achados = auditarCartoes(ds, limiteBanco).grupos.flatMap((g) => g.achados).filter((a) => escolhidos.has(a.chave));
+        const r = aplicarCorrecoesCartao(ds, achados, { agora: ctx.agora });
+        return { ok: true as const, ds: r.ds, correcoes: r.correcoes, aplicadas: r.aplicadas, falhas: r.falhas };
+      }),
+    ),
 
   // R70 - reprocessar saldos (recálculo + itens de fatura já paga que ficaram em aberto)
   reprocessarSaldos: (corrigirFaturas = true, removerPagamentosNoCartao = false) =>
