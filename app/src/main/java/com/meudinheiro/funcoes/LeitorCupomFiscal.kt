@@ -202,7 +202,11 @@ object LeitorCupomFiscal {
         val semFragmento = t.substringBefore('#')
         val query = semFragmento.substringAfter('?', "")
         val params = parseQuery(query)
-        val urlSegura = semFragmento.replace("|", "%7C").takeIf { ConsultaNfceRede.urlPermitida(it) }
+        // Muitos QR de NFC-e trazem "http://": a consulta só usa https, então o endereço é promovido a https
+        // (as SEFAZ atendem em https). Continua exigindo host `.gov.br`; nada é aberto automaticamente.
+        val urlSegura = semFragmento.replace("|", "%7C")
+            .replaceFirst(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
+            .takeIf { ConsultaNfceRede.urlPermitida(it) }
 
         // QR v2: ?p=chave|2|tpAmb|... (online: sem valor; contingência: ...|dia|vNF|...)
         params["p"]?.let { p ->
@@ -361,6 +365,12 @@ object LeitorCupomFiscal {
         Regex("\\btotal\\s*(?:\\(?\\s*R\\$\\s*\\)?)\\s*:?\\s*$REGEX_MOEDA", RegexOption.IGNORE_CASE)
     )
 
+    /** Último recurso: "total"/"a pagar" seguido, em até 40 caracteres, de um valor em reais. */
+    private val REGEX_TOTAL_LIVRE = Regex("(?:total|a\\s+pagar)[^0-9]{0,40}$REGEX_MOEDA", RegexOption.IGNORE_CASE)
+
+    /** Layout comum (PR/SP/outros): o valor a pagar fica em `<span class="totalNumb txtMax">12,34</span>`. */
+    private val REGEX_TXTMAX = Regex("class=\"[^\"]*txtMax[^\"]*\"[^>]*>\\s*$REGEX_MOEDA", RegexOption.IGNORE_CASE)
+
     /**
      * Melhor esforço: extrai "Valor a pagar"/"Valor total" do HTML da consulta pública (cada UF tem um
      * layout). Prefere "a pagar" (já com descontos). Nunca executa nada do HTML.
@@ -370,7 +380,8 @@ object LeitorCupomFiscal {
         val texto = htmlParaTexto(html)
         val valor = PADROES_TOTAL.firstNotNullOfOrNull { p ->
             p.findAll(texto).mapNotNull { parseValorCentavos(it.groupValues[1]) }.firstOrNull()
-        }
+        } ?: REGEX_TXTMAX.find(html)?.let { parseValorCentavos(it.groupValues[1]) }
+            ?: REGEX_TOTAL_LIVRE.find(texto)?.let { parseValorCentavos(it.groupValues[1]) }
         val estab = Regex("class=\"txtTopo\"[^>]*>\\s*([^<]{3,80}?)\\s*<", RegexOption.IGNORE_CASE)
             .find(html)?.groupValues?.get(1)?.let { htmlParaTexto(it) }?.takeIf { it.length >= 3 }
         if (valor == null && estab == null) return null

@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -121,12 +122,16 @@ private fun CupomConfirmacaoDialog(
         mutableStateOf(cupom.valorCentavos == null && cupom.origem == OrigemCupom.NFCE_V2 && cupom.urlConsulta != null)
     }
     var consultaFalhou by remember(cupom) { mutableStateOf(false) }
+    var motivoFalha by remember(cupom) { mutableStateOf<String?>(null) }
+    val contexto = LocalContext.current
 
     // Melhor esforço: só a URL do QR (https + .gov.br), sem dados do usuário. Nunca abre o link.
     LaunchedEffect(cupom) {
         val url = cupom.urlConsulta
         if (consultando && url != null) {
-            val r = ConsultaNfceRede.consultar(url)
+            val res = ConsultaNfceRede.consultarComMotivo(url)
+            val r = res.consulta
+            motivoFalha = res.motivo
             if (r?.valorCentavos != null) valorCentavos = r.valorCentavos
             if (!r?.estabelecimento.isNullOrBlank() && estabelecimento.isNullOrBlank()) estabelecimento = r?.estabelecimento
             consultaFalhou = r?.valorCentavos == null
@@ -185,6 +190,17 @@ private fun CupomConfirmacaoDialog(
                             mensagemSemValor(cupom, consultaFalhou),
                             color = Color(0xFFFFB74D), fontSize = 12.sp
                         )
+                        motivoFalha?.let { Text("Motivo: $it", color = Color.White.copy(0.5f), fontSize = 11.sp) }
+                        if (cupom.urlConsulta != null) {
+                            TextButton(onClick = {
+                                runCatching {
+                                    contexto.startActivity(
+                                        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(cupom.urlConsulta))
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            }) { Text("Abrir a nota no navegador", color = NeonCyanC, fontSize = 12.sp) }
+                        }
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = digitado,

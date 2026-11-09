@@ -125,7 +125,8 @@ class LeitorCupomFiscalTest {
         val r = LeitorCupomFiscal.interpretar("https://evil.example.com/qr?p=$c|2|1|1|AAA")!!
         assertNull(r.urlConsulta)
         assertEquals(c, r.chave) // dados continuam úteis, mas a URL não será consultada
-        assertNull(LeitorCupomFiscal.interpretar("http://x.sefaz.gov.br/qr?p=$c|2|1|1|AAA")!!.urlConsulta)
+        // http:// é promovido a https (a consulta só usa https); host fora de .gov.br continua sem URL.
+        assertEquals("https://x.sefaz.gov.br/qr?p=$c%7C2%7C1%7C1%7CAAA", LeitorCupomFiscal.interpretar("http://x.sefaz.gov.br/qr?p=$c|2|1|1|AAA")!!.urlConsulta)
     }
 
     @Test fun chaveSolta_44Digitos() {
@@ -267,5 +268,10 @@ class LeitorCupomFiscalTest {
         assertEquals("https://b.fazenda.gov.br/z", ConsultaNfceRede.resolverRedirecionamento(base, "https://b.fazenda.gov.br/z"))
         assertNull(ConsultaNfceRede.resolverRedirecionamento(base, "https://evil.com/z"))
         assertNull(ConsultaNfceRede.resolverRedirecionamento(base, "http://b.fazenda.gov.br/z"))
+    }
+
+    @Test fun html_valorAPagarEmSpanTxtMax() {
+        val html = "<div><span class=\"totalNumb txtMax\">1.234,56</span></div>"
+        assertEquals(123456L, LeitorCupomFiscal.extrairDeHtml(html)!!.valorCentavos)
     }
 }

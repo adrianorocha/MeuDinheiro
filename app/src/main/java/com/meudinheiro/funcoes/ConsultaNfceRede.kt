@@ -37,19 +37,26 @@ object ConsultaNfceRede {
         URI(atual).resolve(location.trim()).toString().takeIf { urlPermitida(it) }
     }.getOrNull()
 
+    /** Resultado da consulta: [consulta] preenchida em caso de sucesso; senão [motivo] diz o que deu errado (para o usuário/diagnóstico). */
+    data class Resultado(val consulta: LeitorCupomFiscal.ConsultaHtml?, val motivo: String?)
+
     /** Busca e interpreta; null em qualquer falha (sem internet, bloqueio, layout desconhecido...). */
-    suspend fun consultar(url: String): LeitorCupomFiscal.ConsultaHtml? = withContext(Dispatchers.IO) {
-        withTimeoutOrNull(PRAZO_TOTAL_MS) {
-            runCatching {
-                baixar(url)?.let { LeitorCupomFiscal.extrairDeHtml(it) }
-            }.getOrNull()
+    suspend fun consultar(url: String): LeitorCupomFiscal.ConsultaHtml? = consultarComMotivo(url).consulta
+
+    suspend fun consultarComMotivo(url: String): Resultado = withContext(Dispatchers.IO) {
+        val motivo = StringBuilder()
+        val r = withTimeoutOrNull(PRAZO_TOTAL_MS) {
+            runCatching { baixar(url, motivo)?.let { LeitorCupomFiscal.extrairDeHtml(it) ?: null.also { motivo.append("layout da página não reconhecido (valor não encontrado)") } } }
+                .getOrElse { e -> motivo.append("erro de rede: ${e.javaClass.simpleName}"); null }
         }
+        if (r == null && motivo.isEmpty()) motivo.append("tempo esgotado")
+        Resultado(r, if (r?.valorCentavos == null) motivo.toString().ifEmpty { "valor não encontrado" } else null)
     }
 
-    private fun baixar(urlInicial: String): String? {
+    private fun baixar(urlInicial: String, motivo: StringBuilder = StringBuilder()): String? {
         var atual = urlInicial
         repeat(MAX_REDIRECTS + 1) {
-            if (!urlPermitida(atual)) return null
+            if (!urlPermitida(atual)) { motivo.append("endereço fora de .gov.br ou inválido"); return null }
             val conn = URL(atual).openConnection() as HttpURLConnection
             try {
                 conn.instanceFollowRedirects = false
@@ -62,10 +69,10 @@ object ConsultaNfceRede {
                 val code = conn.responseCode
                 if (code in 300..399) {
                     val loc = conn.getHeaderField("Location") ?: return null
-                    atual = resolverRedirecionamento(atual, loc) ?: return null
+                    atual = resolverRedirecionamento(atual, loc) ?: run { motivo.append("redirecionou para fora de .gov.br"); return null }
                     return@repeat
                 }
-                if (code != 200) return null
+                if (code != 200) { motivo.append("site respondeu HTTP $code (${URI(atual).host})"); return null }
                 val charset = Regex("charset=([\\w-]+)", RegexOption.IGNORE_CASE)
                     .find(conn.contentType.orEmpty())?.groupValues?.get(1)
                     ?.let { runCatching { charset(it) }.getOrNull() } ?: Charsets.UTF_8
