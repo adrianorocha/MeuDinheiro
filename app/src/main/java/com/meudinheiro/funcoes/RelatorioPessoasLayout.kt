@@ -15,28 +15,24 @@ fun interface MedidorTexto {
  * [LARGURA] px; o desenho (PNG/JPEG e PDF) só pinta este plano com uma escala uniforme.
  *
  * Imagens: no máximo [MAX_ALTURA_IMAGEM] px por arquivo; acima disso o conteúdo é dividido em partes numeradas (nada é omitido).
- * PDF: o mesmo plano com altura de página A4 ([ALTURA_PAGINA_PDF] px lógicos), cabeçalho de continuação e "Página X de Y".
+ * O PDF tem desenho próprio (A4 em mm, tabelas com cabeçalho repetido), igual ao PDF do portal: ver `RelatorioPessoasPdf`.
  */
 object LayoutPessoas {
     const val LARGURA = 1200
     const val MAX_ALTURA_IMAGEM = 6000f
 
-    /** A4 (595 x 842 pt) com 1200 px lógicos de largura. */
-    const val ALTURA_PAGINA_PDF = 1698f
     const val M = 48f
     const val CW = LARGURA - 2 * M
     const val H_CONT = 96f
     const val H_RODAPE = 64f
     const val H_PESSOA_CONT = 56f
-    private const val H_RESUMO = 2 * 118f + 20f
 
     sealed class Bloco {
         abstract val h: Float
         data class Titulo(val texto: String, override val h: Float = 64f) : Bloco()
-        data class CartaoPessoa(val pessoa: RelatorioPessoas.PessoaBloco, override val h: Float = 156f) : Bloco()
-        /** R96 — mini gráfico de composição do gasto da pessoa: título, barra empilhada e legenda em linhas já quebradas. */
-        data class Composicao(
-            val composicao: ComposicaoGasto.Composicao, val titulo: String, val legenda: List<List<ComposicaoGasto.Fatia>>,
+        /** Cartão da pessoa (+ faixa de vencimento da fatura + mini gráfico de composição do gasto, como no portal). */
+        data class CartaoPessoa(
+            val pessoa: RelatorioPessoas.PessoaBloco, val legenda: List<List<ComposicaoGasto.Fatia>>,
             val indices: Map<ComposicaoGasto.Fatia, Int>, val rotulos: Map<ComposicaoGasto.Fatia, String>, override val h: Float
         ) : Bloco()
         data class Cont(val nome: String, val iniciais: String, val corIndice: Int, override val h: Float = H_PESSOA_CONT) : Bloco()
@@ -75,58 +71,52 @@ object LayoutPessoas {
     fun planejar(rel: RelatorioPessoas.Relatorio, m: MedidorTexto, maxAltura: Float): Plano {
         fun q(texto: String, peso: Int, tam: Float, max: Float) = quebrar(texto, max) { m.largura(it, peso, tam) }
         val filtrosLinhas = q(rel.filtros.joinToString("   ·   "), 400, 18f, CW)
-        val hCabecalho1 = 12f + 28f + 64f + 18f + 48f + 34f + filtrosLinhas.size * 26f + 22f + H_RESUMO + 24f
+        val hCabecalho1 = 12f + 28f + 64f + 18f + 48f + 34f + filtrosLinhas.size * 26f + 12f
 
         val blocos = ArrayList<Bloco>()
         val cronologico = rel.agrupar == RelatorioPessoas.Agrupar.CRONOLOGICO && rel.incluirDetalhes
-        val textoW = CW - 72f - 250f
+        val textoW = CW - 8f - 250f
 
         fun linhaBloco(l: RelatorioPessoas.Linha, p: RelatorioPessoas.PessoaBloco?, mostrarPessoa: Boolean): Bloco {
             val desc = q(l.descricao, 600, 22f, textoW)
             val origem = q("${l.dataTexto} · ${l.origem}", 400, 18f, textoW)
             val rateio = l.rateio?.let { q(it.texto, 500, 17f, textoW - 26f) } ?: emptyList()
-            val texto = (if (mostrarPessoa) 34f else 0f) + desc.size * 28f + origem.size * 24f + rateio.size * 24f
+            val texto = (if (mostrarPessoa) 34f else 0f) + desc.size * 28f + origem.size * 24f + rateio.size * 24f + (if (l.vencimento != null) 40f else 0f)
             return Bloco.Linha(l, desc, origem, rateio, mostrarPessoa, p?.corIndice ?: 0, p?.iniciais ?: "?", maxOf(texto + 30f, 104f))
         }
 
-        fun composicaoBloco(c: ComposicaoGasto.Composicao): Bloco.Composicao {
-            val maxItem = CW - 40f
+        fun cartaoBloco(p: RelatorioPessoas.PessoaBloco): Bloco.CartaoPessoa {
+            val c = p.composicao
+            val h0 = 120f + (if (p.proximoVencimento != null) 64f else 0f)
+            if (c.vazia) return Bloco.CartaoPessoa(p, emptyList(), emptyMap(), emptyMap(), h0)
             val rotulos = HashMap<ComposicaoGasto.Fatia, String>()
             val larguras = HashMap<ComposicaoGasto.Fatia, Float>()
             for (f in c.visiveis) {
-                var t = ComposicaoGasto.rotulo(f)
-                val sufixo = " ${f.percentual}%"
-                if (m.largura(t, 500, 18f) > maxItem) {
-                    var nome = f.categoria
-                    while (nome.length > 1 && m.largura("$nome...$sufixo", 500, 18f) > maxItem) nome = nome.dropLast(1)
-                    t = "$nome...$sufixo"
-                }
+                val t = ComposicaoGasto.rotulo(f)
                 rotulos[f] = t
-                larguras[f] = 26f + m.largura(t, 500, 18f)
+                larguras[f] = 14f + 8f + m.largura(t, 500, 17f) + 28f
             }
             val linhas = ArrayList<List<ComposicaoGasto.Fatia>>()
             var atual = ArrayList<ComposicaoGasto.Fatia>()
-            var x = 0f
+            var usado = 0f
             for (f in c.visiveis) {
                 val w = larguras.getValue(f)
-                if (atual.isNotEmpty() && x + w > CW) { linhas += atual; atual = ArrayList(); x = 0f }
-                atual += f; x += w + 28f
+                if (atual.isNotEmpty() && usado + w > CW - 8f + 28f) { linhas += atual; atual = ArrayList(); usado = 0f }
+                atual += f; usado += w
             }
             if (atual.isNotEmpty()) linhas += atual
-            val titulo = "Composição do gasto · ${FormatoCentavos.brl(c.total)}"
-            return Bloco.Composicao(c, titulo, linhas, c.visiveis.withIndex().associate { it.value to it.index }, rotulos, 12f + 24f + 14f + 14f + 16f + linhas.size * 28f + 8f)
+            return Bloco.CartaoPessoa(p, linhas, c.visiveis.withIndex().associate { it.value to it.index }, rotulos, h0 + 54f + linhas.size * 28f)
         }
 
         val porId = rel.pessoas.associateBy { it.pessoaId }
         if (cronologico) {
             blocos += Bloco.Titulo("Saldo por pessoa")
-            rel.pessoas.forEach { blocos += Bloco.CartaoPessoa(it); if (!it.composicao.vazia) blocos += composicaoBloco(it.composicao) }
+            rel.pessoas.forEach { blocos += cartaoBloco(it) }
             blocos += Bloco.Titulo("Acertos em ordem cronológica")
             rel.cronologico.forEach { blocos += linhaBloco(it, porId[it.pessoaId], true) }
         } else {
             for (p in rel.pessoas) {
-                blocos += Bloco.CartaoPessoa(p)
-                if (!p.composicao.vazia) blocos += composicaoBloco(p.composicao)
+                blocos += cartaoBloco(p)
                 p.linhas.forEach { blocos += linhaBloco(it, p, false) }
             }
         }
@@ -153,8 +143,6 @@ object LayoutPessoas {
             if (b is Bloco.CartaoPessoa) atual = b.pessoa
             var precisa = b.h
             if (b is Bloco.Titulo || b is Bloco.CartaoPessoa) blocos.getOrNull(i + 1)?.let { precisa += it.h }
-            // cartão + gráfico + primeira linha ficam juntos (o gráfico nunca fica separado da sua pessoa)
-            if (b is Bloco.CartaoPessoa && blocos.getOrNull(i + 1) is Bloco.Composicao) blocos.getOrNull(i + 2)?.let { precisa += it.h }
             if (usado + precisa > capacidade && partes.last().isNotEmpty()) {
                 partes += ArrayList<Bloco>()
                 usado = 0f

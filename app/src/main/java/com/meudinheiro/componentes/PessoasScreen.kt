@@ -104,6 +104,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
     val pessoas by repository.obterPessoasFlow().collectAsState(initial = emptyList())
     val acertos by repository.obterAcertosFlow().collectAsState(initial = emptyList())
     val despesas by repository.todasDespesasFlow.collectAsState(initial = emptyList())
+    val cartoes by repository.cartoesFlow().collectAsState(initial = emptyList())
     val contas by repository.getTodasContas().collectAsState(initial = emptyList())
 
     var formPessoa by remember { mutableStateOf<Pessoa?>(null) }
@@ -349,7 +350,7 @@ fun PessoasScreen(repository: MainRepository, isPrivate: Boolean, onBack: () -> 
         )
     }
 
-    relatorio?.let { (_, pid) -> RelatorioPessoasDialog(pessoas, acertos, despesas, pid, isPrivate) { relatorio = null } }
+    relatorio?.let { (_, pid) -> RelatorioPessoasDialog(pessoas, acertos, despesas, cartoes, pid, isPrivate) { relatorio = null } }
     cobrando?.let { p -> CobrarDialog(p, acertos.filter { it.pessoaId == p.id }) { cobrando = null } }
 
     excluirPessoa?.let { p ->
@@ -561,7 +562,7 @@ private fun dataDigitada(texto: String, fimDoDia: Boolean): Long? {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RelatorioPessoasDialog(pessoas: List<Pessoa>, acertos: List<Acerto>, despesas: List<Despesa>, pessoaInicial: Int?, isPrivate: Boolean, onDismiss: () -> Unit) {
+private fun RelatorioPessoasDialog(pessoas: List<Pessoa>, acertos: List<Acerto>, despesas: List<Despesa>, cartoes: List<com.meudinheiro.data.Cartao>, pessoaInicial: Int?, isPrivate: Boolean, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val agora = remember { System.currentTimeMillis() }
@@ -593,11 +594,11 @@ private fun RelatorioPessoasDialog(pessoas: List<Pessoa>, acertos: List<Acerto>,
     } else periodoSel.atalho?.let { RelatorioPessoas.periodoPorAtalho(it, agora) }
     val periodoInvalido = erroPeriodo != null
 
-    val relatorio = remember(pessoas, acertos, despesas, escolher, ids, periodo, periodoInvalido, situacao, detalhes, agrupar, rateios) {
+    val relatorio = remember(pessoas, acertos, despesas, cartoes, escolher, ids, periodo, periodoInvalido, situacao, detalhes, agrupar, rateios) {
         if (periodoInvalido) null
         else RelatorioPessoas.montar(
             pessoas, acertos, despesas,
-            RelatorioPessoas.Opcoes(if (escolher) ids else emptySet(), periodo, situacao, detalhes, agrupar, rateios, agora)
+            RelatorioPessoas.Opcoes(if (escolher) ids else emptySet(), periodo, situacao, detalhes, agrupar, rateios, agora, cartoes)
         )
     }
     val semEscolha = escolher && ids.isEmpty()

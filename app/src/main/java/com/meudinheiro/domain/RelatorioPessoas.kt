@@ -1,6 +1,7 @@
 package com.meudinheiro.domain
 
 import com.meudinheiro.data.Acerto
+import com.meudinheiro.data.Cartao
 import com.meudinheiro.data.Despesa
 import com.meudinheiro.data.Pessoa
 import java.util.Calendar
@@ -33,8 +34,15 @@ object RelatorioPessoas {
         val incluirDetalhes: Boolean = true,
         val agrupar: Agrupar = Agrupar.POR_PESSOA,
         val incluirRateios: Boolean = false,
-        val agora: Long
+        val agora: Long,
+        /** cartões, para destacar o vencimento da fatura dos lançamentos no crédito (igual ao portal) */
+        val cartoes: List<Cartao> = emptyList()
     )
+
+    /** Data limite para acertar (vencimento da fatura) de um A_RECEBER pendente de compra no cartão de crédito. */
+    data class Vencimento(val ms: Long, val texto: String, val vencido: Boolean)
+
+    data class VencimentoPessoa(val ms: Long, val texto: String, val vencido: Boolean, val centavos: Long)
 
     data class RateioLinha(val totalDespesa: Long, val cota: Long, val texto: String)
 
@@ -52,7 +60,8 @@ object RelatorioPessoas {
         val centavos: Long,
         val status: Status,
         val statusTexto: String,
-        val rateio: RateioLinha?
+        val rateio: RateioLinha?,
+        val vencimento: Vencimento? = null
     )
 
     data class PessoaBloco(
@@ -69,6 +78,8 @@ object RelatorioPessoas {
         val quitadoAReceber: Long,
         val quitadoAPagar: Long,
         val nAcertos: Int,
+        /** vencimento de fatura mais próximo (ou o já vencido mais antigo) entre os pendentes, com o valor ligado a faturas */
+        val proximoVencimento: VencimentoPessoa? = null,
         /** vazio quando `incluirDetalhes` é falso */
         val linhas: List<Linha>,
         /** R96 — composição do gasto (A_RECEBER filtrado) por categoria; vazia = sem gasto, sem gráfico. */
@@ -112,6 +123,8 @@ object RelatorioPessoas {
         return "${dois(c.get(Calendar.DAY_OF_MONTH))}/${dois(c.get(Calendar.MONTH) + 1)}/${c.get(Calendar.YEAR)}"
     }
 
+    private fun inicioDia(ms: Long) = cal(ms).apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis
+
     private fun diaMes(ms: Long) = dataBR(ms).substring(0, 5)
 
     fun dataHoraBR(ms: Long): String {
@@ -136,9 +149,9 @@ object RelatorioPessoas {
     }
 
     fun saldoTexto(liquido: Long): Pair<Sentido, String> = when {
-        liquido > 0 -> Sentido.TE_DEVE to "te deve ${FormatoCentavos.brl(liquido)}"
-        liquido < 0 -> Sentido.VOCE_DEVE to "você deve ${FormatoCentavos.brl(-liquido)}"
-        else -> Sentido.QUITES to "quites"
+        liquido > 0 -> Sentido.TE_DEVE to "a acertar ${FormatoCentavos.brl(liquido)}"
+        liquido < 0 -> Sentido.VOCE_DEVE to "a compensar ${FormatoCentavos.brl(-liquido)}"
+        else -> Sentido.QUITES to "contas em dia"
     }
 
     /** Atalhos do diálogo: dias inteiros em horário local; null = tudo. "3 meses" = mês atual e os 2 anteriores. */
@@ -173,6 +186,18 @@ object RelatorioPessoas {
             val cents = Dinheiro.centavos(a.valor)
             val d = a.despesaId?.let { porDespesa[it] }
             val origemTipo = if (a.despesaId == null) OrigemTipo.AVULSO else if (d != null) OrigemTipo.LANCAMENTO else OrigemTipo.REMOVIDO
+            var vencimento: Vencimento? = null
+            val cid = d?.cartaoId?.takeIf { it != 0 }
+            if (d != null && a.tipo == Rateios.A_RECEBER && !a.quitado && cid != null) {
+                val cartao = op.cartoes.firstOrNull { it.id == cid }
+                if (cartao != null && !cartao.tipo.uppercase().startsWith("D")) {
+                    val principal = if (cartao.cartaoPrincipalId == null) cartao else op.cartoes.firstOrNull { it.id == cartao.cartaoPrincipalId } ?: cartao
+                    val ref = Financas.faturaDaCompra(d.data.time, principal.diaFechamento, principal.fechamentoMelhorDia)
+                    val ms = Financas.dataVencimento(principal.diaFechamento, principal.diaVencimento, ref)
+                    val vencido = ms < inicioDia(op.agora)
+                    vencimento = Vencimento(ms, "Fatura do cartão ${if (vencido) "venceu" else "vence"} em ${dataBR(ms)}", vencido)
+                }
+            }
             var rateio: RateioLinha? = null
             if (!a.grupoRateio.isNullOrEmpty() && d != null) {
                 val total = Dinheiro.centavos(d.valor)
@@ -189,7 +214,7 @@ object RelatorioPessoas {
                 origemTipo = origemTipo, tipo = a.tipo, tipoTexto = if (a.tipo == Rateios.A_RECEBER) "A receber" else "A pagar",
                 centavos = cents, status = if (a.quitado) Status.QUITADO else Status.PENDENTE,
                 statusTexto = if (a.quitado) (a.quitadoEm?.let { "Quitado em ${diaMes(it)}" } ?: "Quitado") else "Pendente",
-                rateio = rateio
+                rateio = rateio, vencimento = vencimento
             )
         }
 
@@ -207,12 +232,15 @@ object RelatorioPessoas {
             val (sentido, texto) = saldoTexto(liquido)
             val linhas = meus.map { linhaDe(it, p) }.sortedWith(porData)
             todas += linhas
+            val comVenc = linhas.filter { it.vencimento != null }
+            val primeiro = comVenc.minByOrNull { it.vencimento!!.ms }
+            val proximoVenc = primeiro?.let { VencimentoPessoa(it.vencimento!!.ms, it.vencimento.texto, it.vencimento.vencido, comVenc.sumOf { l -> l.centavos }) }
             blocos += PessoaBloco(
                 pessoaId = p.id, nome = p.nome, contato = p.contato?.trim()?.takeIf { it.isNotEmpty() },
                 iniciais = iniciaisDoNome(p.nome), corIndice = corIndiceDaPessoa(p.nome),
                 aReceber = aReceber, aPagar = aPagar, liquido = liquido, sentido = sentido, saldoTexto = texto,
                 quitadoAReceber = soma(Rateios.A_RECEBER, true), quitadoAPagar = soma(Rateios.A_PAGAR, true),
-                nAcertos = meus.size, linhas = if (op.incluirDetalhes) linhas else emptyList(),
+                nAcertos = meus.size, proximoVencimento = proximoVenc, linhas = if (op.incluirDetalhes) linhas else emptyList(),
                 composicao = ComposicaoGasto.calcular(meus, porDespesa)
             )
         }

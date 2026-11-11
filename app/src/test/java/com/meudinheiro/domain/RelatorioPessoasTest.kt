@@ -62,11 +62,11 @@ class RelatorioPessoasTest {
         assertEquals(listOf("Ana", "Bruno"), r.pessoas.map { it.nome })
         val (ana, bruno) = r.pessoas
         assertEquals(listOf(6000L, 1550L, 4450L, 3L), listOf(ana.aReceber, ana.aPagar, ana.liquido, ana.nAcertos.toLong()))
-        assertEquals("te deve R\$ 44,50", ana.saldoTexto)
+        assertEquals("a acertar R\$ 44,50", ana.saldoTexto)
         assertEquals(Sentido.TE_DEVE, ana.sentido)
         assertEquals("11 99999-0000", ana.contato)
         assertEquals(listOf(1000L, 10000L, -9000L, 4000L, 3L), listOf(bruno.aReceber, bruno.aPagar, bruno.liquido, bruno.quitadoAReceber, bruno.nAcertos.toLong()))
-        assertEquals("você deve R\$ 90,00", bruno.saldoTexto)
+        assertEquals("a compensar R\$ 90,00", bruno.saldoTexto)
         assertNull(bruno.contato)
         assertEquals(RelatorioPessoas.Resumo(7000, 11550, -4550, 4000, 0, 6, 2, 2), r.resumo)
         assertEquals("Todo o período", r.periodoTexto)
@@ -114,7 +114,7 @@ class RelatorioPessoasTest {
         val q = gerar(situacao = Situacao.QUITADOS)
         assertEquals(listOf("Bruno"), q.pessoas.map { it.nome })
         assertEquals(RelatorioPessoas.Resumo(0, 0, 0, 4000, 0, 1, 0, 1), q.resumo)
-        assertEquals("quites", q.pessoas[0].saldoTexto)
+        assertEquals("contas em dia", q.pessoas[0].saldoTexto)
         assertEquals(Sentido.QUITES, q.pessoas[0].sentido)
         assertTrue("Situação: Somente quitados" in q.filtros)
     }
@@ -195,9 +195,9 @@ class RelatorioPessoasTest {
     }
 
     @Test fun `textos de saldo e nome do arquivo`() {
-        assertEquals(Sentido.TE_DEVE to "te deve R\$ 1.234,56", RelatorioPessoas.saldoTexto(123456))
-        assertEquals(Sentido.VOCE_DEVE to "você deve R\$ 0,05", RelatorioPessoas.saldoTexto(-5))
-        assertEquals("quites", RelatorioPessoas.saldoTexto(0).second)
+        assertEquals(Sentido.TE_DEVE to "a acertar R\$ 1.234,56", RelatorioPessoas.saldoTexto(123456))
+        assertEquals(Sentido.VOCE_DEVE to "a compensar R\$ 0,05", RelatorioPessoas.saldoTexto(-5))
+        assertEquals("contas em dia", RelatorioPessoas.saldoTexto(0).second)
         assertEquals("pessoas_2026-09-30.pdf", RelatorioPessoas.nomeArquivo(agora, "pdf"))
         assertEquals("pessoas_2026-09-30-2.png", RelatorioPessoas.nomeArquivo(agora, "png", 2))
     }

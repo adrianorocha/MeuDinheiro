@@ -4,30 +4,30 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.graphics.pdf.PdfDocument
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountBalanceWallet
-import androidx.compose.material.icons.rounded.Balance
-import androidx.compose.material.icons.rounded.CallMade
-import androidx.compose.material.icons.rounded.CallReceived
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Receipt
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.ui.graphics.PathFillType
-import androidx.compose.ui.graphics.asAndroidPath
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.VectorGroup
-import androidx.compose.ui.graphics.vector.VectorPath
-import androidx.compose.ui.graphics.vector.toPath
 import androidx.core.content.FileProvider
 import com.meudinheiro.domain.ComposicaoGasto
 import com.meudinheiro.domain.FormatoCentavos
 import com.meudinheiro.domain.RelatorioPessoas
+import com.meudinheiro.funcoes.IconesPessoas.AMBAR
+import com.meudinheiro.funcoes.IconesPessoas.AMBAR_FUNDO
+import com.meudinheiro.funcoes.IconesPessoas.BRANCO
+import com.meudinheiro.funcoes.IconesPessoas.CINZA
+import com.meudinheiro.funcoes.IconesPessoas.CINZA_CLARO
+import com.meudinheiro.funcoes.IconesPessoas.DIVISOR
+import com.meudinheiro.funcoes.IconesPessoas.LARANJA
+import com.meudinheiro.funcoes.IconesPessoas.LARANJA_FUNDO
+import com.meudinheiro.funcoes.IconesPessoas.MARCA
+import com.meudinheiro.funcoes.IconesPessoas.MARCA_ESCURA
+import com.meudinheiro.funcoes.IconesPessoas.Nome
+import com.meudinheiro.funcoes.IconesPessoas.QUITADO
+import com.meudinheiro.funcoes.IconesPessoas.QUITADO_FUNDO
+import com.meudinheiro.funcoes.IconesPessoas.TEAL_CLARO
+import com.meudinheiro.funcoes.IconesPessoas.TINTA
+import com.meudinheiro.funcoes.IconesPessoas.VERDE
 import com.meudinheiro.funcoes.LayoutPessoas.CW
 import com.meudinheiro.funcoes.LayoutPessoas.H_RODAPE
 import com.meudinheiro.funcoes.LayoutPessoas.LARGURA
@@ -36,73 +36,21 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * R69 — exporta o [RelatorioPessoas.Relatorio] em PDF (A4, várias páginas), PNG ou JPEG e compartilha. Todo o desenho usa o plano
- * puro de [LayoutPessoas] (mesmo do portal) com cores de significado + ícones `Icons.Rounded` (vetores desenhados no Canvas):
- * verde = a receber / te deve, laranja = a pagar / você deve, azul-petróleo da marca nos cabeçalhos, cinza = quitado, âmbar = pendente.
+ * R69 — exporta o [RelatorioPessoas.Relatorio] em PDF (A4, várias páginas), PNG ou JPEG e compartilha. PNG/JPEG usam o plano
+ * puro de [LayoutPessoas]; o PDF usa [RelatorioPessoasPdf]. Ambos reproduzem o desenho do portal (`lib/exportar/pessoas*.ts`):
+ * mesmos ícones de traço ([IconesPessoas]), mesma paleta, cartão da pessoa, faixa de vencimento da fatura e mini gráfico de composição.
  * Cor nunca é a única informação: sempre há texto e ícone. O arquivo leva os valores REAIS (o modo privado vale só para a tela).
  *
  * Imagens longas: no máximo 6000 px por arquivo; acima disso o relatório sai em partes numeradas (`pessoas_AAAA-MM-DD-1.png`…),
- * compartilhadas juntas (ACTION_SEND_MULTIPLE). O PDF usa o mesmo plano com páginas A4.
+ * compartilhadas juntas (ACTION_SEND_MULTIPLE).
  */
 object RelatorioPessoasExport {
 
     enum class Formato(val ext: String, val mime: String) { PDF("pdf", "application/pdf"), PNG("png", "image/png"), JPEG("jpg", "image/jpeg") }
 
-    private const val BRANCO = Color.WHITE
-    private val MARCA = Color.parseColor("#0F766E")
-    private val MARCA_ESCURA = Color.parseColor("#115E59")
-    private val TINTA = Color.parseColor("#0F172A")
-    private val CINZA = Color.parseColor("#64748B")
-    private val CINZA_CLARO = Color.parseColor("#F1F5F9")
-    private val DIVISOR = Color.parseColor("#E2E8F0")
-    private val VERDE = Color.parseColor("#15803D")
-    private val VERDE_FUNDO = Color.parseColor("#DCFCE7")
-    private val LARANJA = Color.parseColor("#C2410C")
-    private val LARANJA_FUNDO = Color.parseColor("#FFEDD5")
-    private val AMBAR = Color.parseColor("#B45309")
-    private val AMBAR_FUNDO = Color.parseColor("#FEF3C7")
-    private val QUITADO = Color.parseColor("#4B6B62")
-    private val QUITADO_FUNDO = Color.parseColor("#E3ECE9")
-    private val TEAL_CLARO = Color.parseColor("#E6F4F1")
-
-    /** Mesma paleta do portal (índice vem do modelo). */
-    private val PALETA = intArrayOf(
-        Color.parseColor("#0F766E"), Color.parseColor("#0E7490"), Color.parseColor("#4F46E5"), Color.parseColor("#B45309"),
-        Color.parseColor("#BE185D"), Color.parseColor("#4D7C0F"), Color.parseColor("#7C3AED"), Color.parseColor("#475569")
-    )
-
-    fun corAvatar(indice: Int) = PALETA[((indice % PALETA.size) + PALETA.size) % PALETA.size]
+    fun corAvatar(indice: Int) = IconesPessoas.corAvatar(indice)
 
     private fun pasta(context: Context) = File(context.cacheDir, "extratos").apply { mkdirs() }
-
-    // ------------------------------------------------------------------ ícones (ImageVector -> android Path)
-
-    private val cachePaths = HashMap<ImageVector, List<Path>>()
-
-    private fun paths(v: ImageVector): List<Path> = cachePaths.getOrPut(v) {
-        val saida = ArrayList<Path>()
-        fun anda(g: VectorGroup) {
-            for (n in g) when (n) {
-                is VectorPath -> saida += n.pathData.toPath().asAndroidPath().apply {
-                    fillType = if (n.pathFillType == PathFillType.EvenOdd) Path.FillType.EVEN_ODD else Path.FillType.WINDING
-                }
-                is VectorGroup -> anda(n)
-                else -> Unit
-            }
-        }
-        anda(v.root)
-        saida
-    }
-
-    private object Ic {
-        val entrada get() = Icons.Rounded.CallReceived
-        val saida get() = Icons.Rounded.CallMade
-        val relogio get() = Icons.Rounded.Schedule
-        val check get() = Icons.Rounded.CheckCircle
-        val recibo get() = Icons.Rounded.Receipt
-        val carteira get() = Icons.Rounded.AccountBalanceWallet
-        val balanca get() = Icons.Rounded.Balance
-    }
 
     // ------------------------------------------------------------------ pincéis e medição
 
@@ -128,48 +76,41 @@ object RelatorioPessoasExport {
         return pincel.measureText(t)
     }
 
-    private fun preenche(c: Canvas, cor: Int, f: (Paint) -> Unit = {}, desenha: (Paint) -> Unit) {
+    private fun preenche(cor: Int, desenha: (Paint) -> Unit) {
         pincel.reset(); pincel.isAntiAlias = true; pincel.color = cor; pincel.style = Paint.Style.FILL
-        f(pincel)
         desenha(pincel)
     }
 
     private fun retanguloArredondado(c: Canvas, x: Float, y: Float, w: Float, h: Float, r: Float, cor: Int) =
-        preenche(c, cor) { c.drawRoundRect(RectF(x, y, x + w, y + h), r, r, it) }
+        preenche(cor) { c.drawRoundRect(RectF(x, y, x + w, y + h), r, r, it) }
 
-    private fun icone(c: Canvas, v: ImageVector, x: Float, y: Float, tam: Float, cor: Int) {
-        c.save()
-        c.translate(x, y)
-        c.scale(tam / v.viewportWidth, tam / v.viewportHeight)
-        pincel.reset(); pincel.isAntiAlias = true; pincel.color = cor; pincel.style = Paint.Style.FILL
-        for (p in paths(v)) c.drawPath(p, pincel)
-        c.restore()
-    }
+    private fun icone(c: Canvas, nome: Nome, x: Float, y: Float, tam: Float, cor: Int, esp: Float = 2f) =
+        IconesPessoas.desenhar(c, nome, x, y, tam, cor, esp)
 
     private fun avatar(c: Canvas, cx: Float, cy: Float, r: Float, iniciais: String, cor: Int) {
-        preenche(c, cor) { c.drawCircle(cx, cy, r, it) }
-        texto(c, iniciais, cx, cy + r * 0.3f, 700, r * 0.85f, BRANCO, Paint.Align.CENTER)
+        preenche(cor) { c.drawCircle(cx, cy, r, it) }
+        texto(c, iniciais, cx, cy + r * 0.3f, 700, Math.round(r * 0.85f).toFloat(), BRANCO, Paint.Align.CENTER)
     }
 
-    private fun pilula(c: Canvas, t: String, xDireita: Float, y: Float, fundo: Int, cor: Int, ic: ImageVector) {
+    private fun pilula(c: Canvas, t: String, xDireita: Float, y: Float, fundo: Int, cor: Int, nome: Nome) {
         val w = larg(t, 700, 17f) + 52f
         retanguloArredondado(c, xDireita - w, y, w, 28f, 14f, fundo)
-        icone(c, ic, xDireita - w + 10f, y + 5f, 18f, cor)
+        icone(c, nome, xDireita - w + 10f, y + 5f, 18f, cor, 2f)
         texto(c, t, xDireita - w + 34f, y + 20f, 700, 17f, cor)
     }
 
-    /** Barra de acento à esquerda, recortada pelo canto arredondado do cartão. */
-    private fun cartaoComAcento(c: Canvas, x: Float, y: Float, w: Float, h: Float, r: Float, acento: Int, larguraAcento: Float) {
+    /** Faixa de acento à esquerda, recortada pelo canto arredondado. */
+    private fun faixaComAcento(c: Canvas, x: Float, y: Float, w: Float, h: Float, r: Float, fundo: Int, acento: Int, larguraAcento: Float) {
         c.save()
         c.clipPath(Path().apply { addRoundRect(RectF(x, y, x + w, y + h), r, r, Path.Direction.CW) })
-        pincel.reset(); pincel.color = CINZA_CLARO
+        pincel.reset(); pincel.color = fundo
         c.drawRect(x, y, x + w, y + h, pincel)
         pincel.color = acento
         c.drawRect(x, y, x + larguraAcento, y + h, pincel)
         c.restore()
     }
 
-    // ------------------------------------------------------------------ desenho do plano
+    // ------------------------------------------------------------------ desenho do plano (igual a pessoasImagem.ts)
 
     private fun corSaldo(s: RelatorioPessoas.Sentido) = when (s) {
         RelatorioPessoas.Sentido.TE_DEVE -> VERDE
@@ -177,11 +118,38 @@ object RelatorioPessoasExport {
         RelatorioPessoas.Sentido.QUITES -> CINZA
     }
 
-    private fun desenharPessoa(c: Canvas, p: RelatorioPessoas.PessoaBloco, y0: Float) {
+    /** R96 — barra empilhada fina + legenda "Categoria 42%" com quadradinho de cor (a cor nunca é a única informação). */
+    private fun desenharComposicao(c: Canvas, b: LayoutPessoas.Bloco.CartaoPessoa, yTopo: Float) {
+        val fatias = b.pessoa.composicao.visiveis
+        if (fatias.isEmpty()) return
+        texto(c, "Composição do gasto", M, yTopo + 16f, 500, 16f, CINZA)
+        val yb = yTopo + 24f
+        val total = fatias.sumOf { it.centavos }.toDouble()
+        var x = M
+        for ((i, f) in fatias.withIndex()) {
+            val w = if (i == fatias.lastIndex) M + CW - x else (CW * (f.centavos / total)).toFloat()
+            preenche(android.graphics.Color.parseColor(ComposicaoGasto.corHex(i, f))) { c.drawRect(x, yb, x + w, yb + 14f, it) }
+            if (i > 0) preenche(BRANCO) { c.drawRect(x - 1f, yb, x + 1f, yb + 14f, it) }
+            x += w
+        }
+        b.legenda.forEachIndexed { r, linha ->
+            val yl = yb + 14f + 10f + r * 28f
+            var xl = M
+            for (f in linha) {
+                val rot = b.rotulos.getValue(f)
+                preenche(android.graphics.Color.parseColor(ComposicaoGasto.corHex(b.indices.getValue(f), f))) { c.drawRect(xl, yl + 3f, xl + 14f, yl + 17f, it) }
+                texto(c, rot, xl + 14f + 8f, yl + 17f, 500, 17f, TINTA)
+                xl += 14f + 8f + larg(rot, 500, 17f) + 28f
+            }
+        }
+    }
+
+    private fun desenharPessoa(c: Canvas, b: LayoutPessoas.Bloco.CartaoPessoa, y0: Float) {
+        val p = b.pessoa
         val y = y0 + 20f
-        val h = 136f
+        val h = 100f
         val cor = corAvatar(p.corIndice)
-        cartaoComAcento(c, M, y, CW, h, 18f, cor, 8f)
+        faixaComAcento(c, M, y, CW, h, 18f, CINZA_CLARO, cor, 8f)
         avatar(c, M + 64f, y + 50f, 32f, p.iniciais, cor)
         var tam = 32f
         val maxNome = CW - 116f - 20f - 380f
@@ -198,29 +166,25 @@ object RelatorioPessoasExport {
         while (ts > 18f && larg(p.saldoTexto, 700, ts) > 340f) ts -= 2f
         val wSaldo = larg(p.saldoTexto, 700, ts)
         texto(c, p.saldoTexto, direita, y + 46f, 700, ts, cs, Paint.Align.RIGHT)
-        icone(c, if (p.sentido == RelatorioPessoas.Sentido.QUITES) Ic.check else Ic.balanca, direita - wSaldo - 40f, y + 20f, 30f, cs)
+        icone(c, if (p.sentido == RelatorioPessoas.Sentido.QUITES) Nome.CHECK else Nome.BALANCA, direita - wSaldo - 40f, y + 20f, 30f, cs, 2.2f)
         texto(c, "saldo pendente (a receber − a pagar)", direita, y + 74f, 400, 16f, CINZA, Paint.Align.RIGHT)
-        val itens = listOf(
-            Triple(Ic.entrada, "A receber ${FormatoCentavos.brl(p.aReceber)}", VERDE),
-            Triple(Ic.saida, "A pagar ${FormatoCentavos.brl(p.aPagar)}", LARANJA),
-            Triple(Ic.check, "Quitado ${FormatoCentavos.brl(p.quitadoAReceber + p.quitadoAPagar)}", QUITADO)
-        )
-        var x = M + 28f
-        for ((ic, t, cc) in itens) {
-            icone(c, ic, x, y + h - 42f, 22f, cc)
-            texto(c, t, x + 30f, y + h - 24f, 600, 19f, cc)
-            x += 30f + larg(t, 600, 19f) + 36f
+        val v = p.proximoVencimento
+        if (v != null) {
+            val yb = y + h + 8f
+            val cc = if (v.vencido) LARANJA else AMBAR
+            faixaComAcento(c, M, yb, CW, 52f, 14f, if (v.vencido) LARANJA_FUNDO else AMBAR_FUNDO, cc, 8f)
+            icone(c, Nome.CALENDARIO, M + 26f, yb + 12f, 28f, cc, 2.2f)
+            texto(c, "VENCIMENTO DA FATURA DO CARTÃO: ${RelatorioPessoas.dataBR(v.ms)}${if (v.vencido) " (vencida)" else ""}", M + 66f, yb + 34f, 800, 23f, cc)
+            texto(c, "valor ligado à fatura: ${FormatoCentavos.brl(v.centavos)}", M + CW - 24f, yb + 33f, 500, 18f, cc, Paint.Align.RIGHT)
         }
+        desenharComposicao(c, b, y0 + 120f + (if (v != null) 64f else 0f) + 4f)
     }
 
     private fun desenharLinha(c: Canvas, b: LayoutPessoas.Bloco.Linha, y0: Float) {
         val l = b.linha
         val recebe = l.tipo == com.meudinheiro.domain.Rateios.A_RECEBER
         val cor = if (recebe) VERDE else LARANJA
-        val fundo = if (recebe) VERDE_FUNDO else LARANJA_FUNDO
-        val textoX = M + 72f
-        preenche(c, fundo) { c.drawCircle(M + 26f, y0 + 38f, 22f, it) }
-        icone(c, if (recebe) Ic.entrada else Ic.saida, M + 15f, y0 + 27f, 22f, cor)
+        val textoX = M + 8f
 
         var ty = y0 + 12f
         if (b.mostrarPessoa) {
@@ -232,56 +196,31 @@ object RelatorioPessoasExport {
         for (t in b.desc) { texto(c, t, textoX, ty + 22f, 600, 22f, TINTA); ty += 28f }
         for (t in b.origem) { texto(c, t, textoX, ty + 18f, 400, 18f, CINZA); ty += 24f }
         for (t in b.rateio) {
-            icone(c, Ic.recibo, textoX, ty + 3f, 18f, MARCA)
+            icone(c, Nome.RECIBO, textoX, ty + 3f, 18f, MARCA, 1.8f)
             texto(c, t, textoX + 26f, ty + 18f, 500, 17f, MARCA)
             ty += 24f
         }
+        l.vencimento?.let { v ->
+            val cc = if (v.vencido) LARANJA else AMBAR
+            val wv = larg(v.texto, 700, 18f) + 48f
+            retanguloArredondado(c, textoX, ty + 6f, wv, 30f, 15f, if (v.vencido) LARANJA_FUNDO else AMBAR_FUNDO)
+            icone(c, Nome.CALENDARIO, textoX + 10f, ty + 11f, 20f, cc, 2f)
+            texto(c, v.texto, textoX + 36f, ty + 27f, 700, 18f, cc)
+        }
         val dir = M + CW
         texto(c, FormatoCentavos.brl(l.centavos), dir, y0 + 38f, 700, 26f, cor, Paint.Align.RIGHT)
-        texto(c, l.tipoTexto, dir, y0 + 62f, 600, 17f, cor, Paint.Align.RIGHT)
-        if (l.status == RelatorioPessoas.Status.PENDENTE) pilula(c, l.statusTexto, dir, y0 + 72f, AMBAR_FUNDO, AMBAR, Ic.relogio)
-        else pilula(c, l.statusTexto, dir, y0 + 72f, QUITADO_FUNDO, QUITADO, Ic.check)
-        preenche(c, DIVISOR) { c.drawRect(M, y0 + b.h - 2f, M + CW, y0 + b.h, it) }
-    }
-
-    /** R96 — barra empilhada fina + legenda "Categoria 42%" com quadradinho de cor (a cor nunca é a única informação). */
-    private fun desenharComposicao(c: Canvas, b: LayoutPessoas.Bloco.Composicao, y0: Float) {
-        texto(c, b.titulo, M, y0 + 12f + 18f, 600, 18f, CINZA)
-        val yb = y0 + 12f + 24f + 14f
-        val total = b.composicao.total.toDouble()
-        c.save()
-        c.clipPath(Path().apply { addRoundRect(RectF(M, yb, M + CW, yb + 14f), 7f, 7f, Path.Direction.CW) })
-        var x = M
-        val fatias = b.composicao.visiveis
-        for ((i, f) in fatias.withIndex()) {
-            val w = if (i == fatias.lastIndex) M + CW - x else (CW * (f.centavos / total)).toFloat()
-            pincel.reset(); pincel.style = Paint.Style.FILL; pincel.color = Color.parseColor(ComposicaoGasto.corHex(i, f))
-            c.drawRect(x, yb, x + w, yb + 14f, pincel)
-            x += w
-            if (i < fatias.lastIndex && w > 0f) { pincel.color = BRANCO; c.drawRect(x - 1f, yb, x, yb + 14f, pincel) }
-        }
-        c.restore()
-        var ty = yb + 14f + 16f
-        for (linha in b.legenda) {
-            var lx = M
-            for (f in linha) {
-                val t = b.rotulos.getValue(f)
-                retanguloArredondado(c, lx, ty + 2f, 16f, 16f, 3f, Color.parseColor(ComposicaoGasto.corHex(b.indices.getValue(f), f)))
-                texto(c, t, lx + 24f, ty + 16f, 500, 18f, TINTA)
-                lx += 26f + larg(t, 500, 18f) + 28f
-            }
-            ty += 28f
-        }
+        if (l.status == RelatorioPessoas.Status.PENDENTE) pilula(c, l.statusTexto, dir, y0 + 72f, AMBAR_FUNDO, AMBAR, Nome.RELOGIO)
+        else pilula(c, l.statusTexto, dir, y0 + 72f, QUITADO_FUNDO, QUITADO, Nome.CHECK)
+        preenche(DIVISOR) { c.drawRect(M, y0 + b.h - 2f, M + CW, y0 + b.h, it) }
     }
 
     private fun desenharBloco(c: Canvas, b: LayoutPessoas.Bloco, y: Float) {
         when (b) {
             is LayoutPessoas.Bloco.Titulo -> {
-                preenche(c, MARCA) { c.drawRect(M, y + 34f, M + 6f, y + 58f, it) }
+                preenche(MARCA) { c.drawRect(M, y + 34f, M + 6f, y + 58f, it) }
                 texto(c, b.texto, M + 18f, y + 54f, 700, 26f, MARCA_ESCURA)
             }
-            is LayoutPessoas.Bloco.CartaoPessoa -> desenharPessoa(c, b.pessoa, y)
-            is LayoutPessoas.Bloco.Composicao -> desenharComposicao(c, b, y)
+            is LayoutPessoas.Bloco.CartaoPessoa -> desenharPessoa(c, b, y)
             is LayoutPessoas.Bloco.Cont -> {
                 val cor = corAvatar(b.corIndice)
                 avatar(c, M + 22f, y + 30f, 16f, b.iniciais, cor)
@@ -292,7 +231,7 @@ object RelatorioPessoasExport {
                 var ty = y + 20f
                 for (t in b.l1) { texto(c, t, M + 8f, ty + 18f, 600, 21f, TINTA); ty += 28f }
                 for (t in b.l2) { texto(c, t, M + 8f, ty + 16f, 400, 19f, CINZA); ty += 26f }
-                preenche(c, DIVISOR) { c.drawRect(M, y + b.h - 2f, M + CW, y + b.h, it) }
+                preenche(DIVISOR) { c.drawRect(M, y + b.h - 2f, M + CW, y + b.h, it) }
             }
             is LayoutPessoas.Bloco.RateioTotais -> {
                 retanguloArredondado(c, M, y + 10f, CW, 92f, 16f, TEAL_CLARO)
@@ -309,41 +248,11 @@ object RelatorioPessoasExport {
         }
     }
 
-    private fun desenharResumo(c: Canvas, rel: RelatorioPessoas.Relatorio, y0: Float) {
-        val r = rel.resumo
-        val w = (CW - 40f) / 3f
-        val sentido = if (r.saldoLiquido > 0) "a seu favor" else if (r.saldoLiquido < 0) "contra você" else "quites"
-        val corSal = if (r.saldoLiquido > 0) VERDE else if (r.saldoLiquido < 0) LARANJA else CINZA
-        class Caixa(val ic: ImageVector, val rot: String, val v: String, val sub: String, val cor: Int)
-        val caixas = listOf(
-            Caixa(Ic.entrada, "A receber (pendente)", FormatoCentavos.brl(r.aReceberPendente), "quem te deve", VERDE),
-            Caixa(Ic.saida, "A pagar (pendente)", FormatoCentavos.brl(r.aPagarPendente), "o que você deve", LARANJA),
-            Caixa(Ic.balanca, "Saldo líquido", FormatoCentavos.brl(Math.abs(r.saldoLiquido)), sentido, corSal),
-            Caixa(Ic.check, "Quitado · a receber", FormatoCentavos.brl(r.quitadoAReceber), "já recebido", QUITADO),
-            Caixa(Ic.check, "Quitado · a pagar", FormatoCentavos.brl(r.quitadoAPagar), "já pago", QUITADO),
-            Caixa(
-                Ic.carteira, "Acertos", "${r.nAcertos}",
-                "${r.nPessoas} pessoa${if (r.nPessoas == 1) "" else "s"} · ${r.nPessoasComSaldo} com saldo", MARCA
-            )
-        )
-        caixas.forEachIndexed { i, cx ->
-            val x = M + (i % 3) * (w + 20f)
-            val y = y0 + (i / 3) * 138f
-            cartaoComAcento(c, x, y, w, 118f, 16f, cx.cor, 8f)
-            icone(c, cx.ic, x + 24f, y + 16f, 24f, cx.cor)
-            texto(c, cx.rot, x + 56f, y + 34f, 600, 17f, CINZA)
-            var t = 34f
-            while (t > 20f && larg(cx.v, 700, t) > w - 44f) t -= 2f
-            texto(c, cx.v, x + 24f, y + 80f, 700, t, cx.cor)
-            texto(c, cx.sub, x + 24f, y + 104f, 500, 16f, CINZA)
-        }
-    }
-
     private fun desenharCabecalho1(c: Canvas, rel: RelatorioPessoas.Relatorio, plano: LayoutPessoas.Plano) {
-        preenche(c, MARCA) { c.drawRect(0f, 0f, LARGURA.toFloat(), 12f, it) }
+        preenche(MARCA) { c.drawRect(0f, 0f, LARGURA.toFloat(), 12f, it) }
         var y = 12f + 28f
         retanguloArredondado(c, M, y, 56f, 56f, 14f, MARCA)
-        icone(c, Ic.carteira, M + 12f, y + 12f, 32f, BRANCO)
+        icone(c, Nome.CARTEIRA, M + 12f, y + 12f, 32f, BRANCO, 2.4f)
         texto(c, "MeuDinheiro", M + 72f, y + 40f, 800, 38f, MARCA)
         texto(c, "Emitido em ${rel.emitidoEm}", M + CW, y + 38f, 400, 18f, CINZA, Paint.Align.RIGHT)
         y += 64f + 18f + 36f
@@ -352,23 +261,21 @@ object RelatorioPessoasExport {
         texto(c, "Período: ${rel.periodoTexto}", M, y, 600, 22f, MARCA_ESCURA)
         y += 34f
         for (t in plano.filtrosLinhas) { texto(c, t, M, y, 400, 18f, CINZA); y += 26f }
-        y += 8f
-        desenharResumo(c, rel, y)
     }
 
-    /** Pinta uma parte do plano numa tela de [LARGURA] x [altura] px lógicos (o chamador aplica a escala). */
+    /** Pinta uma parte do plano numa tela de [LARGURA] x [altura] px. */
     internal fun desenharPagina(c: Canvas, rel: RelatorioPessoas.Relatorio, plano: LayoutPessoas.Plano, p: LayoutPessoas.Pagina, altura: Float, rotuloPagina: String) {
         c.drawColor(BRANCO)
         if (p.indice == 1) desenharCabecalho1(c, rel, plano)
         else {
-            preenche(c, MARCA) { c.drawRect(0f, 0f, LARGURA.toFloat(), 12f, it) }
+            preenche(MARCA) { c.drawRect(0f, 0f, LARGURA.toFloat(), 12f, it) }
             texto(c, "MeuDinheiro", M, 58f, 800, 24f, MARCA)
             texto(c, "${rel.titulo} · ${rel.periodoTexto} (continuação)", M + 190f, 58f, 400, 20f, CINZA)
         }
         var y = p.hCabecalho
         for (b in p.blocos) { desenharBloco(c, b, y); y += b.h }
         val yr = altura - H_RODAPE
-        preenche(c, DIVISOR) { c.drawRect(M, yr + 8f, M + CW, yr + 10f, it) }
+        preenche(DIVISOR) { c.drawRect(M, yr + 8f, M + CW, yr + 10f, it) }
         texto(c, "MeuDinheiro · emitido em ${rel.emitidoEm}", M, yr + 42f, 400, 17f, CINZA)
         texto(c, rotuloPagina, M + CW, yr + 42f, 400, 17f, CINZA, Paint.Align.RIGHT)
     }
@@ -384,8 +291,6 @@ object RelatorioPessoasExport {
     // ------------------------------------------------------------------ arquivos
 
     fun planoImagens(rel: RelatorioPessoas.Relatorio) = LayoutPessoas.planejar(rel, medidorAndroid(), LayoutPessoas.MAX_ALTURA_IMAGEM)
-
-    fun planoPdf(rel: RelatorioPessoas.Relatorio) = LayoutPessoas.planejar(rel, medidorAndroid(), LayoutPessoas.ALTURA_PAGINA_PDF)
 
     fun gerarImagens(context: Context, rel: RelatorioPessoas.Relatorio, formato: Formato, agora: Long): List<File> {
         require(formato != Formato.PDF) { "Use gerarPdf para PDF." }
@@ -406,25 +311,8 @@ object RelatorioPessoasExport {
         }
     }
 
-    fun gerarPdf(context: Context, rel: RelatorioPessoas.Relatorio, agora: Long): File {
-        val plano = planoPdf(rel)
-        val doc = PdfDocument()
-        val arq = File(pasta(context), RelatorioPessoas.nomeArquivo(agora, "pdf"))
-        try {
-            val escala = 595f / LARGURA
-            for (p in plano.paginas) {
-                val pagina = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, p.indice).create())
-                val c = pagina.canvas
-                c.scale(escala, escala)
-                desenharPagina(c, rel, plano, p, LayoutPessoas.ALTURA_PAGINA_PDF, "Página ${p.indice} de ${p.total}")
-                doc.finishPage(pagina)
-            }
-            FileOutputStream(arq).use { doc.writeTo(it) }
-        } finally {
-            doc.close()
-        }
-        return arq
-    }
+    fun gerarPdf(context: Context, rel: RelatorioPessoas.Relatorio, agora: Long): File =
+        RelatorioPessoasPdf.gerar(rel, File(pasta(context), RelatorioPessoas.nomeArquivo(agora, "pdf")))
 
     fun gerar(context: Context, rel: RelatorioPessoas.Relatorio, formato: Formato, agora: Long): List<File> =
         if (formato == Formato.PDF) listOf(gerarPdf(context, rel, agora)) else gerarImagens(context, rel, formato, agora)
