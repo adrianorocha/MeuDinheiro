@@ -1,8 +1,9 @@
 "use client";
 
-import { CircleCheck, CreditCard, Eraser, Landmark, Pencil, Plus, RefreshCw, ShoppingBag, Trash2 } from "lucide-react";
+import { CircleCheck, CreditCard, Eraser, Landmark, Pencil, Plus, RefreshCw, SearchCheck, ShoppingBag, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { AnalisarFaturaModal } from "@/components/cartoes/AnalisarFaturaModal";
 import { LimiteComprometido } from "@/components/cartoes/LimiteComprometido";
 import { PagarFaturaModal } from "@/components/cartoes/PagarFaturaModal";
 import { ReprocessarCartaoModal } from "@/components/cartoes/ReprocessarCartaoModal";
@@ -177,6 +178,7 @@ export default function CartoesPage() {
   const mesHoje = mesAnoDe(agora);
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
   const [fatura, setFatura] = useState<{ mes: number; ano: number } | null>(null);
+  const [analisar, setAnalisar] = useState(false);
   const [formCartao, setFormCartao] = useState<{ editar: Cartao | null } | null>(null);
   const [excluir, setExcluir] = useState<Cartao | null>(null);
   const [limpar, setLimpar] = useState<Cartao | null>(null);
@@ -428,6 +430,9 @@ export default function CartoesPage() {
                 <Button icone={<RefreshCw size={14} aria-hidden />} onClick={() => setReprocessar(true)}>
                   Reprocessar fatura
                 </Button>
+                <Button icone={<SearchCheck size={14} aria-hidden />} onClick={() => setAnalisar(true)}>
+                  Analisar fatura
+                </Button>
                 <Button icone={<RefreshCw size={14} aria-hidden />} onClick={() => setReprocessarTodas(true)}>
                   Reprocessar todas as faturas
                 </Button>
@@ -485,6 +490,7 @@ export default function CartoesPage() {
         <>
         <ReprocessarCartaoModal aberto={reprocessarTodas} onFechar={() => setReprocessarTodas(false)} cartaoId={selecionado.id} />
         <ReprocessarFaturaModal aberto={reprocessar} onFechar={() => setReprocessar(false)} alvo={{ cartaoId: selecionado.id, mes: periodo.mes, ano: periodo.ano }} />
+        <AnalisarFaturaModal aberto={analisar} onFechar={() => setAnalisar(false)} cartao={selecionado} mes={periodo.mes} ano={periodo.ano} />
         <PagarFaturaModal aberto={pagar} onFechar={() => setPagar(false)} cartao={selecionado} cartoes={ds.cartoes} despesas={ds.despesas} conta={conta} periodo={periodo} jaPagaInicial={jaPaga} />
         </>
       )}
