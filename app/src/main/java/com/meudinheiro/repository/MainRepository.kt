@@ -1048,13 +1048,21 @@ class MainRepository(
             val cartaoDaRegra = origem.cartaoId?.let { cartaoDao.getCartaoPorId(it) }
             val noCredito = cartaoDaRegra == null || Financas.modalidadeDaCompra(cartaoDaRegra) == Financas.Modalidade.CREDITO
             val cartaoGerado = if (noCredito) origem.cartaoId else null
+            val existentes = despesaDao.obterTodasStatic()
             datas.forEach { ms ->
+                val mesOc = Financas.mesDe(ms)
+                val anoOc = Financas.anoDe(ms)
+                // R108: mês já provisionado (ou lançado pelo portal) tem `grupoId` fixa:<id>:<AAAA-MM> — não duplica.
+                // Só o `grupoId` exato conta aqui: um lançamento manual de mesmo nome não pode impedir a recorrência (comportamento do R16).
+                val grupo = com.meudinheiro.domain.ContasMes.grupoOcorrencia(regra.id, mesOc, anoOc)
+                if (existentes.any { it.grupoId == grupo }) return@forEach
                 despesaDao.inserirDespesa(
                     normalizar(
                         Despesa(
                             descricao = regra.descricao, valor = regra.valor, data = Date(ms),
                             categoria = regra.categoria, conta = origem.conta, pic = regra.pic,
-                            tipo = regra.tipo, mes = 0, ano = 0, pago = false, cartaoId = cartaoGerado
+                            tipo = regra.tipo, mes = 0, ano = 0, pago = false, cartaoId = cartaoGerado,
+                            grupoId = com.meudinheiro.domain.ContasMes.grupoOcorrencia(regra.id, mesOc, anoOc)
                         )
                     )
                 )
@@ -1076,6 +1084,73 @@ class MainRepository(
         val regra = despesaFixaDao.obterPorId(id) ?: throw RegraFinanceiraException("Recorrência não encontrada.")
         if (!regra.pausada) throw RegraFinanceiraException("A recorrência não está pausada.")
         despesaFixaDao.atualizar(Financas.retomar(regra, agora()))
+    }
+
+    /* ======================= CONTAS DO MÊS (R108) ======================= */
+
+    /**
+     * R108 — provisiona: cria já as ocorrências PENDENTES dos próximos [meses] (mês corrente incluso, 1 a 12) de uma conta mensal, para
+     * conferir/alterar valor e data antes do vencimento. Idempotente (`grupoId` fixa:<id>:<AAAA-MM>): o que já existe não é recriado e o
+     * R16 não duplica quando o mês chega. Não mexe em `ultimaDataLancamento`. Recusa conta desabilitada (R47). Devolve quantas criou.
+     */
+    suspend fun provisionarRecorrencia(id: Int, meses: Int): Int = db.withTransaction {
+        val regra = despesaFixaDao.obterPorId(id) ?: throw RegraFinanceiraException("Conta mensal não encontrada.")
+        if (meses !in 1..com.meudinheiro.domain.ContasMes.MAX_MESES_PROVISAO) throw RegraFinanceiraException("Informe de 1 a ${com.meudinheiro.domain.ContasMes.MAX_MESES_PROVISAO} meses.")
+        val hoje = agora()
+        if (Financas.recorrenciaPausada(regra, hoje)) throw RegraFinanceiraException("Conta mensal desabilitada: habilite-a antes de provisionar.")
+        val origem = resolverOrigem(regra)
+        if (contaSaldoDao.obterPorNumero(origem.conta) == null) throw RegraFinanceiraException("A conta da recorrência não existe mais.")
+        val cartaoDaRegra = origem.cartaoId?.let { cartaoDao.getCartaoPorId(it) }
+        val noCredito = cartaoDaRegra == null || Financas.modalidadeDaCompra(cartaoDaRegra) == Financas.Modalidade.CREDITO
+        val cartaoGerado = if (noCredito) origem.cartaoId else null
+        val alvo = com.meudinheiro.domain.ContasMes.mesesParaProvisionar(despesaDao.obterTodasStatic(), regra, hoje, meses)
+        alvo.forEach { (mes, ano) ->
+            despesaDao.inserirDespesa(
+                normalizar(
+                    Despesa(
+                        descricao = regra.descricao, valor = regra.valor, data = Date(com.meudinheiro.domain.ContasMes.dataPrevista(regra, mes, ano)),
+                        categoria = regra.categoria, conta = origem.conta, pic = regra.pic, tipo = regra.tipo, mes = 0, ano = 0,
+                        pago = false, cartaoId = cartaoGerado, grupoId = com.meudinheiro.domain.ContasMes.grupoOcorrencia(regra.id, mes, ano)
+                    )
+                )
+            )
+        }
+        cartaoGerado?.let { recalcularCartao(it) }
+        alvo.size
+    }
+
+    /**
+     * R108 — "Dar baixa" detalhado numa conta mensal: conta de onde sai ([conta]), valor real ([valor]) e data ([data]), marcando como
+     * paga (um passo só, validado antes de gravar). Só lançamento em conta, em aberto e NORMAL; compra no cartão é paga pela fatura.
+     * [atualizarRegra] grava o valor também na regra ([regraId]) para os próximos meses.
+     */
+    suspend fun baixarContaMensal(
+        despesaId: Long, conta: String? = null, valor: Double? = null, data: Long? = null, atualizarRegra: Boolean = false, regraId: Int? = null
+    ): Unit = db.withTransaction {
+        val d = despesaDao.obterDespesaPorId(despesaId) ?: throw RegraFinanceiraException("Lançamento não encontrado.")
+        if (d.natureza != Natureza.NORMAL) throw RegraFinanceiraException("Este lançamento é gerado automaticamente e não pode receber baixa aqui.")
+        if (d.tipo != TipoDespesa.DEBITO) throw RegraFinanceiraException("A baixa de conta mensal vale para despesas.")
+        if (d.cartaoId != null && d.cartaoId != 0) throw RegraFinanceiraException("Compra no cartão: pague pela fatura do cartão.")
+        if (d.pago) throw RegraFinanceiraException("Este lançamento já está pago.")
+        val novaConta = conta?.let { n -> contaSaldoDao.obterPorNumero(n)?.conta ?: throw RegraFinanceiraException("Conta não encontrada.") } ?: d.conta
+        val novoValor = valor?.let { Dinheiro.arredondar(it) } ?: d.valor
+        if (novoValor <= 0.0) throw RegraFinanceiraException("O valor deve ser maior que zero.")
+        val idRegra = Regex("""^fixa:(\d+):""").find(d.grupoId.orEmpty())?.groupValues?.get(1)?.toInt() ?: regraId
+        val regra = if (atualizarRegra) (idRegra?.let { despesaFixaDao.obterPorId(it) } ?: throw RegraFinanceiraException("Este lançamento não vem de uma conta mensal cadastrada.")) else null
+        atualizarLancamento(d.copy(pago = true, conta = novaConta, valor = novoValor, data = data?.let { Date(it) } ?: d.data))
+        if (regra != null) despesaFixaDao.atualizar(regra.copy(valor = novoValor))
+    }
+
+    /**
+     * R108 — desabilita uma conta mensal (R47: pausa, sem catch-up ao habilitar) e, se pedido, envia para a lixeira as ocorrências
+     * PROVISIONADAS futuras ainda em aberto; o que já venceu ou foi pago nunca é tocado. Devolve quantas removeu.
+     */
+    suspend fun desabilitarContaMensal(id: Int, ate: Long? = null, removerProvisionadas: Boolean = false): Int = db.withTransaction {
+        pausarRecorrencia(id, ate)
+        if (!removerProvisionadas) return@withTransaction 0
+        val alvo = com.meudinheiro.domain.ContasMes.provisionadasFuturas(despesaDao.obterTodasStatic(), id, agora())
+        alvo.forEach { excluirLancamento(it.id) }
+        alvo.size
     }
 
     suspend fun obterTodasRecorrencias(): List<DespesaFixa> = despesaFixaDao.obterTodas()

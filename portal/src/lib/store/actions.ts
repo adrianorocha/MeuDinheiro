@@ -35,6 +35,10 @@ import {
   marcarItensFaturaComoPagos,
   type PagamentoItensFatura,
   pausarRecorrencia,
+  baixarContaMensal,
+  desabilitarContaMensal,
+  provisionarRecorrencia,
+  type BaixaContaMensal,
   retomarRecorrencia,
   processarDespesasFixas,
   removerItem,
@@ -313,6 +317,10 @@ export const acoes = {
   // R47 - pausar/retomar recorrência
   pausarRecorrencia: (id: number, ate?: number | null) => exec()((ds, ctx) => pausarRecorrencia(ds, id, ate, ctx)),
   retomarRecorrencia: (id: number) => exec()((ds, ctx) => retomarRecorrencia(ds, id, ctx)),
+  // R108 - Contas do mês
+  provisionarRecorrencia: (id: number, meses: number) => exec()((ds, ctx) => provisionarRecorrencia(ds, id, meses, ctx)),
+  baixarContaMensal: (id: number, baixa: BaixaContaMensal) => exec()((ds, ctx) => baixarContaMensal(ds, id, baixa, ctx)),
+  desabilitarContaMensal: (id: number, opc: { ate?: number | null; removerProvisionadas?: boolean }) => exec()((ds, ctx) => desabilitarContaMensal(ds, id, opc, ctx)),
   processarFixas: () => exec()((ds, ctx) => processarDespesasFixas(ds, ctx)),
 
   // conferência de saldos (R45)

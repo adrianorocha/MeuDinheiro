@@ -68,7 +68,9 @@ private enum class Tela { HUB, RELATORIOS, PLANEJAMENTO, LIXEIRA, BACKUPS, CONFE
     // R98 — índices econômicos e planejamento
     INDICES, RENDIMENTO, AVISTA_PARCELADO, DIVIDAS_SIMULADOR, FLUXO_CAIXA, REAJUSTE,
     // R100 — câmbio (PTAX do Banco Central)
-    CAMBIO }
+    CAMBIO,
+    // R108 — contas do mês
+    CONTAS_MES }
 
 private val TextoClaro = Color(0xFFE0E1DD)
 private val CardFundo = Color(0xFF1B263B)
@@ -95,6 +97,7 @@ fun FerramentasScreen(repository: MainRepository, userPrefs: UserPreferences, is
         Tela.BACKUPS -> BackupsAutomaticosScreen(repository, userPrefs) { tela = Tela.HUB }
         Tela.CONFERENCIA -> ConferenciaSaldosScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.CALENDARIO -> CalendarioFinanceiroScreen(repository, isPrivate) { tela = Tela.HUB }
+        Tela.CONTAS_MES -> ContasDoMesScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.REGRAS -> RegrasCategoriaScreen(repository) { tela = Tela.HUB }
         Tela.PROJETOS -> ProjetosScreen(repository, isPrivate) { tela = Tela.HUB }
         Tela.DIVIDAS -> DividasScreen(repository, isPrivate) { tela = Tela.HUB }
@@ -164,6 +167,7 @@ private fun Hub(repository: MainRepository, isPrivate: Boolean, onBack: () -> Un
                 item { Atalho(Icons.Default.Calculate, "Reajuste de aluguel e mensalidades", "Novo valor por IGP-M, IPCA ou INPC e comparação entre os índices") { abrir(Tela.REAJUSTE) } }
                 item { SecaoHub("FERRAMENTAS") }
                 item { Atalho(Icons.Default.Assessment, "Relatórios", "Filtre por período, cartão, categoria… e exporte PDF, PNG ou CSV") { abrir(Tela.RELATORIOS) } }
+                item { Atalho(Icons.Default.CalendarMonth, "Contas do mês", "Luz, água, telefone, gás…: provisione meses, altere valor e data, dê baixa na conta de onde sai o dinheiro e desabilite quando quiser") { abrir(Tela.CONTAS_MES) } }
                 item { Atalho(Icons.Default.CalendarMonth, "Calendário financeiro", "Vencimentos, recebimentos previstos e saldo projetado dia a dia") { abrir(Tela.CALENDARIO) } }
                 item { Atalho(Icons.Default.Insights, "Resumo inteligente", "O que mudou no mês ou na semana: totais, categorias em alta, gasto fora do padrão e projeção") { abrir(Tela.RESUMO) } }
                 item { Atalho(Icons.Default.Insights, "Planejamento", "Reserva de emergência, 50/30/20 por categoria, assinaturas, metas com prazo e simulador") { abrir(Tela.PLANEJAMENTO) } }

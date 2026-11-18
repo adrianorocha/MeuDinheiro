@@ -1338,6 +1338,30 @@ export function retomarRecorrencia(ds: Dataset, id: number, ctx: Ctx): Op {
   return finaliza({ ...ds, despesasFixas: ds.despesasFixas.map((f) => (f.id === id ? novo : f)) }, {});
 }
 
+/** R16/R108 - monta UMA ocorrência (pendente) da regra na data dada. Regra com cartão: compra no cartão, na conta dele (R16/R18). */
+function ocorrenciaDaRegra(ds: Dataset, regra: DespesaFixa, data: number, grupoId: string, id: number): Despesa {
+  const cartaoRegra = regra.cartaoId ? ds.cartoes.find((c) => c.id === regra.cartaoId) : undefined;
+  const contaRegra = cartaoRegra ? contaDoCartao(ds, cartaoRegra) : undefined;
+  // R42: cartão DÉBITO gera a ocorrência direto na conta (sem fatura/limite).
+  const cartaoOcorrencia = cartaoRegra && contaRegra && modalidadeDaCompra(cartaoRegra) === "CREDITO" ? cartaoRegra.id : null;
+  const contaOcorrencia = cartaoRegra && contaRegra ? contaRegra.conta : regra.conta;
+  return montaDespesa(
+    {
+      descricao: regra.descricao,
+      valor: regra.valor,
+      data,
+      categoria: regra.categoria,
+      conta: contaOcorrencia,
+      pic: regra.pic,
+      tipo: regra.tipo,
+      cartaoId: cartaoOcorrencia,
+      pago: false,
+      grupoId,
+    },
+    id,
+  );
+}
+
 /**
  * R16 - lança as despesas fixas pendentes (catch-up de até 12 meses). Idempotente:
  * o grupoId `fixa:<id>:<AAAA-MM>` evita duplicar um mês já lançado.
@@ -1373,29 +1397,7 @@ export function processarDespesasFixas(ds: Dataset, ctx: Ctx): Op<{ criados: Des
       }
       const id = novoIdLong(usados, ctx.agora);
       usados.add(id);
-      // Regra com cartão: a ocorrência é uma compra no cartão, na conta dele (R16/R18).
-      const cartaoRegra = regra.cartaoId ? ds.cartoes.find((c) => c.id === regra.cartaoId) : undefined;
-      const contaRegra = cartaoRegra ? contaDoCartao(ds, cartaoRegra) : undefined;
-      // R42: cartão DÉBITO gera a ocorrência direto na conta (sem fatura/limite).
-      const cartaoOcorrencia = cartaoRegra && contaRegra && modalidadeDaCompra(cartaoRegra) === "CREDITO" ? cartaoRegra.id : null;
-      const contaOcorrencia = cartaoRegra && contaRegra ? contaRegra.conta : regra.conta;
-      criados.push(
-        montaDespesa(
-          {
-            descricao: regra.descricao,
-            valor: regra.valor,
-            data,
-            categoria: regra.categoria,
-            conta: contaOcorrencia,
-            pic: regra.pic,
-            tipo: regra.tipo,
-            cartaoId: cartaoOcorrencia,
-            pago: false,
-            grupoId,
-          },
-          id,
-        ),
-      );
+      criados.push(ocorrenciaDaRegra(ds, regra, data, grupoId, id));
       jaLancados.add(grupoId);
       novaUltima = Math.max(novaUltima ?? 0, data);
     }
@@ -1698,4 +1700,114 @@ export function antecipaveisDoGrupo(ds: Dataset, d: Despesa): Despesa[] {
   return ds.despesas
     .filter((x) => (mesmoGrupo ? x.grupoId === d.grupoId : x.id === d.id) && !x.pago && x.natureza === "NORMAL" && x.tipo === "DEBITO" && cartaoIdDe(x) === null && x.conta === d.conta)
     .sort((a, b) => a.data - b.data || a.id - b.id);
+}
+
+
+// ------------------------------------------------------------ R108 - Contas do mês
+
+export const MAX_MESES_PROVISAO = 12;
+
+/** `grupoId` da ocorrência de uma regra num mês (R16). */
+export const grupoOcorrencia = (regraId: number, mes: number, ano: number) => `fixa:${regraId}:${ano}-${String(mes).padStart(2, "0")}`;
+
+const normDesc = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * R108 - ocorrência de uma conta mensal num mês: pelo `grupoId` (R16); se não houver, lançamento ANTIGO gerado pelo app sem `grupoId`
+ * (mesmo tipo e descrição, no mês, NORMAL e fora de parcelamento/repetição) desde que seja um só (ambíguo = nenhum).
+ */
+export function ocorrenciaDoMes(despesas: readonly Despesa[], regra: Pick<DespesaFixa, "id" | "descricao" | "tipo">, mes: number, ano: number): Despesa | null {
+  const g = grupoOcorrencia(regra.id, mes, ano);
+  const exata = despesas.find((d) => d.grupoId === g);
+  if (exata) return exata;
+  const desc = normDesc(regra.descricao);
+  const legados = despesas.filter((d) => !d.grupoId && d.natureza === "NORMAL" && d.tipo === regra.tipo && d.mes === mes && d.ano === ano && normDesc(d.descricao) === desc);
+  return legados.length === 1 ? legados[0] : null;
+}
+
+/**
+ * R108 - provisiona: cria já as ocorrências PENDENTES dos próximos `meses` (mês corrente incluso; 1 a 12) de uma conta mensal, para
+ * poder conferir/alterar valor e data antes do vencimento. Idempotente (usa o `grupoId` do R16): o que já existe não é recriado, e
+ * quando o mês chega o R16 reconhece o lançamento e não duplica. Não mexe em `ultimaDataLancamento`. Recusa regra desabilitada (R47).
+ */
+export function provisionarRecorrencia(ds: Dataset, id: number, meses: number, ctx: Ctx): Op<{ criados: Despesa[] }> {
+  const regra = ds.despesasFixas.find((f) => f.id === id);
+  if (!regra) return erro("Conta mensal não encontrada.");
+  if (!Number.isInteger(meses) || meses < 1 || meses > MAX_MESES_PROVISAO) return erro(`Informe de 1 a ${MAX_MESES_PROVISAO} meses.`);
+  if (recorrenciaPausada(regra, ctx.agora)) return erro("Conta mensal desabilitada: habilite-a antes de provisionar.");
+  const hoje = mesAnoDe(ctx.agora);
+  const idxHoje = hoje.ano * 12 + hoje.mes - 1;
+  const usados = new Set(idsDespesas(ds));
+  const criados: Despesa[] = [];
+  for (let k = 0; k < meses; k++) {
+    const { mes, ano } = normalizaMes(((idxHoje + k) % 12) + 1, Math.floor((idxHoje + k) / 12));
+    const grupoId = grupoOcorrencia(regra.id, mes, ano);
+    if (ocorrenciaDoMes(ds.despesas, regra, mes, ano)) continue;
+    const dataOc = new Date(ano, mes - 1, clampDia(regra.diaVencimento, mes, ano)).getTime();
+    const novoId = novoIdLong(usados, ctx.agora);
+    usados.add(novoId);
+    criados.push(ocorrenciaDaRegra(ds, regra, dataOc, grupoId, novoId));
+  }
+  if (criados.length === 0) return finaliza(ds, { criados });
+  return finaliza({ ...ds, despesas: [...ds.despesas, ...criados] }, { criados });
+}
+
+export interface BaixaContaMensal {
+  /** conta de onde o valor sai (número); ausente = a do lançamento. Só para lançamento em conta (cartão: pague pela fatura). */
+  conta?: string;
+  /** valor realmente cobrado (conta de luz varia); ausente = o previsto */
+  valor?: number;
+  /** data do pagamento/vencimento real; ausente = a do lançamento */
+  data?: number;
+  /** grava `valor` também na regra, para os próximos meses */
+  atualizarRegra?: boolean;
+  /** conta mensal a que o lançamento pertence (obrigatória com `atualizarRegra` se o lançamento não tiver `grupoId` fixa:) */
+  regraId?: number;
+}
+
+/**
+ * R108 - "Dar baixa" detalhado numa conta mensal: escolhe a conta de onde sai, o valor real e a data, e marca como paga (um passo só,
+ * validado antes de gravar). Só lançamento em conta, ainda em aberto e NORMAL; compra no cartão é paga pela fatura. Com
+ * `atualizarRegra`, o valor também vira o da regra (somente se o lançamento veio de uma regra existente).
+ */
+export function baixarContaMensal(ds: Dataset, id: number, baixa: BaixaContaMensal, ctx: Ctx): Op {
+  const d = ds.despesas.find((x) => x.id === id);
+  if (!d) return erro("Lançamento não encontrado.");
+  if (d.natureza !== "NORMAL") return erro("Este lançamento é gerado automaticamente e não pode receber baixa aqui.");
+  if (d.tipo !== "DEBITO") return erro("A baixa de conta mensal vale para despesas.");
+  if (cartaoIdDe(d) !== null) return erro("Compra no cartão: pague pela fatura do cartão.");
+  if (d.pago) return erro("Este lançamento já está pago.");
+  if (baixa.conta !== undefined && !ds.contas.some((c) => c.conta === baixa.conta)) return erro("Conta não encontrada.");
+  if (baixa.valor !== undefined && !(round2(baixa.valor) > 0)) return erro("O valor deve ser maior que zero.");
+  if (baixa.data !== undefined && !Number.isFinite(baixa.data)) return erro("Data inválida.");
+  const m = /^fixa:(\d+):/.exec(d.grupoId ?? "");
+  const regraId = m ? Number(m[1]) : (baixa.regraId ?? null);
+  if (baixa.atualizarRegra && (regraId === null || !ds.despesasFixas.some((f) => f.id === regraId))) {
+    return erro("Este lançamento não vem de uma conta mensal cadastrada.");
+  }
+  const r = editarLancamento(ds, id, { pago: true, ...(baixa.conta !== undefined ? { conta: baixa.conta } : {}), ...(baixa.valor !== undefined ? { valor: baixa.valor } : {}), ...(baixa.data !== undefined ? { data: baixa.data } : {}) }, ctx);
+  if (!r.ok || !baixa.atualizarRegra || regraId === null || baixa.valor === undefined) return r;
+  return finaliza({ ...r.ds, despesasFixas: r.ds.despesasFixas.map((f) => (f.id === regraId ? { ...f, valor: round2(baixa.valor as number) } : f)) }, {});
+}
+
+/**
+ * R108 - desabilita uma conta mensal (R47: pausa, sem catch-up ao habilitar) e, se pedido, envia para a lixeira as ocorrências
+ * PROVISIONADAS futuras ainda em aberto (data posterior a hoje); o que já venceu ou foi pago nunca é tocado.
+ */
+export function desabilitarContaMensal(ds: Dataset, id: number, opc: { ate?: number | null; removerProvisionadas?: boolean }, ctx: Ctx): Op<{ removidas: number }> {
+  const p = pausarRecorrencia(ds, id, opc.ate, ctx);
+  if (!p.ok) return p as Op<{ removidas: number }>;
+  let atual = p.ds;
+  let removidas = 0;
+  if (opc.removerProvisionadas) {
+    const prefixo = `fixa:${id}:`;
+    const alvo = atual.despesas.filter((d) => d.grupoId?.startsWith(prefixo) && !d.pago && d.data > ctx.agora && d.natureza === "NORMAL");
+    for (const d of alvo) {
+      const x = excluirLancamento(atual, d.id, undefined, ctx);
+      if (!x.ok) return x as Op<{ removidas: number }>;
+      atual = x.ds;
+      removidas++;
+    }
+  }
+  return finaliza(atual, { removidas });
 }
