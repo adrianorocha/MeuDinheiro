@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- R92: cores do widget de saldo (tema escuro). -->
+<resources>
+    <color name="widget_surface">#FF16212C</color>
+    <color name="widget_stroke">#FF2A3A48</color>
+    <color name="widget_tile">#FF21303E</color>
+    <color name="widget_text">#FFE6E9EB</color>
+    <color name="widget_text_sec">#FFB0BAC0</color>
+    <color name="widget_accent">#FF4DD8C0</color>
+    <color name="widget_positive">#FF69F0AE</color>
+    <color name="widget_negative">#FFFF8A80</color>
+    <color name="widget_chip_pos_bg">#FF1F3B33</color>
+    <color name="widget_chip_neg_bg">#FF4A2522</color>
+    <color name="widget_btn_rec_bg">#FF69F0AE</color>
+    <color name="widget_btn_rec_fg">#FF00251A</color>
+    <color name="widget_btn_desp_bg">#FFFF8A80</color>
+    <color name="widget_btn_desp_fg">#FF410002</color>
+</resources>

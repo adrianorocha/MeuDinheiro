@@ -10,20 +10,20 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PatrimonioDao {
 
-    // Salva o snapshot do mês
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun salvarSnapshot(patrimonio: PatrimonioHistorico)
 
-    // Pega os últimos 12 meses para o gráfico
-    @Query("SELECT * FROM patrimonio_historico ORDER BY dataMillis ASC LIMIT 12")
+    /** Últimos 12 registros, em ordem cronológica (o LIMIT antigo devolvia os 12 mais ANTIGOS). */
+    @Query(
+        """
+        SELECT * FROM (SELECT * FROM patrimonio_historico ORDER BY dataMillis DESC LIMIT 12)
+        ORDER BY dataMillis ASC
+        """
+    )
     fun obterHistoricoPatrimonial(): Flow<List<PatrimonioHistorico>>
 
-    // Limpa o histórico se necessário
-    @Query("DELETE FROM patrimonio_historico")
-    suspend fun limparHistorico()
-
-    @Query("SELECT * FROM patrimonio_historico WHERE mesReferencia = :mes LIMIT 1")
-    suspend fun buscarSnapshotPorMes(mes: String): PatrimonioHistorico?
+    @Query("SELECT * FROM patrimonio_historico WHERE dataMillis BETWEEN :inicio AND :fim LIMIT 1")
+    suspend fun buscarSnapshotNoPeriodo(inicio: Long, fim: Long): PatrimonioHistorico?
 
     @Query("DELETE FROM patrimonio_historico")
     suspend fun limparTudo()
@@ -33,4 +33,7 @@ interface PatrimonioDao {
 
     @Query("SELECT * FROM patrimonio_historico")
     suspend fun obterTodasStatic(): List<PatrimonioHistorico>
+
+    @Query("DELETE FROM patrimonio_historico WHERE id IN (:ids)")
+    suspend fun excluirPorIds(ids: List<Int>)
 }

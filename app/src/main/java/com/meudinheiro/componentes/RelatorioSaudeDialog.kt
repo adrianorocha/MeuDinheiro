@@ -60,13 +60,10 @@ fun RelatorioSaudeDialog(
     onDismiss: () -> Unit
 ) {
     // --- LÓGICA E MATEMÁTICA ---
-    val variacaoGastos = if (despesaAnterior > 0) {
-        ((despesaAtual - despesaAnterior) / despesaAnterior) * 100
-    } else {
-        0.0
-    }
+    val saude = com.meudinheiro.domain.Financas.saudeFinanceira(receitaAtual, despesaAtual, despesaAnterior)
+    val variacaoGastos = saude.variacaoGastos
 
-    val consumoReceita = if (receitaAtual > 0) (despesaAtual / receitaAtual).toFloat() else 0f
+    val consumoReceita = saude.consumoReceita.toFloat()
     val sobra = receitaAtual - despesaAtual
 
     // Definição do "Status" e Cores

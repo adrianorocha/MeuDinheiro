@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- R92: imagem de pré-visualização do widget de saldo (Android < 12). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp"
+    android:height="110dp"
+    android:viewportWidth="180"
+    android:viewportHeight="110">
+    <path android:fillColor="#FFF8FAFA" android:pathData="M24,0h132a24,24 0 0 1 24,24v62a24,24 0 0 1 -24,24h-132a24,24 0 0 1 -24,-24v-62a24,24 0 0 1 24,-24z" />
+    <path android:fillColor="#FF4A5459" android:pathData="M12,12h44v6h-44z" />
+    <path android:fillColor="#FF00695C" android:pathData="M12,24h96v16h-96z" />
+    <path android:fillColor="#FFDDF3EC" android:pathData="M12,48h74v14h-74z" />
+    <path android:fillColor="#FFFBE4E1" android:pathData="M94,48h74v14h-74z" />
+    <path android:fillColor="#FFB3261E" android:pathData="M12,76h74v20h-74z" />
+    <path android:fillColor="#FF00695C" android:pathData="M94,76h74v20h-74z" />
+</vector>

@@ -17,6 +17,7 @@ class ReceptorAvisosDiarios : BroadcastReceiver() {
             try {
                 // 1. CHAMA DIRETO! Pula o WorkManager.
                 DespesasDevidas.verificarEExibir(context)
+                AvisoLimiteDiario.verificarEExibir(context) // R51
 
                 // 2. Reagenda para amanhã
                 val userPrefs = UserPreferences(context)

@@ -23,4 +23,7 @@ interface TransacaoDao {
 
     @Query("SELECT * FROM transacoes")
     suspend fun obterTodasStatic(): List<Transacao>
+
+    @Query("DELETE FROM transacoes WHERE id IN (:ids)")
+    suspend fun excluirPorIds(ids: List<Int>)
 }

@@ -26,6 +26,17 @@ data class Cartao(
     val diaFechamento: Int,         // Ex: 25
     val diaVencimento: Int,         // Ex: 5
     @ColumnInfo(index = true)
-    val contaId: Int              // 📍 O VÍNCULO: ID da conta corrente associada
-)
+    val contaId: Int,             // 📍 O VÍNCULO: ID da conta corrente associada
+    /** null = cartão físico (principal). Preenchido = cartão VIRTUAL que compartilha limite/fatura com esse físico (R18). */
+    val cartaoPrincipalId: Int? = null,
+    /** R41: teto de gasto DESTE cartão dentro do limite compartilhado do grupo. null = sem teto próprio. */
+    val limiteProprio: Double? = null,
+    /** true = o dia do fechamento já é o melhor dia de compra (compras nesse dia vão para a PRÓXIMA fatura). */
+    val fechamentoMelhorDia: Boolean = false
+) {
+    val ehVirtual: Boolean get() = cartaoPrincipalId != null
+
+    /** Id do cartão que "manda" no grupo (limite, conta, ciclo da fatura). */
+    val idDoGrupo: Int get() = cartaoPrincipalId ?: id
+}
 

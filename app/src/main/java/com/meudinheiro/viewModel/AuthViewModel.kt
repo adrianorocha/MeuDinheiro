@@ -29,7 +29,7 @@ class AuthViewModel(private val prefs: UserPreferences) : ViewModel() {
         viewModelScope.launch {
             nomeCompletoState.value = prefs.userNameFlow.firstOrNull().orEmpty()
             usuarioState.value = prefs.userLoginFlow.firstOrNull().orEmpty()
-            passState.value = prefs.userPassFlow.firstOrNull().orEmpty()
+            passState.value = "" // a senha é guardada como hash e nunca é reexibida
             userPhotoState.value = prefs.userPhotoFlow.firstOrNull().orEmpty()
             confirmState.value = ""
             useBiometric.value = prefs.biometricEnabledFlow.firstOrNull() ?: false

@@ -54,7 +54,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meudinheiro.data.EscopoOrcamento
 import com.meudinheiro.data.OrcamentoProgresso
+import com.meudinheiro.data.Pessoa
 import com.meudinheiro.funcoes.formatarMoedaBR
 
 @Composable
@@ -139,16 +141,33 @@ fun OrcamentoCard(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
             )
+            item.rotuloEscopo?.let {
+                Text(
+                    text = it,
+                    color = Color(0xFF69F0AE),
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
 
+const val DICA_ORCAMENTO_PESSOA = "Para tirar um gasto do seu orçamento, vincule o lançamento à pessoa (A receber)"
+
 @Composable
 fun AddOrcamentoDialog(
     categoriasDisponiveis: List<String>,
-    onSalvar: (String, Double) -> Unit,
+    pessoas: List<Pessoa> = emptyList(),
+    onSalvar: (String, Double, String?, Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
+    // "Quem gasta?": 0 = todos, 1 = só eu, 2+ = pessoas na ordem da lista.
+    var opcaoQuem by remember { mutableStateOf(0) }
+    var expandidoQuem by remember { mutableStateOf(false) }
+    val opcoesQuem = listOf("Todos (tudo da categoria)", "Só eu (desconta o que é de outras pessoas)") + pessoas.map { "Só ${it.nome}" }
     var categoriaSelecionada by remember {
         mutableStateOf(
             categoriasDisponiveis.firstOrNull() ?: ""
@@ -183,6 +202,22 @@ fun AddOrcamentoDialog(
                     }
                 }
 
+                Spacer(Modifier.height(8.dp))
+                Text("Quem gasta?", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                Box {
+                    OutlinedButton(onClick = { expandidoQuem = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(opcoesQuem.getOrElse(opcaoQuem) { opcoesQuem[0] }, color = Color.White, maxLines = 2, fontSize = 13.sp)
+                    }
+                    DropdownMenu(expanded = expandidoQuem, onDismissRequest = { expandidoQuem = false }) {
+                        opcoesQuem.forEachIndexed { i, rotulo ->
+                            DropdownMenuItem(text = { Text(rotulo) }, onClick = { opcaoQuem = i; expandidoQuem = false })
+                        }
+                    }
+                }
+                if (opcaoQuem > 0) {
+                    Text(DICA_ORCAMENTO_PESSOA, color = Color.White.copy(0.6f), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+
                 Spacer(Modifier.height(16.dp))
 
                 OutlinedTextField(
@@ -204,7 +239,11 @@ fun AddOrcamentoDialog(
                 onClick = {
                     val valor = valorLimite.replace(",", ".").toDoubleOrNull() ?: 0.0
                     if (valor > 0 && categoriaSelecionada.isNotBlank()) {
-                        onSalvar(categoriaSelecionada, valor)
+                        when (opcaoQuem) {
+                            0 -> onSalvar(categoriaSelecionada, valor, null, null)
+                            1 -> onSalvar(categoriaSelecionada, valor, EscopoOrcamento.EU, null)
+                            else -> onSalvar(categoriaSelecionada, valor, EscopoOrcamento.PESSOA, pessoas.getOrNull(opcaoQuem - 2)?.id)
+                        }
                         onDismiss()
                     }
                 },
@@ -264,10 +303,17 @@ fun DetalheOrcamentoBottomSheet(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = item.categoria,
+                text = item.titulo,
                 color = Color.White,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = DICA_ORCAMENTO_PESSOA,
+                color = Color.White.copy(alpha = 0.55f),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp)
             )
 
             Spacer(modifier = Modifier.height(32.dp))
